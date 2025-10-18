@@ -1,0 +1,50 @@
+<?php require_once 'code.php'; ?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hello World</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="10">
+    <link rel="stylesheet" type="text/css" href="styles.css">
+    <script src="code.js"></script>
+</head>
+<body>
+    <h1>Hello, World!</h1>
+    <p>Pora zarobic!</p>
+    
+    <div class="content-box">
+        <h2>Content from account_log.txt:</h2>
+        <div class="file-content">
+            <?php displayAccountLog(); ?>
+        </div>
+
+        <div class="file-content">
+            <h2>php_orders folder (not executed orders?)</h2>
+            <?php displayOrders(); ?>
+        </div>
+
+        <!-- button and dropdown -->
+        <form method="post" class="button-form" style="display: flex; align-items: center; gap: 10px; justify-content: center;">
+            <select name="order_type" style="padding: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 18px; min-height: 50px;">
+                <option value="none" selected>none</option>
+                <option value="buy">buy</option>
+                <option value="buy stop">buy stop</option>
+                <option value="buy limit">buy limit</option>
+                <option value="sell">sell</option>
+                <option value="sell stop">sell stop</option>
+                <option value="sell limit">sell limit</option>
+            </select>
+            <button type="submit" name="create_order" class="create-button">Create New Order</button>
+        </form>
+        <?php handleRequests(); ?>
+
+        <div class="content-box">
+            <h2>php_executed folder (executed orders)</h2>
+            <div class="file-content">
+                <?php displayExecutedOrders(); ?>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hello World</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="10">
+    <script>
+        // Alternative JavaScript method for page reload
+        setTimeout(function() {
+            location.reload();
+        }, 10000); // 10 seconds
+    </script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+    <h1>Hello, World!</h1>
+    <p>Pora zarobic!</p>
+    
+    <div class="content-box">
+        <h2>Content from account_log.txt:</h2>
+	<div class="file-content">
+<?php
+
+$original_file = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/account_log.txt';
+
+if (file_exists($original_file) && is_readable($original_file)) {
+    echo nl2br(htmlspecialchars(file_get_contents($original_file)));
+} else {
+    echo "File not found.";
+}
+?>
+	</div>
+
+    <div class="file-content">
+
+
+        <h2>php_orders folder (not executed orders?)</h2>
+<?php
+$orders_dir = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/php_orders';
+if (is_dir($orders_dir)) {
+    $files = scandir($orders_dir);
+    foreach ($files as $file) {
+        if ($file !== '.' && $file !== '..') {
+            echo '<h3 class="file-name">' . htmlspecialchars($file) . ' ';
+            echo '<button class="user-button" onclick="checkPassword(\'' . $file . '\', \'rafal\')">Rafal</button>';
+            echo '<button class="user-button" onclick="checkPassword(\'' . $file . '\', \'piotr\')">Piotr</button>';
+            echo '</h3>';
+            echo '<div class="file-content">' . nl2br(htmlspecialchars(file_get_contents($orders_dir . '/' . $file))) . '</div>';
+        }
+    }
+} else {
+    echo "Directory not found.";
+}
+?>
+    </div>
+
+<script>
+let approvals = {};
+
+function checkPassword(filename, user) {
+    const password = prompt(`Enter password for ${user}:`);
+    
+    // Send AJAX request to verify password
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', window.location.href, true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                // Mark as approved
+                if (!approvals[filename]) approvals[filename] = {};
+                approvals[filename][user] = true;
+                
+                // Change button color
+                event.target.classList.add('approved');
+                
+                // Check if both users approved
+                if (approvals[filename]['rafal'] && approvals[filename]['piotr']) {
+                    // Submit form to move file
+                    const form = document.createElement('form');
+                    form.method = 'post';
+                    form.innerHTML = `<input type="hidden" name="move_file" value="${filename}">`;
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            } else {
+                alert('Incorrect password!');
+            }
+        }
+    };
+    
+    xhr.send(`check_password=1&user=${user}&password=${encodeURIComponent(password)}`);
+}
+</script>
+
+
+<!-- button and dropdown -->
+<form method="post" class="button-form" style="display: flex; align-items: center; gap: 10px; justify-content: center;">
+    <select name="order_type" style="padding: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 18px; min-height: 50px;">
+        <option value="none" selected>none</option>
+        <option value="buy">buy</option>
+        <option value="buy stop">buy stop</option>
+        <option value="buy limit">buy limit</option>
+        <option value="sell">sell</option>
+        <option value="sell stop">sell stop</option>
+        <option value="sell limit">sell limit</option>
+    </select>
+    <button type="submit" name="create_order" class="create-button">Create New Order</button>
+</form>
+
+<?php
+
+// Handle password verification AJAX request
+if (isset($_POST['check_password'])) {
+    $user = $_POST['user'];
+    $password = $_POST['password'];
+    $base_dir = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/';
+    
+    $password_file = '';
+    if ($user === 'rafal') {
+        $password_file = $base_dir . 'pass_r.txt';
+    } elseif ($user === 'piotr') {
+        $password_file = $base_dir . 'pass_p.txt';
+    }
+    
+    $correct_password = '';
+    if (file_exists($password_file)) {
+        $correct_password = trim(file_get_contents($password_file));
+    }
+    
+    $success = ($password === $correct_password);
+    
+    header('Content-Type: application/json');
+    echo json_encode(['success' => $success]);
+    exit();
+}
+
+// Display success messages from GET parameters
+if (isset($_GET['moved'])) {
+    echo '<div style="color: green; margin-top: 10px;">File moved to executed folder: ' . htmlspecialchars($_GET['moved']) . '</div>';
+}
+if (isset($_GET['created'])) {
+    echo '<div style="color: green; margin-top: 10px;">File created successfully: ' . htmlspecialchars($_GET['created']) . '</div>';
+}
+
+if (isset($_POST['move_file'])) {
+    $filename = $_POST['move_file'];
+    $source_dir = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/php_orders';
+    $target_dir = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/php_executed';
+    
+    $source_path = $source_dir . '/' . $filename;
+    $target_path = $target_dir . '/' . $filename;
+    
+    // Create target directory if it doesn't exist
+    if (!is_dir($target_dir)) {
+        mkdir($target_dir, 0755, true);
+    }
+    
+    // Move the file
+    if (file_exists($source_path) && rename($source_path, $target_path)) {
+        // Change file permissions to make it deletable
+        chmod($target_path, 0666);
+        header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?') . '?moved=' . urlencode($filename));
+    } else {
+        echo '<div style="color: red; margin-top: 10px;">Error moving file.</div>';
+    }
+}
+
+if (isset($_POST['create_order'])) {
+    $target_dir = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/php_orders';
+    $current_date = date('Y-m-d_H-i-s');
+    $filename = $current_date . '.txt';
+    $filepath = $target_dir . '/' . $filename;
+    $order_type = isset($_POST['order_type']) ? $_POST['order_type'] : 'none';
+    $content = $order_type;
+    // Create directory if it doesn't exist
+    if (!is_dir($target_dir)) {
+        mkdir($target_dir, 0755, true);
+    }
+    
+    // Create the file
+    if (file_put_contents($filepath, $content) !== false) {
+        echo '<div style="color: green; margin-top: 10px;">File created successfully: ' . htmlspecialchars($filename) . '</div>';
+    } else {
+        echo '<div style="color: red; margin-top: 10px;">Error creating file.</div>';
+    }
+}
+
+?>
+
+<div class="content-box">
+    <h2>php_executed folder (executed orders)</h2>
+    <div class="file-content">
+<?php
+$executed_dir = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/php_executed';
+if (is_dir($executed_dir)) {
+    $files = scandir($executed_dir);
+    $found_files = false;
+    foreach ($files as $file) {
+        if ($file !== '.' && $file !== '..') {
+            $found_files = true;
+            echo '<h4>' . htmlspecialchars($file) . '</h4>';
+            echo '<div class="file-content">' . nl2br(htmlspecialchars(file_get_contents($executed_dir . '/' . $file))) . '</div>';
+        }
+    }
+    if (!$found_files) {
+        echo "No executed files found.";
+    }
+} else {
+    echo "Directory not found.";
+}
+?>
+    </div>
+</div>
+
+    </div>
+</body>
+</html>

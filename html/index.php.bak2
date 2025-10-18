@@ -1,0 +1,313 @@
+<?php
+// Define base paths as constants at the very top
+define('BASE_DIR', '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/');
+define('ORDERS_DIR', BASE_DIR . 'php_orders');
+define('EXECUTED_DIR', BASE_DIR . 'php_executed');
+define('ACCOUNT_LOG_FILE', BASE_DIR . 'account_log.txt');
+
+// Handle password verification AJAX request BEFORE any HTML output
+if (isset($_POST['check_password'])) {
+    // Clear any output buffers and disable error reporting to avoid contaminating JSON response
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    error_reporting(0);
+    
+    $user = $_POST['user'];
+    $password = $_POST['password'];
+    $filename = isset($_POST['filename']) ? $_POST['filename'] : '';
+    
+    $password_file = '';
+    if ($user === 'rafal') {
+        $password_file = BASE_DIR . 'pass_r.txt';
+    } elseif ($user === 'piotr') {
+        $password_file = BASE_DIR . 'pass_p.txt';
+    }
+    
+    $correct_password = '';
+    if (file_exists($password_file)) {
+        $correct_password = trim(file_get_contents($password_file));
+    }
+    
+    $success = ($password === $correct_password);
+    
+    // If password is correct, create a file with user suffix next to the order file
+    if ($success && !empty($filename)) {
+        $original_file_path = ORDERS_DIR . '/' . $filename;
+        
+        if (file_exists($original_file_path)) {
+            // Create filename with user suffix
+            $file_info = pathinfo($filename);
+            $base_name = $file_info['filename'];
+            $extension = isset($file_info['extension']) ? '.' . $file_info['extension'] : '';
+            $user_suffix = ($user === 'rafal') ? '_r' : '_p';
+            $approval_filename = $base_name . $user_suffix . $extension;
+            $approval_file_path = ORDERS_DIR . '/' . $approval_filename;
+            
+            // Create approval file with timestamp and user info
+            $approval_content = "Approved by: $user\nTimestamp: " . date('Y-m-d H:i:s') . "\nOriginal file: $filename";
+            file_put_contents($approval_file_path, $approval_content);
+        }
+    }
+    
+    header('Content-Type: application/json');
+    echo json_encode(['success' => $success]);
+    exit();
+}
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hello World</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="10">
+    <script>
+        // Alternative JavaScript method for page reload
+        setTimeout(function() {
+            location.reload();
+        }, 10000); // 10 seconds
+    </script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+    <h1>Hello, World!</h1>
+    <p>Pora zarobic!</p>
+    
+    <div class="content-box">
+        <h2>Content from account_log.txt:</h2>
+	<div class="file-content">
+<?php
+$original_file = ACCOUNT_LOG_FILE;
+
+if (file_exists($original_file) && is_readable($original_file)) {
+    echo nl2br(htmlspecialchars(file_get_contents($original_file)));
+} else {
+    echo "File not found.";
+}
+?>
+	</div>
+
+    <div class="file-content">
+
+
+        <h2>php_orders folder (not executed orders?)</h2>
+<?php
+
+if (is_dir(ORDERS_DIR)) {
+    $files = scandir(ORDERS_DIR);
+    foreach ($files as $file) {
+        // do not display approval files
+        if ($file !== '.' && $file !== '..' && !preg_match('/_[rp]\.txt$/', $file)) {
+            // Check if approval files exist
+            $file_info = pathinfo($file);
+            $base_name = $file_info['filename'];
+            $extension = isset($file_info['extension']) ? '.' . $file_info['extension'] : '';
+            
+            $rafal_approval_file = ORDERS_DIR . '/' . $base_name . '_r' . $extension;
+            $piotr_approval_file = ORDERS_DIR . '/' . $base_name . '_p' . $extension;
+            
+            $rafal_approved = file_exists($rafal_approval_file);
+            $piotr_approved = file_exists($piotr_approval_file);
+            
+            // If both approvals exist, move files to executed folder
+            if ($rafal_approved && $piotr_approved) {
+                // Create executed directory if it doesn't exist
+                if (!is_dir(EXECUTED_DIR)) {
+                    mkdir(EXECUTED_DIR, 0755, true);
+                }
+                
+                $source_path = ORDERS_DIR . '/' . $file;
+                $target_path = EXECUTED_DIR . '/' . $file;
+                
+                // Move the original file
+                if (file_exists($source_path) && rename($source_path, $target_path)) {
+                    chmod($target_path, 0666);
+                    
+                    // Also move the approval files
+                    $rafal_target = EXECUTED_DIR . '/' . $base_name . '_r' . $extension;
+                    $piotr_target = EXECUTED_DIR . '/' . $base_name . '_p' . $extension;
+                    
+                    if (file_exists($rafal_approval_file)) {
+                        rename($rafal_approval_file, $rafal_target);
+                        chmod($rafal_target, 0666);
+                    }
+                    if (file_exists($piotr_approval_file)) {
+                        rename($piotr_approval_file, $piotr_target);
+                        chmod($piotr_target, 0666);
+                    }
+                    
+                    // Skip displaying this file since it's been moved
+                    continue;
+                }
+            }
+            
+            $rafal_class = $rafal_approved ? 'user-button approved' : 'user-button';
+            $piotr_class = $piotr_approved ? 'user-button approved' : 'user-button';
+            
+            echo '<h3 class="file-name">' . htmlspecialchars($file) . ' ';
+            echo '<button class="' . $rafal_class . '" onclick="checkPassword(\'' . $file . '\', \'rafal\', this)">Rafal</button>';
+            echo '<button class="' . $piotr_class . '" onclick="checkPassword(\'' . $file . '\', \'piotr\', this)">Piotr</button>';
+            echo '</h3>';
+            echo '<div class="file-content">' . nl2br(htmlspecialchars(file_get_contents(ORDERS_DIR . '/' . $file))) . '</div>';
+        }
+    }
+} else {
+    echo "Directory not found.";
+}
+?>
+    </div>
+
+<script>
+function checkPassword(filename, user, buttonElement) {
+    const password = prompt(`Enter password for ${user}:`);
+    
+    // Check if user cancelled the prompt
+    if (password === null) {
+        return;
+    }
+    
+    // Store reference to the button that was clicked
+    const button = buttonElement || event.target;
+    
+    // Use fetch API instead of XMLHttpRequest to avoid chrome-extension issues
+    const formData = new URLSearchParams();
+    formData.append('check_password', '1');
+    formData.append('user', user);
+    formData.append('password', password);
+    formData.append('filename', filename);
+    
+    // Use explicit URL instead of window.location.href to avoid extension issues
+    const currentUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+    
+    fetch(currentUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString()
+    })
+    .then(response => {
+        console.log('Fetch Response Status:', response.status);
+        return response.text();
+    })
+    .then(text => {
+        console.log('Raw Response:', text);
+        console.log('Response length:', text.length);
+        console.log('Response char codes:', Array.from(text).map(c => c.charCodeAt(0)));
+        
+        // Clean response more aggressively
+        const cleanResponse = text.replace(/^\s+|\s+$/g, '').replace(/[\r\n\t]/g, '');
+        console.log('Clean Response:', cleanResponse);
+        console.log('Clean length:', cleanResponse.length);
+        
+        // Check if it looks like valid JSON
+        if (!cleanResponse.startsWith('{') || !cleanResponse.endsWith('}')) {
+            alert('Invalid JSON response: ' + cleanResponse);
+            return;
+        }
+        
+        try {
+            const response = JSON.parse(cleanResponse);
+            console.log('Parsed Response:', response);
+            console.log('response.success value:', response.success);
+            console.log('typeof response.success:', typeof response.success);
+            
+            if (response.success === true) {
+                console.log('Success condition met, updating button');
+                // Mark as approved and change button color
+                button.classList.add('approved');
+                
+                // Reload page to check for automatic file movement
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                console.log('Success condition NOT met');
+                alert('Incorrect password!');
+            }
+            console.log('Finished processing response successfully');
+        } catch (e) {
+            console.error('JSON Parse Error:', e);
+            console.error('Error name:', e.name);
+            console.error('Error message:', e.message);
+            console.error('Failed to parse:', cleanResponse);
+            console.error('Character codes:', Array.from(cleanResponse).map(c => c.charCodeAt(0)));
+            alert('JSON parse failed. Check console for details.');
+        }
+    })
+    .catch(error => {
+        console.error('Fetch Error:', error);
+        alert('Network error: ' + error.message);
+    });
+}
+</script>
+
+
+<!-- button and dropdown -->
+<form method="post" class="button-form" style="display: flex; align-items: center; gap: 10px; justify-content: center;">
+    <select name="order_type" style="padding: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 18px; min-height: 50px;">
+        <option value="none" selected>none</option>
+        <option value="buy">buy</option>
+        <option value="buy stop">buy stop</option>
+        <option value="buy limit">buy limit</option>
+        <option value="sell">sell</option>
+        <option value="sell stop">sell stop</option>
+        <option value="sell limit">sell limit</option>
+    </select>
+    <button type="submit" name="create_order" class="create-button">Create New Order</button>
+</form>
+
+<?php
+// Display success messages from GET parameters
+if (isset($_GET['created'])) {
+    echo '<div style="color: green; margin-top: 10px;">File created successfully: ' . htmlspecialchars($_GET['created']) . '</div>';
+}
+
+if (isset($_POST['create_order'])) {
+    $current_date = date('Y-m-d_H-i-s');
+    $filename = $current_date . '.txt';
+    $filepath = ORDERS_DIR . '/' . $filename;
+    $order_type = isset($_POST['order_type']) ? $_POST['order_type'] : 'none';
+    $content = $order_type;
+
+    // Create directory if it doesn't exist
+    if (!is_dir(ORDERS_DIR)) {
+        mkdir(ORDERS_DIR, 0755, true);
+    }
+    
+    // Create the file
+    if (file_put_contents($filepath, $content) !== false) {
+        echo '<div style="color: green; margin-top: 10px;">File created successfully: ' . htmlspecialchars($filename) . '</div>';
+    } else {
+        echo '<div style="color: red; margin-top: 10px;">Error creating file.</div>';
+    }
+}
+
+?>
+
+<div class="content-box">
+    <h2>php_executed folder (executed orders)</h2>
+    <div class="file-content">
+<?php
+if (is_dir(EXECUTED_DIR)) {
+    $files = scandir(EXECUTED_DIR);
+    $found_files = false;
+    foreach ($files as $file) {
+        // Do not display approval files (_r or _p suffix)
+        if ($file !== '.' && $file !== '..' && !preg_match('/_[rp]\.txt$/', $file)) {
+            $found_files = true;
+            echo '<h4>' . htmlspecialchars($file) . '</h4>';
+            echo '<div class="file-content">' . nl2br(htmlspecialchars(file_get_contents(EXECUTED_DIR . '/' . $file))) . '</div>';
+        }
+    }
+    if (!$found_files) {
+        echo "No executed files found.";
+    }
+} else {
+    echo "Directory not found.";
+}
+?>
+    </div>
+</div>
+
+    </div>
+</body>
+</html>
