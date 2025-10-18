@@ -41,7 +41,7 @@
     </script>
 </head>
 <body>
-    <h1>Pora zarobic! :) v1.1</h1>
+    <h1>Pora zarobic! :) v1.2</h1>
     
     <script>
     // Update time every second
