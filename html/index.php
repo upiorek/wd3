@@ -5,7 +5,6 @@
 <head>
     <title>Hello World</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="10">
     <link rel="stylesheet" type="text/css" href="styles.css">
     <script src="code.js"></script>
     <script>
@@ -41,10 +40,10 @@
     </script>
 </head>
 <body>
-    <h1>Pora zarobic! :) v1.2</h1>
+    <h1>Pora zarobic! :) v1.3</h1>
     
     <script>
-    // Update time every second
+    // Update server time every second
     function updateTime() {
         const now = new Date();
         const timeString = now.getFullYear() + '-' + 
@@ -59,7 +58,41 @@
         }
     }
     
-    // Wait for DOM to be ready before starting the timer
+    // Update account log data via AJAX
+    function updateAccountLog() {
+        const formData = new FormData();
+        formData.append('get_account_log', '1');
+        
+        fetch('', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Update account time
+            const accountTimeElement = document.getElementById('account-time');
+            if (accountTimeElement) {
+                accountTimeElement.innerHTML = data.accountTime;
+            }
+            
+            // Update time difference
+            const timeDifferenceElement = document.getElementById('time-difference');
+            if (timeDifferenceElement) {
+                timeDifferenceElement.innerHTML = data.timeDifference;
+            }
+            
+            // Update account log content
+            const accountLogElement = document.getElementById('account-log');
+            if (accountLogElement) {
+                accountLogElement.innerHTML = data.accountLogContent;
+            }
+        })
+        .catch(error => {
+            console.error('Error updating account log:', error);
+        });
+    }
+    
+    // Wait for DOM to be ready before starting the timers
     document.addEventListener('DOMContentLoaded', function() {
         // Update time immediately and then every second
         updateTime();
@@ -71,10 +104,10 @@
         <div class="file-content">
             <?php $systemTime = date('Y-m-d H:i:s'); $accountTime = getAccountTime(); ?>
             <h2>system time: <span id="current-time"><?php echo $systemTime; ?></span></h2>
-            <h2>account time: <?php echo getAccountTime(); ?></h2>
-            <h2>time difference: <?php echo getTimeDifferenceDisplay(); ?></h2>
+            <h2>account time: <span id="account-time"><?php echo getAccountTime(); ?></span></h2>
+            <h2>time difference: <span id="time-difference"><?php echo getTimeDifferenceDisplay(); ?></span></h2>
             <h2>account info:</h2>
-            <?php displayAccountLog(); ?>
+            <div id="account-log"><?php displayAccountLog(); ?></div>
         </div>
 
     	<!--- orders that need review --->
