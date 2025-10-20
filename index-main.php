@@ -6,6 +6,7 @@ header('Content-Type: text/html; charset=utf-8');
 const ORDERS_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders.txt';
 const APPROVED_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt';
 const ACCOUNT_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/account_log.txt';
+const ORDERS_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders_log.txt';
 
 // Get current timestamp
 $timestamp = date('Y-m-d H:i:s');
@@ -47,6 +48,54 @@ function getOrdersList() {
  */
 function getApprovedOrdersList() {
     return getOrdersFromFile(APPROVED_FILE);
+}
+
+/**
+ * Parse orders log file and return structured data
+ * @return array Array of order log entries with parsed data
+ */
+function getOrdersLogData() {
+    $ordersLog = array();
+    
+    if (file_exists(ORDERS_LOG_FILE)) {
+        $content = file_get_contents(ORDERS_LOG_FILE);
+        $lines = explode("\n", trim($content));
+        
+        $inDataSection = false;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            // Skip header lines and empty lines
+            if (empty($line) || 
+                strpos($line, '=== ORDERS LOG') === 0 || 
+                strpos($line, '=== END ORDERS LOG') === 0 || 
+                strpos($line, 'Total Orders:') === 0 ||
+                strpos($line, 'Ticket | Type') === 0 ||
+                strpos($line, '-------|------') === 0) {
+                continue;
+            }
+            
+            // Parse data line (pipe-separated values)
+            if (strpos($line, '|') !== false) {
+                $parts = array_map('trim', explode('|', $line));
+                if (count($parts) >= 8) {
+                    $ordersLog[] = array(
+                        'ticket' => $parts[0],
+                        'type' => $parts[1],
+                        'symbol' => $parts[2],
+                        'lots' => $parts[3],
+                        'openPrice' => $parts[4],
+                        'stopLoss' => $parts[5],
+                        'takeProfit' => $parts[6],
+                        'profit' => $parts[7],
+                        'comment' => isset($parts[8]) ? $parts[8] : ''
+                    );
+                }
+            }
+        }
+    }
+    
+    return $ordersLog;
 }
 
 /**
@@ -117,6 +166,55 @@ function generateActionButtons($rowNumber, $order) {
     return '<button onclick="handlePAction(' . $rowNumber . ')" class="action-button ' . $pButtonClass . '">P</button>' .
            '<button onclick="handleRAction(' . $rowNumber . ')" class="action-button ' . $rButtonClass . '">R</button>' .
            '<button onclick="handleCancelAction(' . $rowNumber . ')" class="action-button btn-cancel">Cancel</button>';
+}
+
+/**
+ * Generate HTML table for orders log
+ * @param array $ordersLog Array of parsed order log entries
+ * @return string HTML table
+ */
+function generateOrdersLogTable($ordersLog) {
+    if (empty($ordersLog)) {
+        return '<p class="error-message">No orders log found or orders log file not found.</p>';
+    }
+    
+    $html = '<table class="table orders-log-table">';
+    $html .= '<thead>';
+    $html .= '<tr>';
+    $html .= '<th>Ticket</th>';
+    $html .= '<th>Type</th>';
+    $html .= '<th>Symbol</th>';
+    $html .= '<th>Lots</th>';
+    $html .= '<th>Open Price</th>';
+    $html .= '<th>Stop Loss</th>';
+    $html .= '<th>Take Profit</th>';
+    $html .= '<th>Profit</th>';
+    $html .= '<th>Comment</th>';
+    $html .= '</tr>';
+    $html .= '</thead>';
+    $html .= '<tbody>';
+    
+    foreach ($ordersLog as $order) {
+        $html .= '<tr>';
+        $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['lots']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['openPrice']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['stopLoss']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['takeProfit']) . '</td>';
+        $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . htmlspecialchars($order['profit']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($order['comment']) . '</td>';
+        $html .= '</tr>';
+    }
+    
+    $html .= '</tbody>';
+    $html .= '</table>';
+    
+    global $timestamp;
+    $html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    
+    return $html;
 }
 
 /**
@@ -197,6 +295,17 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'approved_orders_list') {
     $response = array(
         'table' => generateOrdersTable($approved_orders, false),
         'count' => count($approved_orders)
+    );
+    echo json_encode($response);
+    exit; // Exit here for AJAX requests
+}
+
+// For AJAX requests to refresh orders log
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'orders_log_list') {
+    $orders_log = getOrdersLogData();
+    $response = array(
+        'table' => generateOrdersLogTable($orders_log),
+        'count' => count($orders_log)
     );
     echo json_encode($response);
     exit; // Exit here for AJAX requests
@@ -308,7 +417,7 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 600px;
+            max-width: 800px;
             margin: 50px auto;
             padding: 20px;
             background-color: #f4f4f4;
@@ -367,6 +476,30 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
         .approved-orders {
             border-left: 4px solid #ffc107;
             font-family: Arial, sans-serif;
+        }
+        .orders-log {
+            border-left: 4px solid #6f42c1;
+            font-family: Arial, sans-serif;
+        }
+        .orders-log-table {
+            font-size: 12px;
+        }
+        .orders-log-table th, .orders-log-table td {
+            padding: 6px;
+            text-align: left;
+        }
+        .orders-log-table th:nth-child(2), .orders-log-table td:nth-child(2) {
+            width: 60px !important;
+            min-width: 60px !important;
+            max-width: 60px !important;
+        }
+        .profit-positive {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .profit-negative {
+            color: #dc3545;
+            font-weight: bold;
         }
         .action-button {
             color: white;
@@ -510,6 +643,17 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
         </div>
         
         <button onclick="refreshApprovedOrdersList()" style="margin-top: 15px;">Refresh Approved Orders</button>
+        
+        <hr style="margin: 30px 0;">
+        
+        <h2 id="orders-log-heading">Orders Log (<?php $orders_log = getOrdersLogData(); echo count($orders_log); ?>)</h2>
+        <div id="orders-log-list" class="content-section orders-log">
+            <?php
+            echo generateOrdersLogTable($orders_log);
+            ?>
+        </div>
+        
+        <button onclick="refreshOrdersLogList()" style="margin-top: 15px;">Refresh Orders Log</button>
     </div>
 
     <script>       
@@ -564,6 +708,25 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             })
             .catch(error => {
                 approvedOrdersListDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing approved orders list: ' + error.message + '</p>';
+            });
+        }
+
+        function refreshOrdersLogList() {
+            const ordersLogListDiv = document.getElementById('orders-log-list');
+            const ordersLogHeading = document.getElementById('orders-log-heading');
+            const originalContent = ordersLogListDiv.innerHTML;
+            ordersLogListDiv.innerHTML = '<p style="color: #856404;">Refreshing orders log...</p>';
+
+            fetch('index.php?ajax=orders_log_list', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                ordersLogListDiv.innerHTML = data.table;
+                ordersLogHeading.textContent = 'Orders Log (' + data.count + ')';
+            })
+            .catch(error => {
+                ordersLogListDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing orders log: ' + error.message + '</p>';
             });
         }
 

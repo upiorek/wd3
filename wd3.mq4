@@ -61,6 +61,84 @@ void LogAccountInfo()
   }
 
 //+------------------------------------------------------------------+
+//| Function to log all current orders                              |
+//+------------------------------------------------------------------+
+void LogAllOrders()
+  {
+   int fileHandle;
+   string logData = "";
+   string orderLogPath = "orders_log.txt";
+   
+   // Open file for writing (append mode)
+   fileHandle = FileOpen(orderLogPath, FILE_WRITE|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+     {
+      // Log header with timestamp
+      logData += "=== ORDERS LOG " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " ===\n";
+      logData += "Total Orders: " + IntegerToString(OrdersTotal()) + "\n";
+      
+      if(OrdersTotal() > 0)
+        {
+         logData += "Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit | Comment\n";
+         logData += "-------|------|--------|------|-----------|----------|------------|--------|--------\n";
+         
+         // Loop through all orders
+         for(int i = 0; i < OrdersTotal(); i++)
+           {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+              {
+               string orderType = "";
+               switch(OrderType())
+                 {
+                  case OP_BUY: orderType = "BUY"; break;
+                  case OP_SELL: orderType = "SELL"; break;
+                  case OP_BUYLIMIT: orderType = "BUY LIMIT"; break;
+                  case OP_SELLLIMIT: orderType = "SELL LIMIT"; break;
+                  case OP_BUYSTOP: orderType = "BUY STOP"; break;
+                  case OP_SELLSTOP: orderType = "SELL STOP"; break;
+                  default: orderType = "UNKNOWN"; break;
+                 }
+               
+               logData += IntegerToString(OrderTicket()) + " | ";
+               logData += orderType + " | ";
+               logData += OrderSymbol() + " | ";
+               logData += DoubleToString(OrderLots(), 2) + " | ";
+               logData += DoubleToString(OrderOpenPrice(), Digits) + " | ";
+               logData += DoubleToString(OrderStopLoss(), Digits) + " | ";
+               logData += DoubleToString(OrderTakeProfit(), Digits) + " | ";
+               logData += DoubleToString(OrderProfit(), 2) + " | ";
+               logData += OrderComment() + "\n";
+              }
+            else
+              {
+               Print("Error selecting order at position ", i, ": ", GetLastError());
+              }
+           }
+        }
+      else
+        {
+         logData += "No open orders\n";
+        }
+      
+      logData += "=== END ORDERS LOG ===\n\n";
+      
+      // Seek to end of file and write data
+      FileSeek(fileHandle, 0, SEEK_END);
+      FileWriteString(fileHandle, logData);
+      FileClose(fileHandle);
+      
+      Print("Orders logged to file: ", orderLogPath);
+     }
+   else
+     {
+      int error = GetLastError();
+      Print("Error opening orders log file: ", error);
+      Print("Attempted file path: ", orderLogPath);
+     }
+  }
+
+//+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
 void OnTick(void)
@@ -71,6 +149,7 @@ void OnTick(void)
    if(currentTime - lastLogTime >= logInterval)
      {
       LogAccountInfo();
+      LogAllOrders();
       lastLogTime = currentTime;
      }
   }
