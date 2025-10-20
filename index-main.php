@@ -713,7 +713,10 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             <?php
             if (file_exists(ACCOUNT_LOG_FILE)) {
                 $content = file_get_contents(ACCOUNT_LOG_FILE);
-                echo '<pre style="margin: 0; white-space: pre-wrap;">' . htmlspecialchars($content) . '</pre>';
+                $content = nl2br(htmlspecialchars($content));
+                // replace | with <br/>
+                $content = str_replace('| ', '<br/>', $content);
+                echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
             } else {
                 echo '<p class="error-message">Account log file not found.</p>';
             }
