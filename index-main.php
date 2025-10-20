@@ -315,15 +315,22 @@ function generateOrdersTable($orders, $showActions = false) {
     return $html;
 }
 
-// For AJAX requests to refresh account log
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_log') {
+function refreshAccountLog() {
     if (file_exists(ACCOUNT_LOG_FILE)) {
         $content = file_get_contents(ACCOUNT_LOG_FILE);
-        echo '<pre style="margin: 0; white-space: pre-wrap;">' . htmlspecialchars($content) . '</pre>';
+        $content = htmlspecialchars($content);
+        // replace | with <br/>
+        $content = str_replace('| ', '<br/>', $content);
+        echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
         echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
     } else {
         echo '<p class="error-message">Account log file not found.</p>';
     }
+}
+
+// For AJAX requests to refresh account log
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_log') {
+    refreshAccountLog();
     exit; // Exit here for AJAX requests
 }
 
@@ -710,17 +717,7 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
         
         <h2>Account Log Information</h2>
         <div id="account-log" class="content-section account-log">
-            <?php
-            if (file_exists(ACCOUNT_LOG_FILE)) {
-                $content = file_get_contents(ACCOUNT_LOG_FILE);
-                $content = nl2br(htmlspecialchars($content));
-                // replace | with <br/>
-                $content = str_replace('| ', '<br/>', $content);
-                echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
-            } else {
-                echo '<p class="error-message">Account log file not found.</p>';
-            }
-            ?>
+            <?php refreshAccountLog(); ?>
         </div>
         
         <button onclick="refreshAccountLog()" style="margin-top: 15px;">Refresh Account Log</button>
