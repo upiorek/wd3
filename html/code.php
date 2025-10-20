@@ -145,12 +145,21 @@ function getAccountTime() {
 
 // Calculate and display time difference with color coding
 function getTimeDifferenceDisplay() {
-    $systemTime = date('Y-m-d H:i:s');
+    $systemTime = time(); // Get current Unix timestamp
     $accountTime = getAccountTime();
+    
+    if ($accountTime === "N/A") {
+        return '<span style="color: red;">Account time not available</span>';
+    }
     
     // Convert account time format from "2025.10.17 21:59:58" to "2025-10-17 21:59:58"
     $accountTimeFormatted = str_replace('.', '-', $accountTime);
-    $timeDiff = strtotime($systemTime) - strtotime($accountTimeFormatted);
+    
+    // Convert account time to Unix timestamp (assuming account time is in UTC)
+    $accountTimestamp = strtotime($accountTimeFormatted . ' CEST');
+    
+    // Calculate difference
+    $timeDiff = $systemTime - $accountTimestamp;
     
     $color = (abs($timeDiff) > 30) ? 'red' : 'black';
     return '<span style="color: ' . $color . ';">' . $timeDiff . ' seconds</span>';
