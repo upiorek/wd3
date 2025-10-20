@@ -178,6 +178,7 @@ function generateOrdersLogTable($ordersLog) {
         return '<p class="error-message">No orders log found or orders log file not found.</p>';
     }
     
+    // Generate desktop table
     $html = '<table class="table orders-log-table">';
     $html .= '<thead>';
     $html .= '<tr>';
@@ -210,6 +211,54 @@ function generateOrdersLogTable($ordersLog) {
     
     $html .= '</tbody>';
     $html .= '</table>';
+    
+    // Generate mobile card layout
+    $html .= '<div class="orders-log-cards">';
+    foreach ($ordersLog as $order) {
+        $html .= '<div class="order-card">';
+        
+        // First row: Labels (Ticket, Type, Symbol, Lots)
+        $html .= '<div class="card-row labels">';
+        $html .= '<div>Ticket</div>';
+        $html .= '<div>Type</div>';
+        $html .= '<div>Symbol</div>';
+        $html .= '<div>Lots</div>';
+        $html .= '</div>';
+        
+        // Second row: Values (Ticket, Type, Symbol, Lots)
+        $html .= '<div class="card-row values">';
+        $html .= '<div>' . htmlspecialchars($order['ticket']) . '</div>';
+        $html .= '<div>' . htmlspecialchars($order['type']) . '</div>';
+        $html .= '<div>' . htmlspecialchars($order['symbol']) . '</div>';
+        $html .= '<div>' . htmlspecialchars($order['lots']) . '</div>';
+        $html .= '</div>';
+        
+        // Third row: Labels (Open, SL, TP, Profit)
+        $html .= '<div class="card-row labels">';
+        $html .= '<div>Open</div>';
+        $html .= '<div>SL</div>';
+        $html .= '<div>TP</div>';
+        $html .= '<div>Profit</div>';
+        $html .= '</div>';
+        
+        // Fourth row: Values (Open, SL, TP, Profit)
+        $html .= '<div class="card-row values">';
+        $html .= '<div>' . htmlspecialchars($order['openPrice']) . '</div>';
+        $html .= '<div>' . htmlspecialchars($order['stopLoss']) . '</div>';
+        $html .= '<div>' . htmlspecialchars($order['takeProfit']) . '</div>';
+        $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . htmlspecialchars($order['profit']) . '</div>';
+        $html .= '</div>';
+        
+        // Comment section (if exists)
+        if (!empty(trim($order['comment']))) {
+            $html .= '<div class="card-comment">';
+            $html .= '<strong>Comment:</strong> ' . htmlspecialchars($order['comment']);
+            $html .= '</div>';
+        }
+        
+        $html .= '</div>'; // End order-card
+    }
+    $html .= '</div>'; // End orders-log-cards
     
     global $timestamp;
     $html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
@@ -493,6 +542,72 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             min-width: 60px !important;
             max-width: 60px !important;
         }
+        
+        /* Mobile card layout for orders log */
+        .orders-log-cards {
+            display: none;
+        }
+        
+        .order-card {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            padding: 12px;
+        }
+        
+        .card-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        
+        .card-row.labels {
+            font-weight: bold;
+            color: #6c757d;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        
+        .card-row.values {
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .card-comment {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #dee2e6;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        
+        .card-comment strong {
+            color: #495057;
+        }
+        
+        .card-profit-positive {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .card-profit-negative {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        /* on small screen show orders as cards */
+        @media (max-width: 768px) {
+            .orders-log-table {
+                display: none;
+            }
+            .orders-log-cards {
+                display: block;
+            }
+        }
+
         .profit-positive {
             color: #28a745;
             font-weight: bold;
