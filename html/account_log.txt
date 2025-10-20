@@ -1,1 +1,0 @@
-2025.10.17 16:23:36 | Account: 77018422 | Balance: 0.00 | Equity: 0.00 | Free Margin: 0.00 | Margin: 0.00 | Margin Level: 0.00% | Profit: 0.00 | Currency: PLN | Leverage: 1:100 | Orders: 0

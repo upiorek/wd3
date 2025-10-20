@@ -10,7 +10,7 @@ int logInterval = 10; // seconds
 string logFilePath = "account_log.txt";
 int hearbeat = 0;
 int wd3verMax = 3;
-int wd3verMin = 2;
+int wd3verMin = 3;
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
