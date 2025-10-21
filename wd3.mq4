@@ -6,8 +6,9 @@
 // Global variables
 datetime lastLogTime = 0;
 datetime lastFileCheck = 0;
+datetime lastHistoryLogTime = 0;
 int hearbeat = 0;
-string version = "3.5";
+string version = "3.6";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -38,9 +39,6 @@ void LogAccountInfo()
    }
 }
 
-//+------------------------------------------------------------------+
-//| Read and process order from approved.txt file                       |
-//+------------------------------------------------------------------+
 void ReadAndSendOrderFromFile()
 {
    int fileHandle = FileOpen("approved.txt", FILE_READ|FILE_TXT);
@@ -59,10 +57,6 @@ void ReadAndSendOrderFromFile()
    }
 }
 
-//+------------------------------------------------------------------+
-//| Parse order data and send order (Space-separated format only)   |
-//| Format: SYMBOL TYPE LOTS PRICE STOPLOSS TAKEPROFIT              |
-//+------------------------------------------------------------------+
 void ParseAndSendOrder(string orderData)
 {
    string lines[];
@@ -176,21 +170,121 @@ void LogAllOrders()
    }
 }
 
+void LogOrderHistory()
+{
+   int fileHandle = FileOpen("order_history_log.txt", FILE_WRITE|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      datetime currentDay = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
+      datetime nextDay = currentDay + 86400; // Add 24 hours
+      
+      string logData = "=== ORDER HISTORY LOG " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " ===\n";
+      logData += "Current Day Orders History\n";
+      
+      int totalHistoryOrders = OrdersHistoryTotal();
+      int todayOrdersCount = 0;
+      double totalProfit = 0.0;
+      double totalCommission = 0.0;
+      double totalNetProfit = 0.0;
+      int winningOrders = 0;
+      int losingOrders = 0;
+      
+      for(int i = 0; i < totalHistoryOrders; i++)
+      {
+         if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+         {
+            datetime orderCloseTime = OrderCloseTime();
+            
+            // Check if order was closed today
+            if(orderCloseTime >= currentDay && orderCloseTime < nextDay)
+            {
+               todayOrdersCount++;
+               double orderProfit = OrderProfit();
+               double orderCommission = OrderCommission();
+               double netProfit = orderProfit + orderCommission;
+               
+               totalProfit += orderProfit;
+               totalCommission += orderCommission;
+               totalNetProfit += netProfit;
+               
+               if(netProfit > 0) winningOrders++;
+               else if(netProfit < 0) losingOrders++;
+               
+               string orderType = "";
+               switch(OrderType())
+               {
+                  case OP_BUY: orderType = "BUY"; break;
+                  case OP_SELL: orderType = "SELL"; break;
+                  case OP_BUYLIMIT: orderType = "BUY LIMIT"; break;
+                  case OP_SELLLIMIT: orderType = "SELL LIMIT"; break;
+                  case OP_BUYSTOP: orderType = "BUY STOP"; break;
+                  case OP_SELLSTOP: orderType = "SELL STOP"; break;
+               }
+               
+               logData += IntegerToString(OrderTicket()) + " | " + orderType + " | " + OrderSymbol() + " | " +
+                         DoubleToString(OrderLots(), 2) + " | " +
+                         "Profit: " + DoubleToString(orderProfit, 2) + " | " +
+                         "Commission: " + DoubleToString(orderCommission, 2) + " | " +
+                         "Net: " + DoubleToString(netProfit, 2) + "\n";
+            }
+         }
+      }
+      
+      if(todayOrdersCount == 0)
+      {
+         logData += "No orders closed today\n";
+      }
+      else
+      {
+         logData += "=== SUMMARY ===\n";
+         logData += "Total orders closed today: " + IntegerToString(todayOrdersCount) + "\n";
+         logData += "Total profit: " + DoubleToString(totalProfit, 2) + "\n";
+         logData += "Total commission: " + DoubleToString(totalCommission, 2) + "\n";
+         logData += "Total net profit: " + DoubleToString(totalNetProfit, 2) + "\n";
+         logData += "Winning orders: " + IntegerToString(winningOrders) + "\n";
+         logData += "Losing orders: " + IntegerToString(losingOrders) + "\n";
+         if(todayOrdersCount > 0)
+         {
+            double winRate = (double)winningOrders / todayOrdersCount * 100.0;
+            logData += "Win rate: " + DoubleToString(winRate, 1) + "%\n";
+         }
+      }
+      
+      logData += "=== END HISTORY LOG ===\n\n";
+      
+      FileSeek(fileHandle, 0, SEEK_END);
+      FileWriteString(fileHandle, logData);
+      FileClose(fileHandle);
+   }
+   else
+   {
+      Print("Error opening order history log file: ", GetLastError());
+   }
+}
+
 void OnTick()
 {
    datetime currentTime = TimeCurrent();
    hearbeat++;
    
-   // Log account info every 10 seconds
-   if(currentTime - lastLogTime >= 10)
+   // Log account info every 5 seconds
+   if(currentTime - lastLogTime >= 5)
    {
       LogAccountInfo();
       LogAllOrders();
       lastLogTime = currentTime;
    }
    
+   // Log order history every 5 seconds
+   if(currentTime - lastHistoryLogTime >= 5)
+   {
+      LogOrderHistory();
+      lastHistoryLogTime = currentTime;
+   }
+   
    // Check for file orders every 5 seconds
-   if(currentTime - lastFileCheck >= 15)
+   if(currentTime - lastFileCheck >= 5)
    {
       ReadAndSendOrderFromFile();
       lastFileCheck = currentTime;

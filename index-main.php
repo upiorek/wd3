@@ -7,6 +7,7 @@ const ORDERS_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trade
 const APPROVED_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt';
 const ACCOUNT_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/account_log.txt';
 const ORDERS_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders_log.txt';
+const ORDER_HISTORY_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/order_history_log.txt';
 const LOGS_DIR_MQL4 = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Logs';
 const LOGS_DIR_MAIN = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/logs';
 
@@ -357,6 +358,21 @@ function refreshAccountLog() {
 }
 
 /**
+ * Read and display order history log content
+ */
+function refreshOrderHistoryLog() {
+    global $timestamp;
+    if (file_exists(ORDER_HISTORY_LOG_FILE)) {
+        $content = file_get_contents(ORDER_HISTORY_LOG_FILE);
+        $content = htmlspecialchars($content);
+        echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
+        echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    } else {
+        echo '<p class="error-message">Order history log file not found.</p>';
+    }
+}
+
+/**
  * Get list of available log files from both log directories
  * @return array Array of log files with details
  */
@@ -493,6 +509,12 @@ function formatBytes($bytes) {
 // For AJAX requests to refresh account log
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_log') {
     refreshAccountLog();
+    exit; // Exit here for AJAX requests
+}
+
+// For AJAX requests to refresh order history log
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'order_history_log') {
+    refreshOrderHistoryLog();
     exit; // Exit here for AJAX requests
 }
 
@@ -819,6 +841,15 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
 	
         <hr style="margin: 30px 0;">
         
+        <h2>Daily Order History Log</h2>
+        <div id="order-history-log" class="content-section order-history-log">
+            <?php refreshOrderHistoryLog(); ?>
+        </div>
+        
+        <button onclick="refreshOrderHistoryLog()" style="margin-top: 15px;">Refresh</button>
+	
+        <hr style="margin: 30px 0;">
+        
         <h2 id="logs-heading">Logs (<?php $logFiles = getLogFilesList(); echo count($logFiles); ?> files)</h2>
         <div class="content-section logs-section">
             <div class="logs-controls">
@@ -870,6 +901,23 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             })
             .catch(error => {
                 accountLogDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing account log: ' + error.message + '</p>';
+            });
+        }
+        
+        function refreshOrderHistoryLog() {
+            const orderHistoryLogDiv = document.getElementById('order-history-log');
+            const originalContent = orderHistoryLogDiv.innerHTML;
+            orderHistoryLogDiv.innerHTML = '<p style="color: #856404;">Refreshing order history log...</p>';
+            
+            fetch('index.php?ajax=order_history_log', {
+                method: 'GET'
+            })
+            .then(response => response.text())
+            .then(data => {
+                orderHistoryLogDiv.innerHTML = data;
+            })
+            .catch(error => {
+                orderHistoryLogDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing order history log: ' + error.message + '</p>';
             });
         }
         function refreshOrdersList() {
