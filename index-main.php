@@ -172,18 +172,25 @@ function moveOrderToApproved($order) {
  * Generate action buttons HTML for an order
  * @param int $rowNumber Row number (1-based)
  * @param string $order Order string
+ * @param bool $isApproved Whether this is an approved order
  * @return string HTML for action buttons
  */
-function generateActionButtons($rowNumber, $order) {
-    $hasP = orderHasFlag($order, 'p');
-    $hasR = orderHasFlag($order, 'r');
-    
-    $pButtonClass = $hasP ? 'btn-p-active' : 'btn-p-inactive';
-    $rButtonClass = $hasR ? 'btn-r-active' : 'btn-r-inactive';
-    
-    return '<button onclick="handlePAction(' . $rowNumber . ')" class="action-button ' . $pButtonClass . '">P</button>' .
-           '<button onclick="handleRAction(' . $rowNumber . ')" class="action-button ' . $rButtonClass . '">R</button>' .
-           '<button onclick="handleCancelAction(' . $rowNumber . ')" class="action-button btn-cancel">Cancel</button>';
+function generateActionButtons($rowNumber, $order, $isApproved = false) {
+    if ($isApproved) {
+        // For approved orders, only show a remove button
+        return '<button onclick="handleRemoveApprovedAction(' . $rowNumber . ')" class="action-button btn-cancel">Remove</button>';
+    } else {
+        // For regular orders, show P, R, and Cancel buttons
+        $hasP = orderHasFlag($order, 'p');
+        $hasR = orderHasFlag($order, 'r');
+        
+        $pButtonClass = $hasP ? 'btn-p-active' : 'btn-p-inactive';
+        $rButtonClass = $hasR ? 'btn-r-active' : 'btn-r-inactive';
+        
+        return '<button onclick="handlePAction(' . $rowNumber . ')" class="action-button ' . $pButtonClass . '">P</button>' .
+               '<button onclick="handleRAction(' . $rowNumber . ')" class="action-button ' . $rButtonClass . '">R</button>' .
+               '<button onclick="handleCancelAction(' . $rowNumber . ')" class="action-button btn-cancel">Cancel</button>';
+    }
 }
 
 /**
@@ -279,9 +286,10 @@ function generateOrdersLogTable($ordersLog) {
  * Generate HTML table for orders
  * @param array $orders Array of order strings
  * @param bool $showActions Whether to show action buttons
+ * @param bool $isApproved Whether these are approved orders
  * @return string HTML table
  */
-function generateOrdersTable($orders, $showActions = false) {
+function generateOrdersTable($orders, $showActions = false, $isApproved = false) {
     if (empty($orders)) {
         $message = $showActions ? 'No orders found or orders file not found.' : 'No approved orders found or approved orders file not found.';
         return '<p class="error-message">' . $message . '</p>';
@@ -320,7 +328,7 @@ function generateOrdersTable($orders, $showActions = false) {
         $html .= '<td>' . $sl . '</td>';
         $html .= '<td>' . $tp . '</td>';
         if ($showActions) {
-            $html .= '<td>' . generateActionButtons($index + 1, $order) . '</td>';
+            $html .= '<td>' . generateActionButtons($index + 1, $order, $isApproved) . '</td>';
         }
         $html .= '</tr>';
     }
@@ -503,7 +511,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'orders_list') {
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'approved_orders_list') {
     $approved_orders = getApprovedOrdersList();
     $response = array(
-        'table' => generateOrdersTable($approved_orders, false),
+        'table' => generateOrdersTable($approved_orders, true, true),
         'count' => count($approved_orders)
     );
     echo json_encode($response);
@@ -627,57 +635,77 @@ if (isset($_POST['ajax']) && $_POST['ajax'] === 'add_new_order') {
 }
 
 // Unified function to handle adding flags (P or R) to orders or canceling orders
-if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_order']) && isset($_GET['row'])) {
+if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_order', 'remove_approved']) && isset($_GET['row'])) {
     $rowNumber = intval($_GET['row']);
-    $orders = getOrdersList();
     
-    if ($rowNumber > 0 && $rowNumber <= count($orders)) {
-        $orderIndex = $rowNumber - 1;
+    if ($_GET['ajax'] === 'remove_approved') {
+        // Handle removing approved orders
+        $approved_orders = getApprovedOrdersList();
         
-        if ($_GET['ajax'] === 'cancel_order') {
+        if ($rowNumber > 0 && $rowNumber <= count($approved_orders)) {
+            $orderIndex = $rowNumber - 1;
+            
             // Remove the order from the array
-            array_splice($orders, $orderIndex, 1);
+            array_splice($approved_orders, $orderIndex, 1);
             
-            // Write back to file
-            $orders_file = ORDERS_FILE;
-            file_put_contents($orders_file, implode("\n", $orders));
-            echo json_encode(['success' => true, 'message' => 'Order row ' . $rowNumber . ' canceled and removed']);
+            // Write back to approved file
+            file_put_contents(APPROVED_FILE, implode("\n", $approved_orders));
+            echo json_encode(['success' => true, 'message' => 'Approved order row ' . $rowNumber . ' removed']);
         } else {
-            // Handle adding flags (P or R)
-            $flag = ($_GET['ajax'] === 'add_p') ? 'p' : 'r';
-            $flagName = strtoupper($flag);
-            
-            if (!orderHasFlag($orders[$orderIndex], $flag)) {
-                // Add flag to the order
-                $orders[$orderIndex] .= ' ' . $flag;
-                
-                // Check if order now has both flags
-                if (orderHasBothFlags($orders[$orderIndex])) {
-                    // Move order to approved.txt
-                    if (moveOrderToApproved($orders[$orderIndex])) {
-                        // Remove from orders.txt
-                        array_splice($orders, $orderIndex, 1);
-                        
-                        // Write back to orders file
-                        $orders_file = ORDERS_FILE;
-                        file_put_contents($orders_file, implode("\n", $orders));
-                        
-                        echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber . '. Order moved to approved list (both P and R flags set)']);
-                    } else {
-                        echo json_encode(['success' => false, 'message' => 'Failed to move order to approved list']);
-                    }
-                } else {
-                    // Just update the orders file
-                    $orders_file = ORDERS_FILE;
-                    file_put_contents($orders_file, implode("\n", $orders));
-                    echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber]);
-                }
-            } else {
-                echo json_encode(['success' => false, 'message' => $flagName . ' already exists in row ' . $rowNumber]);
-            }
+            echo json_encode(['success' => false, 'message' => 'Invalid row number']);
         }
     } else {
-        echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+        // Handle regular orders
+        $orders = getOrdersList();
+        
+        if ($rowNumber > 0 && $rowNumber <= count($orders)) {
+            $orderIndex = $rowNumber - 1;
+            
+            if ($_GET['ajax'] === 'cancel_order') {
+                // Remove the order from the array
+                array_splice($orders, $orderIndex, 1);
+                
+                // Write back to file
+                $orders_file = ORDERS_FILE;
+                file_put_contents($orders_file, implode("\n", $orders));
+                echo json_encode(['success' => true, 'message' => 'Order row ' . $rowNumber . ' canceled and removed']);
+            } else {
+                // Handle adding flags (P or R)
+                $flag = ($_GET['ajax'] === 'add_p') ? 'p' : 'r';
+                $flagName = strtoupper($flag);
+                
+                if (!orderHasFlag($orders[$orderIndex], $flag)) {
+                    // Add flag to the order
+                    $orders[$orderIndex] .= ' ' . $flag;
+                    
+                    // Check if order now has both flags
+                    if (orderHasBothFlags($orders[$orderIndex])) {
+                        // Move order to approved.txt
+                        if (moveOrderToApproved($orders[$orderIndex])) {
+                            // Remove from orders.txt
+                            array_splice($orders, $orderIndex, 1);
+                            
+                            // Write back to orders file
+                            $orders_file = ORDERS_FILE;
+                            file_put_contents($orders_file, implode("\n", $orders));
+                            
+                            echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber . '. Order moved to approved list (both P and R flags set)']);
+                        } else {
+                            echo json_encode(['success' => false, 'message' => 'Failed to move order to approved list']);
+                        }
+                    } else {
+                        // Just update the orders file
+                        $orders_file = ORDERS_FILE;
+                        file_put_contents($orders_file, implode("\n", $orders));
+                        echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber]);
+                    }
+                } else {
+                    echo json_encode(['success' => false, 'message' => $flagName . ' already exists in row ' . $rowNumber]);
+                }
+            }
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+        }
     }
     exit;
 }
@@ -783,7 +811,7 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
         <h2 id="approved-orders-heading">Approved Orders (<?php $approved_orders = getApprovedOrdersList(); echo count($approved_orders); ?>)</h2>
         <div id="approved-orders-list" class="content-section approved-orders">
             <?php
-            echo generateOrdersTable($approved_orders, false);
+            echo generateOrdersTable($approved_orders, true, true);
             ?>
         </div>
         
@@ -1039,6 +1067,32 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
                 })
                 .catch(error => {
                     alert('Error canceling order: ' + error.message);
+                    console.error('Error:', error);
+                });
+            }
+        }
+        
+        function handleRemoveApprovedAction(rowNumber) {
+            if (confirm('Are you sure you want to remove this approved order?')) {
+                fetch('index.php?ajax=remove_approved&row=' + rowNumber, {
+                    method: 'GET'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        refreshApprovedOrdersList();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Error removing approved order: ' + error.message);
                     console.error('Error:', error);
                 });
             }
