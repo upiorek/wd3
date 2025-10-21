@@ -71,6 +71,11 @@ button:hover {
     font-family: Arial, sans-serif;
 }
 
+.order-history-log {
+    border-left: 4px solid #dc3545;
+    font-family: 'Courier New', monospace;
+}
+
 .orders-log {
     border-left: 4px solid #6f42c1;
     font-family: Arial, sans-serif;

@@ -1,6 +1,5 @@
 //+------------------------------------------------------------------+
 //|                                                         WD3.mq4 |
-//|                                          Simplified Expert v3.5 |
 //+------------------------------------------------------------------+
 
 // Global variables
@@ -8,7 +7,7 @@ datetime lastLogTime = 0;
 datetime lastFileCheck = 0;
 datetime lastHistoryLogTime = 0;
 int hearbeat = 0;
-string version = "3.6";
+string version = "3.7";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);

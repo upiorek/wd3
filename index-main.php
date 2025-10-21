@@ -358,6 +358,100 @@ function refreshAccountLog() {
 }
 
 /**
+ * Extract total net profit from order history log content
+ * @param string $content The raw content of the order history log
+ * @return string|null The total net profit value or null if not found
+ */
+function extractTotalNetProfit($content) {
+    // Look for "Total net profit:" pattern in the content
+    if (preg_match('/Total net profit:\s*([-+]?\d*\.?\d+)/', $content, $matches)) {
+        return $matches[1];
+    }
+    return null;
+}
+
+/**
+ * Extract total orders count from order history log content
+ * @param string $content The raw content of the order history log
+ * @return int The total orders count or 0 if not found
+ */
+function extractTotalOrdersCount($content) {
+    // Count the number of order lines (lines that contain ticket numbers and trading data)
+    $lines = explode("\n", $content);
+    $orderCount = 0;
+    
+    foreach ($lines as $line) {
+        $line = trim($line);
+        // Skip empty lines, headers, and summary lines
+        if (empty($line) || 
+            strpos($line, '=') === 0 || 
+            strpos($line, 'Total') === 0 ||
+            strpos($line, 'Account') === 0 ||
+            strpos($line, 'Date') === 0 ||
+            strpos($line, 'Symbol') === 0 ||
+            strpos($line, '----') === 0) {
+            continue;
+        }
+        
+        // Look for lines that start with a ticket number (numeric)
+        if (preg_match('/^\d+\s/', $line)) {
+            $orderCount++;
+        }
+    }
+    
+    return $orderCount;
+}
+
+/**
+ * Extract profit value from account log content
+ * @param string $content The raw content of the account log
+ * @return string|null The profit value or null if not found
+ */
+function extractAccountProfit($content) {
+    // Look for "Profit:" pattern in the content
+    if (preg_match('/Profit:\s*([-+]?\d*\.?\d+)/', $content, $matches)) {
+        return $matches[1];
+    }
+    return null;
+}
+
+/**
+ * Get profit value from account log
+ * @return string|null The profit value or null if not found
+ */
+function getAccountProfit() {
+    if (file_exists(ACCOUNT_LOG_FILE)) {
+        $content = file_get_contents(ACCOUNT_LOG_FILE);
+        return extractAccountProfit($content);
+    }
+    return null;
+}
+
+/**
+ * Get total net profit value from order history log
+ * @return string|null The total net profit value or null if not found
+ */
+function getTotalNetProfit() {
+    if (file_exists(ORDER_HISTORY_LOG_FILE)) {
+        $content = file_get_contents(ORDER_HISTORY_LOG_FILE);
+        return extractTotalNetProfit($content);
+    }
+    return null;
+}
+
+/**
+ * Get total orders count from order history log
+ * @return int The total orders count or 0 if not found
+ */
+function getTotalOrdersCount() {
+    if (file_exists(ORDER_HISTORY_LOG_FILE)) {
+        $content = file_get_contents(ORDER_HISTORY_LOG_FILE);
+        return extractTotalOrdersCount($content);
+    }
+    return 0;
+}
+
+/**
  * Read and display order history log content
  */
 function refreshOrderHistoryLog() {
@@ -509,6 +603,37 @@ function formatBytes($bytes) {
 // For AJAX requests to refresh account log
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_log') {
     refreshAccountLog();
+    exit; // Exit here for AJAX requests
+}
+
+// For AJAX requests to get total net profit
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'total_net_profit') {
+    $totalNetProfit = getTotalNetProfit();
+    $ordersCount = getTotalOrdersCount();
+    $response = array(
+        'value' => $totalNetProfit,
+        'formatted' => $totalNetProfit !== null ? 
+            '<strong style="font-size: 1.2em;">zamknięte (' . $ordersCount . '): <span class="' . 
+            ((floatval($totalNetProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
+            '">' . htmlspecialchars($totalNetProfit) . '</span></strong>' :
+            '<strong style="color: #6c757d;">zamknięte (' . $ordersCount . '): N/A</strong>'
+    );
+    echo json_encode($response);
+    exit; // Exit here for AJAX requests
+}
+
+// For AJAX requests to get account profit
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_profit') {
+    $accountProfit = getAccountProfit();
+    $response = array(
+        'value' => $accountProfit,
+        'formatted' => $accountProfit !== null ? 
+            '<strong style="font-size: 1.2em;">otwarte: <span class="' . 
+            ((floatval($accountProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
+            '">' . htmlspecialchars($accountProfit) . '</span></strong>' :
+            '<strong style="color: #6c757d;">otwarte: N/A</strong>'
+    );
+    echo json_encode($response);
     exit; // Exit here for AJAX requests
 }
 
@@ -746,7 +871,32 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
 </head>
 <body>
     <div class="container">
-        <h1>pora zarobić z wd3.5</h1>
+        <h1>pora zarobić</h1>
+        
+        <!-- Total Net Profit Display -->
+        <div id="total-net-profit-display" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px; text-align: center;">
+            <?php 
+            $totalNetProfit = getTotalNetProfit();
+            $ordersCount = getTotalOrdersCount();
+            if ($totalNetProfit !== null) {
+                $profitClass = (floatval($totalNetProfit) >= 0) ? 'profit-positive' : 'profit-negative';
+                echo '<strong style="font-size: 1.2em;">zamknięte (' . $ordersCount . '): <span class="' . $profitClass . '">' . htmlspecialchars($totalNetProfit) . '</span></strong>';
+            } else {
+                echo '<strong style="color: #6c757d;">zamknięte (' . $ordersCount . '): N/A</strong>';
+            }
+            ?>
+            <br/>
+            <?php 
+            $accountProfit = getAccountProfit();
+            if ($accountProfit !== null) {
+                $profitClass = (floatval($accountProfit) >= 0) ? 'profit-positive' : 'profit-negative';
+                echo '<strong style="font-size: 1.2em;">otwarte: <span class="' . $profitClass . '">' . htmlspecialchars($accountProfit) . '</span></strong>';
+            } else {
+                echo '<strong style="color: #6c757d;">otwarte: N/A</strong>';
+            }
+            ?>
+        </div>
+        
         <hr style="margin: 30px 0;">
         
         <h2>Account Log</h2>
@@ -898,9 +1048,61 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             .then(response => response.text())
             .then(data => {
                 accountLogDiv.innerHTML = data;
+                // Also refresh the account profit display
+                refreshAccountProfit();
             })
             .catch(error => {
                 accountLogDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing account log: ' + error.message + '</p>';
+            });
+        }
+        
+        function refreshTotalNetProfit() {
+            fetch('index.php?ajax=total_net_profit', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
+                // Get the current account profit content
+                const accountProfitMatch = totalNetProfitDiv.innerHTML.match(/<br\/?>.*?otwarte:.*?<\/strong>/);
+                const accountProfitContent = accountProfitMatch ? accountProfitMatch[0] : '';
+                
+                totalNetProfitDiv.innerHTML = data.formatted + accountProfitContent;
+            })
+            .catch(error => {
+                console.error('Error refreshing total net profit:', error);
+            });
+        }
+        
+        function refreshAccountProfit() {
+            fetch('index.php?ajax=account_profit', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
+                // Get the current total net profit content
+                const totalNetProfitMatch = totalNetProfitDiv.innerHTML.match(/^.*?<\/strong>/);
+                const totalNetProfitContent = totalNetProfitMatch ? totalNetProfitMatch[0] : '';
+                
+                totalNetProfitDiv.innerHTML = totalNetProfitContent + '<br/>' + data.formatted;
+            })
+            .catch(error => {
+                console.error('Error refreshing account profit:', error);
+            });
+        }
+        
+        function refreshBothProfits() {
+            Promise.all([
+                fetch('index.php?ajax=total_net_profit').then(response => response.json()),
+                fetch('index.php?ajax=account_profit').then(response => response.json())
+            ])
+            .then(([totalNetData, accountData]) => {
+                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
+                totalNetProfitDiv.innerHTML = totalNetData.formatted + '<br/>' + accountData.formatted;
+            })
+            .catch(error => {
+                console.error('Error refreshing profits:', error);
             });
         }
         
@@ -915,6 +1117,10 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             .then(response => response.text())
             .then(data => {
                 orderHistoryLogDiv.innerHTML = data;
+                // Also refresh the total net profit display
+                refreshTotalNetProfit();
+		// and account profit display
+		refreshAccountProfit();
             })
             .catch(error => {
                 orderHistoryLogDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing order history log: ' + error.message + '</p>';
