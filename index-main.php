@@ -1037,8 +1037,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 'account_log': {
                     elementId: 'account-log',
                     ajaxAction: 'account_log',
-                    returnText: true,
-                    onSuccess: () => refreshAccountProfit()
+                    returnText: true
                 },
                 'orders_log': {
                     elementId: 'orders-log-list',
@@ -1062,10 +1061,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     elementId: 'order-history-log',
                     ajaxAction: 'order_history_log',
                     returnText: true,
-                    onSuccess: () => {
-                        refreshTotalNetProfit();
-                        refreshAccountProfit();
-                    }
+                    onSuccess: () => refreshBothProfits()
                 }
             };
             
@@ -1106,25 +1102,27 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         function refreshTotalNetProfit() {
             makeAjaxRequest('index.php?ajax=total_net_profit')
             .then(data => {
-                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
-                // Get the current "otwarte" (open) content more precisely
-                const openProfitMatch = totalNetProfitDiv.innerHTML.match(/<br\/?>.*?otwarte:.*?<\/span><\/strong>/);
-                const openProfitContent = openProfitMatch ? openProfitMatch[0] : '';
-                totalNetProfitDiv.innerHTML = data.formatted + openProfitContent;
+                makeAjaxRequest('index.php?ajax=account_profit')
+                .then(accountData => {
+                    document.getElementById('total-net-profit-display').innerHTML = 
+                        data.formatted + '<br/>' + accountData.formatted;
+                })
+                .catch(error => console.error('Error refreshing account profit:', error));
             })
             .catch(error => console.error('Error refreshing total net profit:', error));
         }
         
         function refreshAccountProfit() {
-            makeAjaxRequest('index.php?ajax=account_profit')
-            .then(data => {
-                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
-                // Get the current "zamknięte" (closed) content more precisely
-                const closedProfitMatch = totalNetProfitDiv.innerHTML.match(/^.*?zamknięte.*?<\/span><\/strong>/);
-                const closedProfitContent = closedProfitMatch ? closedProfitMatch[0] : '';
-                totalNetProfitDiv.innerHTML = closedProfitContent + '<br/>' + data.formatted;
+            makeAjaxRequest('index.php?ajax=total_net_profit')
+            .then(totalData => {
+                makeAjaxRequest('index.php?ajax=account_profit')
+                .then(accountData => {
+                    document.getElementById('total-net-profit-display').innerHTML = 
+                        totalData.formatted + '<br/>' + accountData.formatted;
+                })
+                .catch(error => console.error('Error refreshing account profit:', error));
             })
-            .catch(error => console.error('Error refreshing account profit:', error));
+            .catch(error => console.error('Error refreshing total net profit:', error));
         }
         
         function refreshBothProfits() {
