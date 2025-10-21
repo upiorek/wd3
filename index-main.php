@@ -600,259 +600,231 @@ function formatBytes($bytes) {
     }
 }
 
-// For AJAX requests to refresh account log
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_log') {
-    refreshAccountLog();
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to get total net profit
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'total_net_profit') {
-    $totalNetProfit = getTotalNetProfit();
-    $ordersCount = getTotalOrdersCount();
-    $response = array(
-        'value' => $totalNetProfit,
-        'formatted' => $totalNetProfit !== null ? 
-            '<strong style="font-size: 1.2em;">zamknięte (' . $ordersCount . '): <span class="' . 
-            ((floatval($totalNetProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
-            '">' . htmlspecialchars($totalNetProfit) . '</span></strong>' :
-            '<strong style="color: #6c757d;">zamknięte (' . $ordersCount . '): N/A</strong>'
-    );
-    echo json_encode($response);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to get account profit
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'account_profit') {
-    $accountProfit = getAccountProfit();
-    $response = array(
-        'value' => $accountProfit,
-        'formatted' => $accountProfit !== null ? 
-            '<strong style="font-size: 1.2em;">otwarte: <span class="' . 
-            ((floatval($accountProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
-            '">' . htmlspecialchars($accountProfit) . '</span></strong>' :
-            '<strong style="color: #6c757d;">otwarte: N/A</strong>'
-    );
-    echo json_encode($response);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to refresh order history log
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'order_history_log') {
-    refreshOrderHistoryLog();
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to refresh orders list
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'orders_list') {
-    $orders = getOrdersList();
-    $response = array(
-        'table' => generateOrdersTable($orders, true),
-        'count' => count($orders)
-    );
-    echo json_encode($response);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to refresh approved orders list
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'approved_orders_list') {
-    $approved_orders = getApprovedOrdersList();
-    $response = array(
-        'table' => generateOrdersTable($approved_orders, true, true),
-        'count' => count($approved_orders)
-    );
-    echo json_encode($response);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to refresh orders log
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'orders_log_list') {
-    $orders_log = getOrdersLogData();
-    $response = array(
-        'table' => generateOrdersLogTable($orders_log),
-        'count' => count($orders_log)
-    );
-    echo json_encode($response);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to get log files list
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'logs_list') {
-    $logFiles = getLogFilesList();
-    $response = array(
-        'files' => $logFiles,
-        'count' => count($logFiles)
-    );
-    echo json_encode($response);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to read a specific log file
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'read_log' && isset($_GET['file'])) {
-    $logFile = $_GET['file'];
-    $lines = isset($_GET['lines']) ? intval($_GET['lines']) : 0;
+// Unified AJAX handler
+if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
+    $action = isset($_GET['ajax']) ? $_GET['ajax'] : $_POST['ajax'];
     
-    // Validate file name (allow directory:filename format or just filename)
-    if (strpos($logFile, ':') !== false) {
-        list($directory, $fileName) = explode(':', $logFile, 2);
-        if (!in_array($directory, ['MQL4', 'Main']) || !preg_match('/^[a-zA-Z0-9_.-]+\.log$/', $fileName)) {
-            echo json_encode(['success' => false, 'message' => 'Invalid log file identifier']);
-            exit;
-        }
-    } else {
-        if (!preg_match('/^[a-zA-Z0-9_.-]+\.log$/', $logFile)) {
-            echo json_encode(['success' => false, 'message' => 'Invalid log file name']);
-            exit;
-        }
-    }
-    
-    $content = readLogFile($logFile, $lines);
-    echo json_encode(['success' => true, 'content' => $content]);
-    exit; // Exit here for AJAX requests
-}
-
-// For AJAX requests to add new orders
-if (isset($_POST['ajax']) && $_POST['ajax'] === 'add_new_order') {
-    // Get and validate form data
-    $symbol = isset($_POST['symbol']) ? trim($_POST['symbol']) : '';
-    $orderType = isset($_POST['type']) ? trim($_POST['type']) : '';
-    $lots = isset($_POST['lots']) ? trim($_POST['lots']) : '';
-    $price = isset($_POST['price']) ? trim($_POST['price']) : '';
-    $stopLoss = isset($_POST['stop_loss']) ? trim($_POST['stop_loss']) : '';
-    $takeProfit = isset($_POST['take_profit']) ? trim($_POST['take_profit']) : '';
-    
-    // Validate required fields
-    if (empty($symbol)) {
-        echo json_encode(['success' => false, 'message' => 'Symbol is required']);
-        exit;
-    }
-    
-    // Validate order type
-    $validOrderTypes = ['buy', 'sell', 'buylimit', 'selllimit', 'buystop', 'sellstop'];
-    if (!in_array(strtolower($orderType), $validOrderTypes)) {
-        echo json_encode(['success' => false, 'message' => 'Invalid order type']);
-        exit;
-    }
-    
-    if (empty($lots) || !is_numeric($lots) || floatval($lots) <= 0) {
-        echo json_encode(['success' => false, 'message' => 'Valid lots value is required']);
-        exit;
-    }    
-    
-    // Validate optional numeric fields
-    if (!empty($stopLoss) && !is_numeric($stopLoss)) {
-        echo json_encode(['success' => false, 'message' => 'Stop Loss must be a valid number']);
-        exit;
-    }
-    
-    if (!empty($takeProfit) && !is_numeric($takeProfit)) {
-        echo json_encode(['success' => false, 'message' => 'Take Profit must be a valid number']);
-        exit;
-    }
-    
-    // Set default values for empty optional fields
-    $price = empty($price) ? '0' : $price;
-    $stopLoss = empty($stopLoss) ? '0' : $stopLoss;
-    $takeProfit = empty($takeProfit) ? '0' : $takeProfit;
-    
-    // Create new order string (Symbol Type Lots Price SL TP)
-    $newOrder = $symbol . ' ' . $orderType . ' ' . $lots . ' ' . $price . ' ' . $stopLoss . ' ' . $takeProfit;
-    
-    // Ensure proper newline handling - check if file exists and ends with newline
-    $needsNewlineBefore = false;
-    if (file_exists(ORDERS_FILE)) {
-        $existingContent = file_get_contents(ORDERS_FILE);
-        if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
-            $needsNewlineBefore = true;
-        }
-    }
-    
-    // Prepare the content to append
-    $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $newOrder . "\n";
-    
-    // Append to orders.txt file
-    $result = file_put_contents(ORDERS_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
-    
-    if ($result !== false) {
-        echo json_encode(['success' => true, 'message' => 'New ' . $orderType . ' order added for ' . $symbol]);
-    } else {
-        echo json_encode(['success' => false, 'message' => 'Failed to add new order to file']);
-    }
-    exit;
-}
-
-// Unified function to handle adding flags (P or R) to orders or canceling orders
-if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_order', 'remove_approved']) && isset($_GET['row'])) {
-    $rowNumber = intval($_GET['row']);
-    
-    if ($_GET['ajax'] === 'remove_approved') {
-        // Handle removing approved orders
-        $approved_orders = getApprovedOrdersList();
-        
-        if ($rowNumber > 0 && $rowNumber <= count($approved_orders)) {
-            $orderIndex = $rowNumber - 1;
+    switch ($action) {
+        case 'account_log':
+            refreshAccountLog();
+            break;
             
-            // Remove the order from the array
-            array_splice($approved_orders, $orderIndex, 1);
+        case 'total_net_profit':
+            $totalNetProfit = getTotalNetProfit();
+            $ordersCount = getTotalOrdersCount();
+            echo json_encode([
+                'value' => $totalNetProfit,
+                'formatted' => $totalNetProfit !== null ? 
+                    '<strong style="font-size: 1.2em;">zamknięte (' . $ordersCount . '): <span class="' . 
+                    ((floatval($totalNetProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
+                    '">' . htmlspecialchars($totalNetProfit) . '</span></strong>' :
+                    '<strong style="color: #6c757d;">zamknięte (' . $ordersCount . '): N/A</strong>'
+            ]);
+            break;
             
-            // Write back to approved file
-            file_put_contents(APPROVED_FILE, implode("\n", $approved_orders));
-            echo json_encode(['success' => true, 'message' => 'Approved order row ' . $rowNumber . ' removed']);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Invalid row number']);
-        }
-    } else {
-        // Handle regular orders
-        $orders = getOrdersList();
-        
-        if ($rowNumber > 0 && $rowNumber <= count($orders)) {
-            $orderIndex = $rowNumber - 1;
+        case 'account_profit':
+            $accountProfit = getAccountProfit();
+            echo json_encode([
+                'value' => $accountProfit,
+                'formatted' => $accountProfit !== null ? 
+                    '<strong style="font-size: 1.2em;">otwarte: <span class="' . 
+                    ((floatval($accountProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
+                    '">' . htmlspecialchars($accountProfit) . '</span></strong>' :
+                    '<strong style="color: #6c757d;">otwarte: N/A</strong>'
+            ]);
+            break;
             
-            if ($_GET['ajax'] === 'cancel_order') {
-                // Remove the order from the array
-                array_splice($orders, $orderIndex, 1);
-                
-                // Write back to file
-                $orders_file = ORDERS_FILE;
-                file_put_contents($orders_file, implode("\n", $orders));
-                echo json_encode(['success' => true, 'message' => 'Order row ' . $rowNumber . ' canceled and removed']);
+        case 'order_history_log':
+            refreshOrderHistoryLog();
+            break;
+            
+        case 'orders_list':
+            $orders = getOrdersList();
+            echo json_encode([
+                'table' => generateOrdersTable($orders, true),
+                'count' => count($orders)
+            ]);
+            break;
+            
+        case 'approved_orders_list':
+            $approved_orders = getApprovedOrdersList();
+            echo json_encode([
+                'table' => generateOrdersTable($approved_orders, true, true),
+                'count' => count($approved_orders)
+            ]);
+            break;
+            
+        case 'orders_log_list':
+            $orders_log = getOrdersLogData();
+            echo json_encode([
+                'table' => generateOrdersLogTable($orders_log),
+                'count' => count($orders_log)
+            ]);
+            break;
+            
+        case 'logs_list':
+            $logFiles = getLogFilesList();
+            echo json_encode([
+                'files' => $logFiles,
+                'count' => count($logFiles)
+            ]);
+            break;
+            
+        case 'read_log':
+            if (!isset($_GET['file'])) {
+                echo json_encode(['success' => false, 'message' => 'File parameter required']);
+                break;
+            }
+            
+            $logFile = $_GET['file'];
+            $lines = isset($_GET['lines']) ? intval($_GET['lines']) : 0;
+            
+            // Validate file name
+            if (strpos($logFile, ':') !== false) {
+                list($directory, $fileName) = explode(':', $logFile, 2);
+                if (!in_array($directory, ['MQL4', 'Main']) || !preg_match('/^[a-zA-Z0-9_.-]+\.log$/', $fileName)) {
+                    echo json_encode(['success' => false, 'message' => 'Invalid log file identifier']);
+                    break;
+                }
             } else {
-                // Handle adding flags (P or R)
-                $flag = ($_GET['ajax'] === 'add_p') ? 'p' : 'r';
-                $flagName = strtoupper($flag);
-                
-                if (!orderHasFlag($orders[$orderIndex], $flag)) {
-                    // Add flag to the order
-                    $orders[$orderIndex] .= ' ' . $flag;
-                    
-                    // Check if order now has both flags
-                    if (orderHasBothFlags($orders[$orderIndex])) {
-                        // Move order to approved.txt
-                        if (moveOrderToApproved($orders[$orderIndex])) {
-                            // Remove from orders.txt
-                            array_splice($orders, $orderIndex, 1);
-                            
-                            // Write back to orders file
-                            $orders_file = ORDERS_FILE;
-                            file_put_contents($orders_file, implode("\n", $orders));
-                            
-                            echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber . '. Order moved to approved list (both P and R flags set)']);
-                        } else {
-                            echo json_encode(['success' => false, 'message' => 'Failed to move order to approved list']);
-                        }
-                    } else {
-                        // Just update the orders file
-                        $orders_file = ORDERS_FILE;
-                        file_put_contents($orders_file, implode("\n", $orders));
-                        echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber]);
-                    }
-                } else {
-                    echo json_encode(['success' => false, 'message' => $flagName . ' already exists in row ' . $rowNumber]);
+                if (!preg_match('/^[a-zA-Z0-9_.-]+\.log$/', $logFile)) {
+                    echo json_encode(['success' => false, 'message' => 'Invalid log file name']);
+                    break;
                 }
             }
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Invalid row number']);
-        }
+            
+            $content = readLogFile($logFile, $lines);
+            echo json_encode(['success' => true, 'content' => $content]);
+            break;
+            
+        case 'add_new_order':
+            // Get and validate form data
+            $symbol = isset($_POST['symbol']) ? trim($_POST['symbol']) : '';
+            $orderType = isset($_POST['type']) ? trim($_POST['type']) : '';
+            $lots = isset($_POST['lots']) ? trim($_POST['lots']) : '';
+            $price = isset($_POST['price']) ? trim($_POST['price']) : '';
+            $stopLoss = isset($_POST['stop_loss']) ? trim($_POST['stop_loss']) : '';
+            $takeProfit = isset($_POST['take_profit']) ? trim($_POST['take_profit']) : '';
+            
+            // Validate required fields
+            if (empty($symbol)) {
+                echo json_encode(['success' => false, 'message' => 'Symbol is required']);
+                break;
+            }
+            
+            // Validate order type
+            $validOrderTypes = ['buy', 'sell', 'buylimit', 'selllimit', 'buystop', 'sellstop'];
+            if (!in_array(strtolower($orderType), $validOrderTypes)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid order type']);
+                break;
+            }
+            
+            if (empty($lots) || !is_numeric($lots) || floatval($lots) <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Valid lots value is required']);
+                break;
+            }    
+            
+            // Validate optional numeric fields
+            if (!empty($stopLoss) && !is_numeric($stopLoss)) {
+                echo json_encode(['success' => false, 'message' => 'Stop Loss must be a valid number']);
+                break;
+            }
+            
+            if (!empty($takeProfit) && !is_numeric($takeProfit)) {
+                echo json_encode(['success' => false, 'message' => 'Take Profit must be a valid number']);
+                break;
+            }
+            
+            // Set default values for empty optional fields
+            $price = empty($price) ? '0' : $price;
+            $stopLoss = empty($stopLoss) ? '0' : $stopLoss;
+            $takeProfit = empty($takeProfit) ? '0' : $takeProfit;
+            
+            // Create new order string
+            $newOrder = $symbol . ' ' . $orderType . ' ' . $lots . ' ' . $price . ' ' . $stopLoss . ' ' . $takeProfit;
+            
+            // Ensure proper newline handling
+            $needsNewlineBefore = false;
+            if (file_exists(ORDERS_FILE)) {
+                $existingContent = file_get_contents(ORDERS_FILE);
+                if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
+                    $needsNewlineBefore = true;
+                }
+            }
+            
+            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $newOrder . "\n";
+            $result = file_put_contents(ORDERS_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
+            
+            if ($result !== false) {
+                echo json_encode(['success' => true, 'message' => 'New ' . $orderType . ' order added for ' . $symbol]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to add new order to file']);
+            }
+            break;
+            
+        case 'add_p':
+        case 'add_r':
+        case 'cancel_order':
+        case 'remove_approved':
+            if (!isset($_GET['row'])) {
+                echo json_encode(['success' => false, 'message' => 'Row parameter required']);
+                break;
+            }
+            
+            $rowNumber = intval($_GET['row']);
+            
+            if ($action === 'remove_approved') {
+                $approved_orders = getApprovedOrdersList();
+                
+                if ($rowNumber > 0 && $rowNumber <= count($approved_orders)) {
+                    array_splice($approved_orders, $rowNumber - 1, 1);
+                    file_put_contents(APPROVED_FILE, implode("\n", $approved_orders));
+                    echo json_encode(['success' => true, 'message' => 'Approved order row ' . $rowNumber . ' removed']);
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+                }
+            } else {
+                $orders = getOrdersList();
+                
+                if ($rowNumber > 0 && $rowNumber <= count($orders)) {
+                    $orderIndex = $rowNumber - 1;
+                    
+                    if ($action === 'cancel_order') {
+                        array_splice($orders, $orderIndex, 1);
+                        file_put_contents(ORDERS_FILE, implode("\n", $orders));
+                        echo json_encode(['success' => true, 'message' => 'Order row ' . $rowNumber . ' canceled and removed']);
+                    } else {
+                        $flag = ($action === 'add_p') ? 'p' : 'r';
+                        $flagName = strtoupper($flag);
+                        
+                        if (!orderHasFlag($orders[$orderIndex], $flag)) {
+                            $orders[$orderIndex] .= ' ' . $flag;
+                            
+                            if (orderHasBothFlags($orders[$orderIndex])) {
+                                if (moveOrderToApproved($orders[$orderIndex])) {
+                                    array_splice($orders, $orderIndex, 1);
+                                    file_put_contents(ORDERS_FILE, implode("\n", $orders));
+                                    echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber . '. Order moved to approved list (both P and R flags set)']);
+                                } else {
+                                    echo json_encode(['success' => false, 'message' => 'Failed to move order to approved list']);
+                                }
+                            } else {
+                                file_put_contents(ORDERS_FILE, implode("\n", $orders));
+                                echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber]);
+                            }
+                        } else {
+                            echo json_encode(['success' => false, 'message' => $flagName . ' already exists in row ' . $rowNumber]);
+                        }
+                    }
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+                }
+            }
+            break;
+            
+        default:
+            echo json_encode(['success' => false, 'message' => 'Invalid action']);
+            break;
     }
     exit;
 }
@@ -1037,176 +1009,152 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
     </div>
 
     <script>
-        function refreshAccountLog() {
-            const accountLogDiv = document.getElementById('account-log');
-            const originalContent = accountLogDiv.innerHTML;
-            accountLogDiv.innerHTML = '<p style="color: #856404;">Refreshing account log...</p>';
+        // Generic AJAX function
+        function makeAjaxRequest(url, options = {}) {
+            const defaultOptions = {
+                method: 'GET',
+                showLoading: true,
+                loadingMessage: 'Loading...'
+            };
             
-            fetch('index.php?ajax=account_log', {
-                method: 'GET'
+            const config = { ...defaultOptions, ...options };
+            
+            return fetch(url, {
+                method: config.method,
+                body: config.body || null
             })
-            .then(response => response.text())
-            .then(data => {
-                accountLogDiv.innerHTML = data;
-                // Also refresh the account profit display
-                refreshAccountProfit();
-            })
-            .catch(error => {
-                accountLogDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing account log: ' + error.message + '</p>';
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return config.returnText ? response.text() : response.json();
             });
         }
         
-        function refreshTotalNetProfit() {
-            fetch('index.php?ajax=total_net_profit', {
-                method: 'GET'
+        // Generic refresh function
+        function refreshSection(section, updateHeading = false) {
+            const sectionMap = {
+                'account_log': {
+                    elementId: 'account-log',
+                    ajaxAction: 'account_log',
+                    returnText: true,
+                    onSuccess: () => refreshAccountProfit()
+                },
+                'orders_log': {
+                    elementId: 'orders-log-list',
+                    ajaxAction: 'orders_log_list',
+                    headingId: 'orders-log-heading',
+                    headingPrefix: 'Orders Log'
+                },
+                'orders_list': {
+                    elementId: 'orders-list',
+                    ajaxAction: 'orders_list',
+                    headingId: 'orders-list-heading',
+                    headingPrefix: 'Review List'
+                },
+                'approved_orders': {
+                    elementId: 'approved-orders-list',
+                    ajaxAction: 'approved_orders_list',
+                    headingId: 'approved-orders-heading',
+                    headingPrefix: 'Approved Orders'
+                },
+                'order_history_log': {
+                    elementId: 'order-history-log',
+                    ajaxAction: 'order_history_log',
+                    returnText: true,
+                    onSuccess: () => {
+                        refreshTotalNetProfit();
+                        refreshAccountProfit();
+                    }
+                }
+            };
+            
+            const config = sectionMap[section];
+            if (!config) return;
+            
+            const element = document.getElementById(config.elementId);
+            const originalContent = element.innerHTML;
+            element.innerHTML = '<p style="color: #856404;">Refreshing...</p>';
+            
+            makeAjaxRequest(`index.php?ajax=${config.ajaxAction}`, {
+                returnText: config.returnText || false
             })
-            .then(response => response.json())
             .then(data => {
-                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
-                // Get the current account profit content
-                const accountProfitMatch = totalNetProfitDiv.innerHTML.match(/<br\/?>.*?otwarte:.*?<\/strong>/);
-                const accountProfitContent = accountProfitMatch ? accountProfitMatch[0] : '';
-                
-                totalNetProfitDiv.innerHTML = data.formatted + accountProfitContent;
+                if (config.returnText) {
+                    element.innerHTML = data;
+                } else {
+                    element.innerHTML = data.table;
+                    if (config.headingId && updateHeading) {
+                        document.getElementById(config.headingId).textContent = 
+                            `${config.headingPrefix} (${data.count})`;
+                    }
+                }
+                if (config.onSuccess) config.onSuccess();
             })
             .catch(error => {
-                console.error('Error refreshing total net profit:', error);
+                element.innerHTML = `<p style="color: #dc3545;">Error refreshing: ${error.message}</p>`;
             });
+        }
+        
+        // Specific refresh functions (simplified)
+        function refreshAccountLog() { refreshSection('account_log'); }
+        function refreshOrdersLogList() { refreshSection('orders_log', true); }
+        function refreshOrdersList() { refreshSection('orders_list', true); }
+        function refreshApprovedOrdersList() { refreshSection('approved_orders', true); }
+        function refreshOrderHistoryLog() { refreshSection('order_history_log'); }
+        
+        function refreshTotalNetProfit() {
+            makeAjaxRequest('index.php?ajax=total_net_profit')
+            .then(data => {
+                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
+                // Get the current "otwarte" (open) content more precisely
+                const openProfitMatch = totalNetProfitDiv.innerHTML.match(/<br\/?>.*?otwarte:.*?<\/span><\/strong>/);
+                const openProfitContent = openProfitMatch ? openProfitMatch[0] : '';
+                totalNetProfitDiv.innerHTML = data.formatted + openProfitContent;
+            })
+            .catch(error => console.error('Error refreshing total net profit:', error));
         }
         
         function refreshAccountProfit() {
-            fetch('index.php?ajax=account_profit', {
-                method: 'GET'
-            })
-            .then(response => response.json())
+            makeAjaxRequest('index.php?ajax=account_profit')
             .then(data => {
                 const totalNetProfitDiv = document.getElementById('total-net-profit-display');
-                // Get the current total net profit content
-                const totalNetProfitMatch = totalNetProfitDiv.innerHTML.match(/^.*?<\/strong>/);
-                const totalNetProfitContent = totalNetProfitMatch ? totalNetProfitMatch[0] : '';
-                
-                totalNetProfitDiv.innerHTML = totalNetProfitContent + '<br/>' + data.formatted;
+                // Get the current "zamknięte" (closed) content more precisely
+                const closedProfitMatch = totalNetProfitDiv.innerHTML.match(/^.*?zamknięte.*?<\/span><\/strong>/);
+                const closedProfitContent = closedProfitMatch ? closedProfitMatch[0] : '';
+                totalNetProfitDiv.innerHTML = closedProfitContent + '<br/>' + data.formatted;
             })
-            .catch(error => {
-                console.error('Error refreshing account profit:', error);
-            });
+            .catch(error => console.error('Error refreshing account profit:', error));
         }
         
         function refreshBothProfits() {
             Promise.all([
-                fetch('index.php?ajax=total_net_profit').then(response => response.json()),
-                fetch('index.php?ajax=account_profit').then(response => response.json())
+                makeAjaxRequest('index.php?ajax=total_net_profit'),
+                makeAjaxRequest('index.php?ajax=account_profit')
             ])
             .then(([totalNetData, accountData]) => {
-                const totalNetProfitDiv = document.getElementById('total-net-profit-display');
-                totalNetProfitDiv.innerHTML = totalNetData.formatted + '<br/>' + accountData.formatted;
+                document.getElementById('total-net-profit-display').innerHTML = 
+                    totalNetData.formatted + '<br/>' + accountData.formatted;
             })
-            .catch(error => {
-                console.error('Error refreshing profits:', error);
-            });
+            .catch(error => console.error('Error refreshing profits:', error));
         }
         
-        function refreshOrderHistoryLog() {
-            const orderHistoryLogDiv = document.getElementById('order-history-log');
-            const originalContent = orderHistoryLogDiv.innerHTML;
-            orderHistoryLogDiv.innerHTML = '<p style="color: #856404;">Refreshing order history log...</p>';
-            
-            fetch('index.php?ajax=order_history_log', {
-                method: 'GET'
-            })
-            .then(response => response.text())
-            .then(data => {
-                orderHistoryLogDiv.innerHTML = data;
-                // Also refresh the total net profit display
-                refreshTotalNetProfit();
-		// and account profit display
-		refreshAccountProfit();
-            })
-            .catch(error => {
-                orderHistoryLogDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing order history log: ' + error.message + '</p>';
-            });
-        }
-        function refreshOrdersList() {
-            const ordersListDiv = document.getElementById('orders-list');
-            const ordersListHeading = document.getElementById('orders-list-heading');
-            const originalContent = ordersListDiv.innerHTML;
-            ordersListDiv.innerHTML = '<p style="color: #856404;">Refreshing orders list...</p>';
-
-            fetch('index.php?ajax=orders_list', {
-                method: 'GET'
-            })
-            .then(response => response.json())
-            .then(data => {
-                ordersListDiv.innerHTML = data.table;
-                ordersListHeading.textContent = 'Orders List (' + data.count + ')';
-            })
-            .catch(error => {
-                ordersListDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing orders list: ' + error.message + '</p>';
-            });
-        }
-
-        function refreshApprovedOrdersList() {
-            const approvedOrdersListDiv = document.getElementById('approved-orders-list');
-            const approvedOrdersHeading = document.getElementById('approved-orders-heading');
-            const originalContent = approvedOrdersListDiv.innerHTML;
-            approvedOrdersListDiv.innerHTML = '<p style="color: #856404;">Refreshing approved orders list...</p>';
-
-            fetch('index.php?ajax=approved_orders_list', {
-                method: 'GET'
-            })
-            .then(response => response.json())
-            .then(data => {
-                approvedOrdersListDiv.innerHTML = data.table;
-                approvedOrdersHeading.textContent = 'Approved Orders (' + data.count + ')';
-            })
-            .catch(error => {
-                approvedOrdersListDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing approved orders list: ' + error.message + '</p>';
-            });
-        }
-
-        function refreshOrdersLogList() {
-            const ordersLogListDiv = document.getElementById('orders-log-list');
-            const ordersLogHeading = document.getElementById('orders-log-heading');
-            const originalContent = ordersLogListDiv.innerHTML;
-            ordersLogListDiv.innerHTML = '<p style="color: #856404;">Refreshing orders log...</p>';
-
-            fetch('index.php?ajax=orders_log_list', {
-                method: 'GET'
-            })
-            .then(response => response.json())
-            .then(data => {
-                ordersLogListDiv.innerHTML = data.table;
-                ordersLogHeading.textContent = 'Orders Log (' + data.count + ')';
-            })
-            .catch(error => {
-                ordersLogListDiv.innerHTML = '<p style="color: #dc3545;">Error refreshing orders log: ' + error.message + '</p>';
-            });
-        }
-
         function refreshLogsList() {
             const logsHeading = document.getElementById('logs-heading');
             const logFileSelect = document.getElementById('log-file-select');
             const currentSelection = logFileSelect.value;
             
-            fetch('index.php?ajax=logs_list', {
-                method: 'GET'
-            })
-            .then(response => response.json())
+            makeAjaxRequest('index.php?ajax=logs_list')
             .then(data => {
-                // Update heading
-                logsHeading.textContent = 'Logs (' + data.count + ' files)';
-                
-                // Clear and repopulate select options
+                logsHeading.textContent = `Logs (${data.count} files)`;
                 logFileSelect.innerHTML = '<option value="">-- Select a log file --</option>';
                 
-                data.files.forEach(function(file) {
+                data.files.forEach(file => {
                     const option = document.createElement('option');
                     const fileId = file.directory + ':' + file.name;
                     option.value = fileId;
                     option.textContent = file.displayName + ' (' + formatBytesJs(file.size) + ')';
-                    if (fileId === currentSelection) {
-                        option.selected = true;
-                    }
+                    if (fileId === currentSelection) option.selected = true;
                     logFileSelect.appendChild(option);
                 });
                 
@@ -1233,141 +1181,71 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             
             logContentDiv.innerHTML = '<p style="color: #856404;">Loading log file...</p>';
             
-            fetch('index.php?ajax=read_log&file=' + encodeURIComponent(selectedFile) + '&lines=' + selectedLines, {
-                method: 'GET'
-            })
-            .then(response => response.json())
+            makeAjaxRequest(`index.php?ajax=read_log&file=${encodeURIComponent(selectedFile)}&lines=${selectedLines}`)
             .then(data => {
-                if (data.success) {
-                    logContentDiv.innerHTML = data.content;
-                } else {
-                    logContentDiv.innerHTML = '<p class="error-message">Error: ' + data.message + '</p>';
-                }
+                logContentDiv.innerHTML = data.success ? 
+                    data.content : 
+                    `<p class="error-message">Error: ${data.message}</p>`;
             })
             .catch(error => {
-                logContentDiv.innerHTML = '<p class="error-message">Error loading log file: ' + error.message + '</p>';
+                logContentDiv.innerHTML = `<p class="error-message">Error loading log file: ${error.message}</p>`;
                 console.error('Error:', error);
             });
         }
         
         function formatBytesJs(bytes) {
-            if (bytes >= 1073741824) {
-                return (bytes / 1073741824).toFixed(2) + ' GB';
-            } else if (bytes >= 1048576) {
-                return (bytes / 1048576).toFixed(2) + ' MB';
-            } else if (bytes >= 1024) {
-                return (bytes / 1024).toFixed(2) + ' KB';
-            } else {
-                return bytes + ' bytes';
-            }
+            if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+            if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB';
+            if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return bytes + ' bytes';
         }
 
-        function handleFlagAction(flag, rowNumber) {
-            const flagName = flag.toUpperCase();
+        // Generic action handler
+        function handleAction(action, rowNumber, confirmMessage = null) {
+            if (confirmMessage && !confirm(confirmMessage)) return;
             
-            fetch('index.php?ajax=add_' + flag + '&row=' + rowNumber, {
-                method: 'GET'
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
+            makeAjaxRequest(`index.php?ajax=${action}&row=${rowNumber}`)
             .then(data => {
                 if (data.success) {
                     alert(data.message);
-                    refreshOrdersList();
-                    // If order was moved to approved list, refresh approved orders too
-                    if (data.message.includes('moved to approved list')) {
+                    
+                    // Refresh appropriate sections based on action
+                    if (action === 'remove_approved') {
                         refreshApprovedOrdersList();
+                    } else {
+                        refreshOrdersList();
+                        if (data.message.includes('moved to approved list')) {
+                            refreshApprovedOrdersList();
+                        }
                     }
                 } else {
                     alert('Error: ' + data.message);
                 }
             })
             .catch(error => {
-                alert('Error adding ' + flagName + ': ' + error.message);
+                alert(`Error: ${error.message}`);
                 console.error('Error:', error);
             });
         }
         
-        function handlePAction(rowNumber) {
-            handleFlagAction('p', rowNumber);
+        function handlePAction(rowNumber) { handleAction('add_p', rowNumber); }
+        function handleRAction(rowNumber) { handleAction('add_r', rowNumber); }
+        function handleCancelAction(rowNumber) { 
+            handleAction('cancel_order', rowNumber, 'Are you sure you want to cancel and remove this order?'); 
         }
-        
-        function handleRAction(rowNumber) {
-            handleFlagAction('r', rowNumber);
-        }
-        
-        function handleCancelAction(rowNumber) {
-            if (confirm('Are you sure you want to cancel and remove this order?')) {
-                fetch('index.php?ajax=cancel_order&row=' + rowNumber, {
-                    method: 'GET'
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        refreshOrdersList();
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('Error canceling order: ' + error.message);
-                    console.error('Error:', error);
-                });
-            }
-        }
-        
-        function handleRemoveApprovedAction(rowNumber) {
-            if (confirm('Are you sure you want to remove this approved order?')) {
-                fetch('index.php?ajax=remove_approved&row=' + rowNumber, {
-                    method: 'GET'
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        refreshApprovedOrdersList();
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('Error removing approved order: ' + error.message);
-                    console.error('Error:', error);
-                });
-            }
+        function handleRemoveApprovedAction(rowNumber) { 
+            handleAction('remove_approved', rowNumber, 'Are you sure you want to remove this approved order?'); 
         }
         
         function addNewOrder(formData) {
-            fetch('index.php', {
+            makeAjaxRequest('index.php', {
                 method: 'POST',
                 body: formData
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
             })
             .then(data => {
                 if (data.success) {
                     alert(data.message);
                     refreshOrdersList();
-                    // Reset the form
                     document.getElementById('new-order-form').reset();
                 } else {
                     alert('Error: ' + data.message);
@@ -1385,11 +1263,8 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             if (newOrderForm) {
                 newOrderForm.addEventListener('submit', function(e) {
                     e.preventDefault();
-                    
-                    // Create FormData from the form
                     const formData = new FormData(this);
                     formData.append('ajax', 'add_new_order');
-                    
                     addNewOrder(formData);
                 });
             }
