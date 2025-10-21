@@ -1,156 +1,198 @@
 //+------------------------------------------------------------------+
-//|                                                  MACD Sample.mq4 |
-//|                             Copyright 2000-2025, MetaQuotes Ltd. |
-//|                                              http://www.mql5.com |
+//|                                                         WD3.mq4 |
+//|                                          Simplified Expert v3.5 |
 //+------------------------------------------------------------------+
 
-// Variables for account logging
+// Global variables
 datetime lastLogTime = 0;
-int logInterval = 10; // seconds
-string logFilePath = "account_log.txt";
+datetime lastFileCheck = 0;
 int hearbeat = 0;
-int wd3verMax = 3;
-int wd3verMin = 3;
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
+string version = "3.5";
 void LogAccountInfo()
-  {
-   int fileHandle;
-   string logData;
-   
-   // Try to create directory if it doesn't exist (for Files folder)
-   // This is only needed if using subdirectories
-   
-   // Open file for writing (append mode)
-   fileHandle = FileOpen(logFilePath, FILE_WRITE|FILE_TXT);
+{
+   int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
    
    if(fileHandle != INVALID_HANDLE)
-     {
-      // Prepare account information
-      logData += "WD: " + wd3verMax + "." + wd3verMin + "\n";
-      logData += TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | ";
-      logData += "Account: " + IntegerToString(AccountNumber()) + " | ";
-      logData += "Balance: " + DoubleToString(AccountBalance(), 2) + " | ";
-      logData += "Equity: " + DoubleToString(AccountEquity(), 2) + " | ";
-      logData += "Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | ";
-      logData += "Margin: " + DoubleToString(AccountMargin(), 2) + " | ";
-      logData += "Margin Level: " + DoubleToString(AccountMargin() > 0 ? AccountEquity()/AccountMargin()*100 : 0, 2) + "% | ";
-      logData += "Profit: " + DoubleToString(AccountProfit(), 2) + " | ";
-      logData += "Currency: " + AccountCurrency() + " | ";
-      logData += "Leverage: 1:" + IntegerToString(AccountLeverage()) + " | ";
-      logData += "Orders: " + IntegerToString(OrdersTotal());
-      logData += "\n";
-      logData += "hearbeat: " + hearbeat;
-
-      Print("WD: " + wd3verMax + "." + wd3verMin + " hearbeat: " + hearbeat);
+   {
+      string logData = "WD: " + version + " | " + 
+                      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
+                      "Account: " + IntegerToString(AccountNumber()) + " | " +
+                      "Balance: " + DoubleToString(AccountBalance(), 2) + " | " +
+                      "Equity: " + DoubleToString(AccountEquity(), 2) + " | " +
+                      "Profit: " + DoubleToString(AccountProfit(), 2) + " | " +
+                      "Margin: " + DoubleToString(AccountMargin(), 2) + " | " +
+                      "Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | " +
+                      "Margin Level: " + DoubleToString(AccountMargin() > 0 ? (AccountEquity() / AccountMargin()) * 100 : 0, 2) + "% | " +
+                      "Orders: " + IntegerToString(OrdersTotal()) + " | " +
+                      "Heartbeat: " + IntegerToString(hearbeat) + "\n";
       
-      // Seek to end of file and write data
       FileSeek(fileHandle, 0, SEEK_END);
-      FileWriteString(fileHandle, logData + "\n");
+      FileWriteString(fileHandle, logData);
       FileClose(fileHandle);
       
-      Print("Account info logged to file, hearbeat: " + hearbeat);
-     }
+      Print("WD: " + version + " heartbeat: " + hearbeat);
+   }
    else
-     {
-      int error = GetLastError();
-      Print("Error opening log file: ", error);
-      Print("Attempted file path: ", logFilePath);
-     }
-  }
+   {
+      Print("Error opening log file: ", GetLastError());
+   }
+}
 
 //+------------------------------------------------------------------+
-//| Function to log all current orders                              |
+//| Read and process order from approved.txt file                       |
 //+------------------------------------------------------------------+
-void LogAllOrders()
-  {
-   int fileHandle;
-   string logData = "";
-   string orderLogPath = "orders_log.txt";
-   
-   // Open file for writing (append mode)
-   fileHandle = FileOpen(orderLogPath, FILE_WRITE|FILE_TXT);
+void ReadAndSendOrderFromFile()
+{
+   int fileHandle = FileOpen("approved.txt", FILE_READ|FILE_TXT);
    
    if(fileHandle != INVALID_HANDLE)
-     {
-      // Log header with timestamp
-      logData += "=== ORDERS LOG " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " ===\n";
+   {
+      string fileContent = "";
+      while(!FileIsEnding(fileHandle))
+      {
+         string line = FileReadString(fileHandle);
+         if(line != "") fileContent += line + "\n";
+      }
+      FileClose(fileHandle);
+      
+      if(fileContent != "") ParseAndSendOrder(fileContent);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Parse order data and send order (Space-separated format only)   |
+//| Format: SYMBOL TYPE LOTS PRICE STOPLOSS TAKEPROFIT              |
+//+------------------------------------------------------------------+
+void ParseAndSendOrder(string orderData)
+{
+   string lines[];
+   int linesCount = StringSplit(orderData, '\n', lines);
+   
+   for(int i = 0; i < linesCount; i++)
+   {
+      string line = StringTrimLeft(StringTrimRight(lines[i]));
+      if(line == "" || StringFind(line, "#") == 0) continue;
+      
+      string parts[];
+      int partsCount = StringSplit(line, ' ', parts);
+      
+      if(partsCount >= 6)
+      {
+         string symbol = parts[0];
+         int orderType = GetOrderType(parts[1]);
+         double lots = StringToDouble(parts[2]);
+         double price = StringToDouble(parts[3]);
+         double stopLoss = StringToDouble(parts[4]);
+         double takeProfit = StringToDouble(parts[5]);
+         
+         if(symbol != "" && lots > 0 && orderType >= 0)
+         {
+            if((orderType == OP_BUY || orderType == OP_SELL) && price == 0.0)
+            {
+               price = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
+            }
+            
+            int ticket = OrderSend(symbol, orderType, lots, price, 3, stopLoss, takeProfit, "wd", 0, 0, clrNONE);
+            
+            if(ticket > 0)
+            {
+               Print("Order sent successfully! Ticket: ", ticket, " Symbol: ", symbol);
+               ClearApprovedFile();
+            }
+            else
+            {
+               Print("Error sending order: ", GetLastError());
+            }
+         }
+      }
+   }
+}
+
+int GetOrderType(string typeStr)
+{
+   if(typeStr == "BUY") return OP_BUY;
+   if(typeStr == "SELL") return OP_SELL;
+   if(typeStr == "BUYLIMIT") return OP_BUYLIMIT;
+   if(typeStr == "SELLLIMIT") return OP_SELLLIMIT;
+   if(typeStr == "BUYSTOP") return OP_BUYSTOP;
+   if(typeStr == "SELLSTOP") return OP_SELLSTOP;
+   return -1;
+}
+
+void ClearApprovedFile()
+{
+   int fileHandle = FileOpen("approved.txt", FILE_WRITE|FILE_TXT);
+   if(fileHandle != INVALID_HANDLE)
+   {
+      string clearMessage = "\n";
+      FileWriteString(fileHandle, clearMessage);
+      FileClose(fileHandle);
+   }
+}
+
+void LogAllOrders()
+{
+   int fileHandle = FileOpen("orders_log.txt", FILE_WRITE|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      string logData = "=== ORDERS LOG " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " ===\n";
       logData += "Total Orders: " + IntegerToString(OrdersTotal()) + "\n";
       
       if(OrdersTotal() > 0)
-        {
-         logData += "Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit | Comment\n";
-         logData += "-------|------|--------|------|-----------|----------|------------|--------|--------\n";
-         
-         // Loop through all orders
+      {
          for(int i = 0; i < OrdersTotal(); i++)
-           {
+         {
             if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-              {
+            {
                string orderType = "";
                switch(OrderType())
-                 {
+               {
                   case OP_BUY: orderType = "BUY"; break;
                   case OP_SELL: orderType = "SELL"; break;
                   case OP_BUYLIMIT: orderType = "BUY LIMIT"; break;
                   case OP_SELLLIMIT: orderType = "SELL LIMIT"; break;
                   case OP_BUYSTOP: orderType = "BUY STOP"; break;
                   case OP_SELLSTOP: orderType = "SELL STOP"; break;
-                  default: orderType = "UNKNOWN"; break;
-                 }
+               }
                
-               logData += IntegerToString(OrderTicket()) + " | ";
-               logData += orderType + " | ";
-               logData += OrderSymbol() + " | ";
-               logData += DoubleToString(OrderLots(), 2) + " | ";
-               logData += DoubleToString(OrderOpenPrice(), Digits) + " | ";
-               logData += DoubleToString(OrderStopLoss(), Digits) + " | ";
-               logData += DoubleToString(OrderTakeProfit(), Digits) + " | ";
-               logData += DoubleToString(OrderProfit(), 2) + " | ";
-               logData += OrderComment() + "\n";
-              }
-            else
-              {
-               Print("Error selecting order at position ", i, ": ", GetLastError());
-              }
-           }
-        }
+               logData += IntegerToString(OrderTicket()) + " | " + orderType + " | " + OrderSymbol() + " | " +
+                         DoubleToString(OrderLots(), 2) + " | " + DoubleToString(OrderOpenPrice(), 5) + " | " +
+                         DoubleToString(OrderStopLoss(), 5) + " | " + DoubleToString(OrderTakeProfit(), 5) + " | " +
+                         DoubleToString(OrderProfit(), 2) + "\n";
+            }
+         }
+      }
       else
-        {
+      {
          logData += "No open orders\n";
-        }
+      }
       
-      logData += "=== END ORDERS LOG ===\n\n";
+      logData += "=== END LOG ===\n\n";
       
-      // Seek to end of file and write data
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
       FileClose(fileHandle);
-      
-      Print("Orders logged to file: ", orderLogPath);
-     }
-   else
-     {
-      int error = GetLastError();
-      Print("Error opening orders log file: ", error);
-      Print("Attempted file path: ", orderLogPath);
-     }
-  }
+   }
+}
 
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-void OnTick(void)
-  {
-   // Log account info every 10 seconds
+void OnTick()
+{
    datetime currentTime = TimeCurrent();
    hearbeat++;
-   if(currentTime - lastLogTime >= logInterval)
-     {
+   
+   // Log account info every 10 seconds
+   if(currentTime - lastLogTime >= 10)
+   {
       LogAccountInfo();
       LogAllOrders();
       lastLogTime = currentTime;
-     }
-  }
-//+------------------------------------------------------------------+
+   }
+   
+   // Check for file orders every 5 seconds
+   if(currentTime - lastFileCheck >= 15)
+   {
+      ReadAndSendOrderFromFile();
+      lastFileCheck = currentTime;
+   }
+}

@@ -7,6 +7,8 @@ const ORDERS_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trade
 const APPROVED_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt';
 const ACCOUNT_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/account_log.txt';
 const ORDERS_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders_log.txt';
+const LOGS_DIR_MQL4 = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Logs';
+const LOGS_DIR_MAIN = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/logs';
 
 // Get current timestamp
 $timestamp = date('Y-m-d H:i:s');
@@ -61,35 +63,51 @@ function getOrdersLogData() {
         $content = file_get_contents(ORDERS_LOG_FILE);
         $lines = explode("\n", trim($content));
         
-        $inDataSection = false;
         foreach ($lines as $line) {
             $line = trim($line);
             
             // Skip header lines and empty lines
             if (empty($line) || 
                 strpos($line, '=== ORDERS LOG') === 0 || 
-                strpos($line, '=== END ORDERS LOG') === 0 || 
+                strpos($line, '=== END') === 0 || 
                 strpos($line, 'Total Orders:') === 0 ||
                 strpos($line, 'Ticket | Type') === 0 ||
-                strpos($line, '-------|------') === 0) {
+                strpos($line, '-------|------') === 0 ||
+                strpos($line, 'No open orders') === 0) {
                 continue;
             }
             
             // Parse data line (pipe-separated values)
             if (strpos($line, '|') !== false) {
                 $parts = array_map('trim', explode('|', $line));
-                if (count($parts) >= 8) {
-                    $ordersLog[] = array(
-                        'ticket' => $parts[0],
-                        'type' => $parts[1],
-                        'symbol' => $parts[2],
-                        'lots' => $parts[3],
-                        'openPrice' => $parts[4],
-                        'stopLoss' => $parts[5],
-                        'takeProfit' => $parts[6],
-                        'profit' => $parts[7],
-                        'comment' => isset($parts[8]) ? $parts[8] : ''
-                    );
+                
+                // Handle different formats - current format has 5 parts, expected format has 8+ parts
+                if (count($parts) >= 5) {
+                    if (count($parts) >= 8) {
+                        // Full format: Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit
+                        $ordersLog[] = array(
+                            'ticket' => $parts[0],
+                            'type' => $parts[1],
+                            'symbol' => $parts[2],
+                            'lots' => $parts[3],
+                            'openPrice' => $parts[4],
+                            'stopLoss' => $parts[5],
+                            'takeProfit' => $parts[6],
+                            'profit' => $parts[7]
+                        );
+                    } else {
+                        // Simplified format: Ticket | Type | Symbol | Lots | Profit
+                        $ordersLog[] = array(
+                            'ticket' => $parts[0],
+                            'type' => $parts[1],
+                            'symbol' => $parts[2],
+                            'lots' => $parts[3],
+                            'openPrice' => 'N/A',
+                            'stopLoss' => 'N/A',
+                            'takeProfit' => 'N/A',
+                            'profit' => $parts[4]
+                        );
+                    }
                 }
             }
         }
@@ -190,7 +208,6 @@ function generateOrdersLogTable($ordersLog) {
     $html .= '<th>Stop Loss</th>';
     $html .= '<th>Take Profit</th>';
     $html .= '<th>Profit</th>';
-    $html .= '<th>Comment</th>';
     $html .= '</tr>';
     $html .= '</thead>';
     $html .= '<tbody>';
@@ -201,11 +218,10 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['lots']) . '</td>';
-        $html .= '<td>' . htmlspecialchars($order['openPrice']) . '</td>';
-        $html .= '<td>' . htmlspecialchars($order['stopLoss']) . '</td>';
-        $html .= '<td>' . htmlspecialchars($order['takeProfit']) . '</td>';
+        $html .= '<td>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openPrice'])) . '</td>';
+        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['stopLoss'])) . '</td>';
+        $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['takeProfit'])) . '</td>';
         $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . htmlspecialchars($order['profit']) . '</td>';
-        $html .= '<td>' . htmlspecialchars($order['comment']) . '</td>';
         $html .= '</tr>';
     }
     
@@ -243,18 +259,11 @@ function generateOrdersLogTable($ordersLog) {
         
         // Fourth row: Values (Open, SL, TP, Profit)
         $html .= '<div class="card-row values">';
-        $html .= '<div>' . htmlspecialchars($order['openPrice']) . '</div>';
-        $html .= '<div>' . htmlspecialchars($order['stopLoss']) . '</div>';
-        $html .= '<div>' . htmlspecialchars($order['takeProfit']) . '</div>';
+        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openPrice'])) . '</div>';
+        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['stopLoss'])) . '</div>';
+        $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['takeProfit'])) . '</div>';
         $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . htmlspecialchars($order['profit']) . '</div>';
         $html .= '</div>';
-        
-        // Comment section (if exists)
-        if (!empty(trim($order['comment']))) {
-            $html .= '<div class="card-comment">';
-            $html .= '<strong>Comment:</strong> ' . htmlspecialchars($order['comment']);
-            $html .= '</div>';
-        }
         
         $html .= '</div>'; // End order-card
     }
@@ -281,9 +290,12 @@ function generateOrdersTable($orders, $showActions = false) {
     $html = '<table class="table">';
     $html .= '<thead>';
     $html .= '<tr>';
-    $html .= '<th>#</th>';
-    $html .= '<th>ID</th>';
+    $html .= '<th>Symbol</th>';
     $html .= '<th>Type</th>';
+    $html .= '<th>Lots</th>';
+    $html .= '<th>Price</th>';
+    $html .= '<th>SL</th>';
+    $html .= '<th>TP</th>';
     if ($showActions) {
         $html .= '<th>Actions</th>';
     }
@@ -293,13 +305,20 @@ function generateOrdersTable($orders, $showActions = false) {
     
     foreach ($orders as $index => $order) {
         $parts = explode(' ', trim($order));
-        $orderId = isset($parts[0]) ? htmlspecialchars($parts[0]) : '';
+        $symbol = isset($parts[0]) ? htmlspecialchars($parts[0]) : '';
         $type = isset($parts[1]) ? htmlspecialchars($parts[1]) : '';
+        $lots = isset($parts[2]) ? htmlspecialchars($parts[2]) : '';
+        $price = isset($parts[3]) ? htmlspecialchars($parts[3]) : '';
+        $sl = isset($parts[4]) ? htmlspecialchars($parts[4]) : '';
+        $tp = isset($parts[5]) ? htmlspecialchars($parts[5]) : '';
         
         $html .= '<tr>';
-        $html .= '<td>' . ($index + 1) . '</td>';
-        $html .= '<td>' . $orderId . '</td>';
+        $html .= '<td>' . $symbol . '</td>';
         $html .= '<td>' . $type . '</td>';
+        $html .= '<td>' . $lots . '</td>';
+        $html .= '<td>' . $price . '</td>';
+        $html .= '<td>' . $sl . '</td>';
+        $html .= '<td>' . $tp . '</td>';
         if ($showActions) {
             $html .= '<td>' . generateActionButtons($index + 1, $order) . '</td>';
         }
@@ -316,6 +335,7 @@ function generateOrdersTable($orders, $showActions = false) {
 }
 
 function refreshAccountLog() {
+    global $timestamp;
     if (file_exists(ACCOUNT_LOG_FILE)) {
         $content = file_get_contents(ACCOUNT_LOG_FILE);
         $content = htmlspecialchars($content);
@@ -325,6 +345,140 @@ function refreshAccountLog() {
         echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
     } else {
         echo '<p class="error-message">Account log file not found.</p>';
+    }
+}
+
+/**
+ * Get list of available log files from both log directories
+ * @return array Array of log files with details
+ */
+function getLogFilesList() {
+    $logFiles = array();
+    
+    $directories = array(
+        'MQL4' => LOGS_DIR_MQL4,
+        'Main' => LOGS_DIR_MAIN
+    );
+    
+    foreach ($directories as $dirType => $dirPath) {
+        if (is_dir($dirPath)) {
+            $files = scandir($dirPath);
+            foreach ($files as $file) {
+                if ($file !== '.' && $file !== '..' && pathinfo($file, PATHINFO_EXTENSION) === 'log') {
+                    $filePath = $dirPath . '/' . $file;
+                    $logFiles[] = array(
+                        'name' => $file,
+                        'displayName' => '[' . $dirType . '] ' . $file,
+                        'path' => $filePath,
+                        'directory' => $dirType,
+                        'directoryPath' => $dirPath,
+                        'size' => filesize($filePath),
+                        'modified' => filemtime($filePath)
+                    );
+                }
+            }
+        }
+    }
+    
+    // Sort by modification time (newest first)
+    usort($logFiles, function($a, $b) {
+        return $b['modified'] - $a['modified'];
+    });
+    
+    return $logFiles;
+}
+
+/**
+ * Read and format log file content
+ * @param string $logFile The log file identifier in format "directory:filename"
+ * @param int $lines Number of lines to read from end (0 = all)
+ * @return string Formatted log content
+ */
+function readLogFile($logFile, $lines = 0) {
+    global $timestamp;
+    
+    // Parse the log file identifier
+    if (strpos($logFile, ':') !== false) {
+        list($directory, $fileName) = explode(':', $logFile, 2);
+        if ($directory === 'MQL4') {
+            $logPath = LOGS_DIR_MQL4 . '/' . $fileName;
+        } elseif ($directory === 'Main') {
+            $logPath = LOGS_DIR_MAIN . '/' . $fileName;
+        } else {
+            return '<p class="error-message">Invalid directory: ' . htmlspecialchars($directory) . '</p>';
+        }
+        $displayName = '[' . $directory . '] ' . $fileName;
+    } else {
+        // Fallback for old format - try MQL4 directory first
+        $logPath = LOGS_DIR_MQL4 . '/' . $logFile;
+        if (!file_exists($logPath)) {
+            $logPath = LOGS_DIR_MAIN . '/' . $logFile;
+        }
+        $displayName = $logFile;
+        $fileName = $logFile;
+    }
+    
+    if (!file_exists($logPath)) {
+        return '<p class="error-message">Log file not found: ' . htmlspecialchars($displayName) . '</p>';
+    }
+    
+    if (!is_readable($logPath)) {
+        return '<p class="error-message">Cannot read log file: ' . htmlspecialchars($displayName) . '</p>';
+    }
+    
+    $content = '';
+    
+    if ($lines > 0) {
+        // Read last N lines
+        $file = new SplFileObject($logPath);
+        $file->seek(PHP_INT_MAX);
+        $totalLines = $file->key();
+        
+        $startLine = max(0, $totalLines - $lines);
+        $file->seek($startLine);
+        
+        while (!$file->eof()) {
+            $content .= $file->current();
+            $file->next();
+        }
+    } else {
+        // Read entire file
+        $content = file_get_contents($logPath);
+    }
+    
+    $content = htmlspecialchars($content);
+    
+    $html = '<div class="log-file-header">';
+    $html .= '<h4>Log File: ' . htmlspecialchars($displayName) . '</h4>';
+    $html .= '<div class="log-file-info">';
+    $html .= '<span>Size: ' . formatBytes(filesize($logPath)) . '</span>';
+    $html .= '<span>Modified: ' . date('Y-m-d H:i:s', filemtime($logPath)) . '</span>';
+    if ($lines > 0) {
+        $html .= '<span>Showing last ' . $lines . ' lines</span>';
+    }
+    $html .= '</div>';
+    $html .= '</div>';
+    
+    $html .= '<pre class="log-content">' . $content . '</pre>';
+    $html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    
+    return $html;
+}
+
+/**
+ * Format bytes to human readable format
+ * @param int $bytes Size in bytes
+ * @return string Formatted size
+ */
+function formatBytes($bytes) {
+    if ($bytes >= 1073741824) {
+        return number_format($bytes / 1073741824, 2) . ' GB';
+    } elseif ($bytes >= 1048576) {
+        return number_format($bytes / 1048576, 2) . ' MB';
+    } elseif ($bytes >= 1024) {
+        return number_format($bytes / 1024, 2) . ' KB';
+    } else {
+        return $bytes . ' bytes';
     }
 }
 
@@ -367,21 +521,87 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'orders_log_list') {
     exit; // Exit here for AJAX requests
 }
 
+// For AJAX requests to get log files list
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'logs_list') {
+    $logFiles = getLogFilesList();
+    $response = array(
+        'files' => $logFiles,
+        'count' => count($logFiles)
+    );
+    echo json_encode($response);
+    exit; // Exit here for AJAX requests
+}
+
+// For AJAX requests to read a specific log file
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'read_log' && isset($_GET['file'])) {
+    $logFile = $_GET['file'];
+    $lines = isset($_GET['lines']) ? intval($_GET['lines']) : 0;
+    
+    // Validate file name (allow directory:filename format or just filename)
+    if (strpos($logFile, ':') !== false) {
+        list($directory, $fileName) = explode(':', $logFile, 2);
+        if (!in_array($directory, ['MQL4', 'Main']) || !preg_match('/^[a-zA-Z0-9_.-]+\.log$/', $fileName)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid log file identifier']);
+            exit;
+        }
+    } else {
+        if (!preg_match('/^[a-zA-Z0-9_.-]+\.log$/', $logFile)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid log file name']);
+            exit;
+        }
+    }
+    
+    $content = readLogFile($logFile, $lines);
+    echo json_encode(['success' => true, 'content' => $content]);
+    exit; // Exit here for AJAX requests
+}
+
 // For AJAX requests to add new orders
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'add_new_order' && isset($_GET['type'])) {
-    $orderType = $_GET['type'];
+if (isset($_POST['ajax']) && $_POST['ajax'] === 'add_new_order') {
+    // Get and validate form data
+    $symbol = isset($_POST['symbol']) ? trim($_POST['symbol']) : '';
+    $orderType = isset($_POST['type']) ? trim($_POST['type']) : '';
+    $lots = isset($_POST['lots']) ? trim($_POST['lots']) : '';
+    $price = isset($_POST['price']) ? trim($_POST['price']) : '';
+    $stopLoss = isset($_POST['stop_loss']) ? trim($_POST['stop_loss']) : '';
+    $takeProfit = isset($_POST['take_profit']) ? trim($_POST['take_profit']) : '';
+    
+    // Validate required fields
+    if (empty($symbol)) {
+        echo json_encode(['success' => false, 'message' => 'Symbol is required']);
+        exit;
+    }
     
     // Validate order type
-    if ($orderType !== 'buy' && $orderType !== 'sell') {
+    $validOrderTypes = ['buy', 'sell', 'buylimit', 'selllimit', 'buystop', 'sellstop'];
+    if (!in_array(strtolower($orderType), $validOrderTypes)) {
         echo json_encode(['success' => false, 'message' => 'Invalid order type']);
         exit;
     }
     
-    // Generate timestamp-based ID
-    $orderId = time(); // Unix timestamp
+    if (empty($lots) || !is_numeric($lots) || floatval($lots) <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Valid lots value is required']);
+        exit;
+    }    
     
-    // Create new order string
-    $newOrder = $orderId . ' ' . $orderType;
+    // Validate optional numeric fields
+    if (!empty($stopLoss) && !is_numeric($stopLoss)) {
+        echo json_encode(['success' => false, 'message' => 'Stop Loss must be a valid number']);
+        exit;
+    }
+    
+    if (!empty($takeProfit) && !is_numeric($takeProfit)) {
+        echo json_encode(['success' => false, 'message' => 'Take Profit must be a valid number']);
+        exit;
+    }
+    
+    // Set default values for empty optional fields
+    $price = empty($price) ? '0' : $price;
+    $stopLoss = empty($stopLoss) ? '0' : $stopLoss;
+    $takeProfit = empty($takeProfit) ? '0' : $takeProfit;
+    
+    // Create new order string (Symbol Type Lots Price SL TP)
+    $newOrder = $symbol . ' ' . $orderType . ' ' . $lots . ' ' . $price . ' ' . $stopLoss . ' ' . $takeProfit;
     
     // Ensure proper newline handling - check if file exists and ends with newline
     $needsNewlineBefore = false;
@@ -399,7 +619,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'add_new_order' && isset($_GET['ty
     $result = file_put_contents(ORDERS_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
     
     if ($result !== false) {
-        echo json_encode(['success' => true, 'message' => 'New ' . $orderType . ' order added with ID: ' . $orderId]);
+        echo json_encode(['success' => true, 'message' => 'New ' . $orderType . ' order added for ' . $symbol]);
     } else {
         echo json_encode(['success' => false, 'message' => 'Failed to add new order to file']);
     }
@@ -471,282 +691,92 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>watchdog</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background-color: #f4f4f4;
-        }
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        button {
-            background-color: #007cba;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px;
-        }
-        button:hover {
-            background-color: #005a87;
-        }
-        #response {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            min-height: 20px;
-        }
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .loading {
-            background-color: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-        .content-section {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
-            text-align: left;
-            font-size: 14px;
-        }
-        .account-log {
-            border-left: 4px solid #007cba;
-            font-family: 'Courier New', monospace;
-        }
-        .orders-list {
-            border-left: 4px solid #28a745;
-            font-family: Arial, sans-serif;
-        }
-        .approved-orders {
-            border-left: 4px solid #ffc107;
-            font-family: Arial, sans-serif;
-        }
-        .orders-log {
-            border-left: 4px solid #6f42c1;
-            font-family: Arial, sans-serif;
-        }
-        .orders-log-table {
-            font-size: 12px;
-        }
-        .orders-log-table th, .orders-log-table td {
-            padding: 6px;
-            text-align: left;
-        }
-        .orders-log-table th:nth-child(2), .orders-log-table td:nth-child(2) {
-            width: 60px !important;
-            min-width: 60px !important;
-            max-width: 60px !important;
-        }
-        
-        /* Mobile card layout for orders log */
-        .orders-log-cards {
-            display: none;
-        }
-        
-        .order-card {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            padding: 12px;
-        }
-        
-        .card-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 8px;
-            font-size: 12px;
-        }
-        
-        .card-row.labels {
-            font-weight: bold;
-            color: #6c757d;
-            font-size: 11px;
-            text-transform: uppercase;
-        }
-        
-        .card-row.values {
-            font-size: 13px;
-            font-weight: 500;
-        }
-        
-        .card-comment {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #dee2e6;
-            font-size: 12px;
-            color: #6c757d;
-        }
-        
-        .card-comment strong {
-            color: #495057;
-        }
-        
-        .card-profit-positive {
-            color: #28a745;
-            font-weight: bold;
-        }
-        
-        .card-profit-negative {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        
-        /* on small screen show orders as cards */
-        @media (max-width: 768px) {
-            .orders-log-table {
-                display: none;
-            }
-            .orders-log-cards {
-                display: block;
-            }
-        }
-
-        .profit-positive {
-            color: #28a745;
-            font-weight: bold;
-        }
-        .profit-negative {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        .action-button {
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            margin: 2px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .btn-p-active { background-color: #28a745; }
-        .btn-p-inactive { background-color: #6c757d; }
-        .btn-r-active { background-color: #28a745; }
-        .btn-r-inactive { background-color: #6c757d; }
-        .btn-cancel { background-color: #dc3545; }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 0;
-        }
-        .table th, .table td {
-            border: 1px solid #dee2e6;
-            padding: 8px;
-            text-align: left;
-        }
-        .table th:nth-child(1), .table td:nth-child(1) {
-            width: 50px;
-            min-width: 50px;
-        }
-        .table th:nth-child(2), .table td:nth-child(2) {
-            width: 120px;
-            min-width: 120px;
-        }
-        .table thead tr {
-            background-color: #e9ecef;
-        }
-        .table tbody tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        .error-message {
-            color: #dc3545;
-        }
-        .timestamp {
-            color: #666;
-            display: block;
-            margin-top: 10px;
-            font-size: 12px;
-        }
-        .new-order-section {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
-            border-left: 4px solid #17a2b8;
-        }
-        .new-order-form {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            justify-content: center;
-        }
-        .order-type-selection {
-            display: flex;
-            gap: 15px;
-        }
-        .order-type-selection label {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            cursor: pointer;
-            font-weight: normal;
-        }
-        .order-type-selection input[type="radio"] {
-            margin: 0;
-        }
-        .add-order-btn {
-            background-color: #17a2b8;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .add-order-btn:hover {
-            background-color: #138496;
-        }
+        <?php echo file_get_contents('/home/ubuntu/repo/styles.css'); ?>
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>pora zarobić :) v2.0</h1>
+        <h1>pora zarobić z wd3.5</h1>
         <hr style="margin: 30px 0;">
         
-        <h2>Account Log Information</h2>
+        <h2>Account Log</h2>
         <div id="account-log" class="content-section account-log">
             <?php refreshAccountLog(); ?>
         </div>
         
-        <button onclick="refreshAccountLog()" style="margin-top: 15px;">Refresh Account Log</button>
+        <button onclick="refreshAccountLog()" style="margin-top: 15px;">Refresh</button>
+                
+        <hr style="margin: 30px 0;">
+        
+        <h2 id="orders-log-heading">Orders Log (<?php $orders_log = getOrdersLogData(); echo count($orders_log); ?>)</h2>
+        <div id="orders-log-list" class="content-section orders-log">
+            <?php
+            echo generateOrdersLogTable($orders_log);
+            ?>
+        </div>
+        
+        <button onclick="refreshOrdersLogList()" style="margin-top: 15px;">Refresh</button>
+	
+        <hr style="margin: 30px 0;">
+        
+        <div class="new-order-section">
+            <h3>Add New Order</h3>
+            <form id="new-order-form" class="new-order-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="symbol">Symbol *</label>
+                        <select id="symbol" name="symbol" required>
+                            <option value="">Select Symbol</option>
+                            <option value="EURUSD">EURUSD</option>
+                            <option value="US100.f">US100.f</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="orderType">Type *</label>
+                        <select id="orderType" name="type" required>
+                            <option value="BUY">Buy</option>
+                            <option value="SELL">Sell</option>
+                            <option value="BUYLIMIT">Buy Limit</option>
+                            <option value="SELLLIMIT">Sell Limit</option>
+                            <option value="BUYSTOP">Buy Stop</option>
+                            <option value="SELLSTOP">Sell Stop</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="lots">Lots *</label>
+                        <input type="number" id="lots" name="lots" step="0.01" min="0.01" placeholder="0.01" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="price">Price/Level *</label>
+                        <input type="number" id="price" name="price" step="0.00001" min="0.00001" placeholder="0 (optional)">
+                    </div>
+                    <div class="form-group">
+                        <label for="stopLoss">Stop Loss</label>
+                        <input type="number" id="stopLoss" name="stop_loss" step="0.00001" min="0" placeholder="0 (optional)">
+                    </div>
+                    <div class="form-group">
+                        <label for="takeProfit">Take Profit</label>
+                        <input type="number" id="takeProfit" name="take_profit" step="0.00001" min="0" placeholder="0 (optional)">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <button type="submit" class="add-order-btn">Add Order</button>
+                </div>
+            </form>
+        </div>
         
         <hr style="margin: 30px 0;">
         
-        <h2 id="orders-list-heading">Orders List (<?php $orders = getOrdersList(); echo count($orders); ?>)</h2>
+        <h2 id="orders-list-heading">Review List (<?php $orders = getOrdersList(); echo count($orders); ?>)</h2>
         <div id="orders-list" class="content-section orders-list">
             <?php
             echo generateOrdersTable($orders, true);
             ?>
         </div>
         
-        <button onclick="refreshOrdersList()" style="margin-top: 15px;">Refresh Orders List</button>
-        
-        <div class="new-order-section" style="margin-top: 20px;">
-            <h3>Add New Order</h3>
-            <form id="new-order-form" class="new-order-form">
-                <div class="order-type-selection">
-                    <label>
-                        <input type="radio" name="orderType" value="buy" checked> Buy
-                    </label>
-                    <label>
-                        <input type="radio" name="orderType" value="sell"> Sell
-                    </label>
-                </div>
-                <button type="submit" class="add-order-btn">Add Order</button>
-            </form>
-        </div>
+        <button onclick="refreshOrdersList()" style="margin-top: 15px;">Refresh</button>
         
         <hr style="margin: 30px 0;">
         
@@ -757,21 +787,47 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             ?>
         </div>
         
-        <button onclick="refreshApprovedOrdersList()" style="margin-top: 15px;">Refresh Approved Orders</button>
-        
+        <button onclick="refreshApprovedOrdersList()" style="margin-top: 15px;">Refresh</button>
+	
         <hr style="margin: 30px 0;">
         
-        <h2 id="orders-log-heading">Orders Log (<?php $orders_log = getOrdersLogData(); echo count($orders_log); ?>)</h2>
-        <div id="orders-log-list" class="content-section orders-log">
-            <?php
-            echo generateOrdersLogTable($orders_log);
-            ?>
+        <h2 id="logs-heading">Logs (<?php $logFiles = getLogFilesList(); echo count($logFiles); ?> files)</h2>
+        <div class="content-section logs-section">
+            <div class="logs-controls">
+                <div class="form-group">
+                    <label for="log-file-select">Select Log File:</label>
+                    <select id="log-file-select" onchange="loadLogFile()">
+                        <option value="">-- Select a log file --</option>
+                        <?php
+                        foreach ($logFiles as $logFile) {
+                            $fileId = $logFile['directory'] . ':' . $logFile['name'];
+                            echo '<option value="' . htmlspecialchars($fileId) . '">' . 
+                                 htmlspecialchars($logFile['displayName']) . ' (' . formatBytes($logFile['size']) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="log-lines-select">Lines to show:</label>
+                    <select id="log-lines-select" onchange="loadLogFile()">
+                        <option value="0">All lines</option>
+                        <option value="50">Last 50 lines</option>
+                        <option value="100" selected>Last 100 lines</option>
+                        <option value="200">Last 200 lines</option>
+                        <option value="500">Last 500 lines</option>
+                        <option value="1000">Last 1000 lines</option>
+                    </select>
+                </div>
+                <button onclick="refreshLogsList()" class="refresh-logs-btn">Refresh Files List</button>
+            </div>
+            
+            <div id="log-content" class="log-content-area">
+                <p class="info-message">Select a log file to view its contents.</p>
+            </div>
         </div>
-        
-        <button onclick="refreshOrdersLogList()" style="margin-top: 15px;">Refresh Orders Log</button>
     </div>
 
-    <script>       
+    <script>
         function refreshAccountLog() {
             const accountLogDiv = document.getElementById('account-log');
             const originalContent = accountLogDiv.innerHTML;
@@ -845,6 +901,85 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             });
         }
 
+        function refreshLogsList() {
+            const logsHeading = document.getElementById('logs-heading');
+            const logFileSelect = document.getElementById('log-file-select');
+            const currentSelection = logFileSelect.value;
+            
+            fetch('index.php?ajax=logs_list', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Update heading
+                logsHeading.textContent = 'Logs (' + data.count + ' files)';
+                
+                // Clear and repopulate select options
+                logFileSelect.innerHTML = '<option value="">-- Select a log file --</option>';
+                
+                data.files.forEach(function(file) {
+                    const option = document.createElement('option');
+                    const fileId = file.directory + ':' + file.name;
+                    option.value = fileId;
+                    option.textContent = file.displayName + ' (' + formatBytesJs(file.size) + ')';
+                    if (fileId === currentSelection) {
+                        option.selected = true;
+                    }
+                    logFileSelect.appendChild(option);
+                });
+                
+                alert('Log files list refreshed successfully');
+            })
+            .catch(error => {
+                alert('Error refreshing logs list: ' + error.message);
+                console.error('Error:', error);
+            });
+        }
+        
+        function loadLogFile() {
+            const logFileSelect = document.getElementById('log-file-select');
+            const logLinesSelect = document.getElementById('log-lines-select');
+            const logContentDiv = document.getElementById('log-content');
+            
+            const selectedFile = logFileSelect.value;
+            const selectedLines = logLinesSelect.value;
+            
+            if (!selectedFile) {
+                logContentDiv.innerHTML = '<p class="info-message">Select a log file to view its contents.</p>';
+                return;
+            }
+            
+            logContentDiv.innerHTML = '<p style="color: #856404;">Loading log file...</p>';
+            
+            fetch('index.php?ajax=read_log&file=' + encodeURIComponent(selectedFile) + '&lines=' + selectedLines, {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logContentDiv.innerHTML = data.content;
+                } else {
+                    logContentDiv.innerHTML = '<p class="error-message">Error: ' + data.message + '</p>';
+                }
+            })
+            .catch(error => {
+                logContentDiv.innerHTML = '<p class="error-message">Error loading log file: ' + error.message + '</p>';
+                console.error('Error:', error);
+            });
+        }
+        
+        function formatBytesJs(bytes) {
+            if (bytes >= 1073741824) {
+                return (bytes / 1073741824).toFixed(2) + ' GB';
+            } else if (bytes >= 1048576) {
+                return (bytes / 1048576).toFixed(2) + ' MB';
+            } else if (bytes >= 1024) {
+                return (bytes / 1024).toFixed(2) + ' KB';
+            } else {
+                return bytes + ' bytes';
+            }
+        }
+
         function handleFlagAction(flag, rowNumber) {
             const flagName = flag.toUpperCase();
             
@@ -909,9 +1044,10 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
             }
         }
         
-        function addNewOrder(orderType) {
-            fetch('index.php?ajax=add_new_order&type=' + orderType, {
-                method: 'GET'
+        function addNewOrder(formData) {
+            fetch('index.php', {
+                method: 'POST',
+                body: formData
             })
             .then(response => {
                 if (!response.ok) {
@@ -923,6 +1059,8 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
                 if (data.success) {
                     alert(data.message);
                     refreshOrdersList();
+                    // Reset the form
+                    document.getElementById('new-order-form').reset();
                 } else {
                     alert('Error: ' + data.message);
                 }
@@ -940,12 +1078,11 @@ if (isset($_GET['ajax']) && in_array($_GET['ajax'], ['add_p', 'add_r', 'cancel_o
                 newOrderForm.addEventListener('submit', function(e) {
                     e.preventDefault();
                     
-                    const selectedType = document.querySelector('input[name="orderType"]:checked');
-                    if (selectedType) {
-                        addNewOrder(selectedType.value);
-                    } else {
-                        alert('Please select an order type');
-                    }
+                    // Create FormData from the form
+                    const formData = new FormData(this);
+                    formData.append('ajax', 'add_new_order');
+                    
+                    addNewOrder(formData);
                 });
             }
         });
