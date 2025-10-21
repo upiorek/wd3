@@ -2,6 +2,9 @@
 // Set content type
 header('Content-Type: text/html; charset=utf-8');
 
+// Set timezone to match system timezone
+date_default_timezone_set('Europe/Warsaw');
+
 // File path constants
 const ORDERS_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders.txt';
 const APPROVED_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt';
