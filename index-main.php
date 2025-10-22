@@ -228,11 +228,11 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
-        $html .= '<td>' . htmlspecialchars($order['lots']) . '</td>';
-        $html .= '<td>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openPrice'])) . '</td>';
-        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['stopLoss'])) . '</td>';
-        $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['takeProfit'])) . '</td>';
-        $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . htmlspecialchars($order['profit']) . '</td>';
+        $html .= '<td>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</td>';
+        $html .= '<td>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['openPrice']), 2)) . '</td>';
+        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['stopLoss']), 2)) . '</td>';
+        $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['takeProfit']), 2)) . '</td>';
+        $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</td>';
         $html .= '</tr>';
     }
     
@@ -257,7 +257,7 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<div>' . htmlspecialchars($order['ticket']) . '</div>';
         $html .= '<div>' . htmlspecialchars($order['type']) . '</div>';
         $html .= '<div>' . htmlspecialchars($order['symbol']) . '</div>';
-        $html .= '<div>' . htmlspecialchars($order['lots']) . '</div>';
+        $html .= '<div>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</div>';
         $html .= '</div>';
         
         // Third row: Labels (Open, SL, TP, Profit)
@@ -270,10 +270,10 @@ function generateOrdersLogTable($ordersLog) {
         
         // Fourth row: Values (Open, SL, TP, Profit)
         $html .= '<div class="card-row values">';
-        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openPrice'])) . '</div>';
-        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['stopLoss'])) . '</div>';
-        $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['takeProfit'])) . '</div>';
-        $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . htmlspecialchars($order['profit']) . '</div>';
+        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['openPrice']), 2)) . '</div>';
+        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['stopLoss']), 2)) . '</div>';
+        $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['takeProfit']), 2)) . '</div>';
+        $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</div>';
         $html .= '</div>';
         
         $html .= '</div>'; // End order-card
@@ -953,16 +953,19 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         <button onclick="refreshOrdersList()" style="margin-top: 15px;">Refresh</button>
         
-        <hr style="margin: 30px 0;">
-        
-        <h2 id="approved-orders-heading">Approved Orders (<?php $approved_orders = getApprovedOrdersList(); echo count($approved_orders); ?>)</h2>
-        <div id="approved-orders-list" class="content-section approved-orders">
-            <?php
-            echo generateOrdersTable($approved_orders, true, true);
-            ?>
+        <?php $approved_orders = getApprovedOrdersList(); ?>
+        <div id="approved-orders-section" <?php if (empty($approved_orders)): ?>style="display: none;"<?php endif; ?>>
+            <hr style="margin: 30px 0;">
+            
+            <h2 id="approved-orders-heading">Approved Orders (<?php echo count($approved_orders); ?>)</h2>
+            <div id="approved-orders-list" class="content-section approved-orders">
+                <?php
+                echo generateOrdersTable($approved_orders, true, true);
+                ?>
+            </div>
+            
+            <button onclick="refreshApprovedOrdersList()" style="margin-top: 15px;">Refresh</button>
         </div>
-        
-        <button onclick="refreshApprovedOrdersList()" style="margin-top: 15px;">Refresh</button>
 	
         <hr style="margin: 30px 0;">
         
@@ -1012,276 +1015,209 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
     </div>
 
     <script>
-        // Generic AJAX function
-        function makeAjaxRequest(url, options = {}) {
-            const defaultOptions = {
-                method: 'GET',
-                showLoading: true,
-                loadingMessage: 'Loading...'
-            };
+        // App configuration
+        const APP = {
+            sections: {
+                account_log: { element: 'account-log', action: 'account_log', text: true, onSuccess: 'refreshProfits' },
+                orders_log: { element: 'orders-log-list', action: 'orders_log_list', heading: 'orders-log-heading', prefix: 'Orders Log' },
+                orders_list: { element: 'orders-list', action: 'orders_list', heading: 'orders-list-heading', prefix: 'Review List' },
+                approved_orders: { element: 'approved-orders-list', action: 'approved_orders_list', heading: 'approved-orders-heading', prefix: 'Approved Orders' },
+                order_history_log: { element: 'order-history-log', action: 'order_history_log', text: true, onSuccess: 'refreshProfits' }
+            },
+            actions: {
+                add_p: { confirm: false, refresh: 'orders' },
+                add_r: { confirm: false, refresh: 'orders' },
+                cancel_order: { confirm: 'Are you sure you want to cancel and remove this order?', refresh: 'orders' },
+                remove_approved: { confirm: 'Are you sure you want to remove this approved order?', refresh: 'approved' }
+            }
+        };
+
+        // Utility functions
+        const utils = {
+            request: (url, options = {}) => {
+                return fetch(url, { method: options.method || 'GET', body: options.body || null })
+                    .then(response => response.ok ? (options.text ? response.text() : response.json()) : Promise.reject(new Error('Network error')));
+            },
             
-            const config = { ...defaultOptions, ...options };
+            formatBytes: (bytes) => {
+                if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+                if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB';
+                if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KB';
+                return bytes + ' bytes';
+            },
             
-            return fetch(url, {
-                method: config.method,
-                body: config.body || null
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return config.returnText ? response.text() : response.json();
-            });
-        }
-        
-        // Generic refresh function
-        function refreshSection(section, updateHeading = false) {
-            const sectionMap = {
-                'account_log': {
-                    elementId: 'account-log',
-                    ajaxAction: 'account_log',
-                    returnText: true,
-                    onSuccess: () => refreshBothProfits()
-                },
-                'orders_log': {
-                    elementId: 'orders-log-list',
-                    ajaxAction: 'orders_log_list',
-                    headingId: 'orders-log-heading',
-                    headingPrefix: 'Orders Log'
-                },
-                'orders_list': {
-                    elementId: 'orders-list',
-                    ajaxAction: 'orders_list',
-                    headingId: 'orders-list-heading',
-                    headingPrefix: 'Review List'
-                },
-                'approved_orders': {
-                    elementId: 'approved-orders-list',
-                    ajaxAction: 'approved_orders_list',
-                    headingId: 'approved-orders-heading',
-                    headingPrefix: 'Approved Orders'
-                },
-                'order_history_log': {
-                    elementId: 'order-history-log',
-                    ajaxAction: 'order_history_log',
-                    returnText: true,
-                    onSuccess: () => refreshBothProfits()
-                }
-            };
+            updateElement: (id, content) => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = content;
+            },
             
-            const config = sectionMap[section];
+            showError: (element, message) => {
+                utils.updateElement(element, `<p style="color: #dc3545;">Error: ${message}</p>`);
+            }
+        };
+
+        // Core refresh function
+        function refreshSection(sectionKey, updateHeading = false) {
+            const config = APP.sections[sectionKey];
             if (!config) return;
             
-            const element = document.getElementById(config.elementId);
-            const originalContent = element.innerHTML;
-            //element.innerHTML = '<p style="color: #856404;">Refreshing...</p>';
-            
-            makeAjaxRequest(`index.php?ajax=${config.ajaxAction}`, {
-                returnText: config.returnText || false
-            })
-            .then(data => {
-                if (config.returnText) {
-                    element.innerHTML = data;
-                } else {
-                    element.innerHTML = data.table;
-                    if (config.headingId && updateHeading) {
-                        document.getElementById(config.headingId).textContent = 
-                            `${config.headingPrefix} (${data.count})`;
+            utils.request(`index.php?ajax=${config.action}`, { text: config.text })
+                .then(data => {
+                    if (config.text) {
+                        utils.updateElement(config.element, data);
+                    } else {
+                        utils.updateElement(config.element, data.table);
+                        if (config.heading && updateHeading) {
+                            utils.updateElement(config.heading, `${config.prefix} (${data.count})`);
+                        }
                     }
-                }
-                if (config.onSuccess) config.onSuccess();
-            })
-            .catch(error => {
-                element.innerHTML = `<p style="color: #dc3545;">Error refreshing: ${error.message}</p>`;
-            });
-        }
-        
-        // Specific refresh functions (simplified)
-        function refreshAccountLog() { refreshSection('account_log'); }
-        function refreshOrdersLogList() { refreshSection('orders_log', true); }
-        function refreshOrdersList() { refreshSection('orders_list', true); }
-        function refreshApprovedOrdersList() { refreshSection('approved_orders', true); }
-        function refreshOrderHistoryLog() { refreshSection('order_history_log'); }
-        
-        function refreshTotalNetProfit() {
-            makeAjaxRequest('index.php?ajax=total_net_profit')
-            .then(data => {
-                makeAjaxRequest('index.php?ajax=account_profit')
-                .then(accountData => {
-                    document.getElementById('total-net-profit-display').innerHTML = 
-                        data.formatted + '<br/>' + accountData.formatted;
+                    if (config.onSuccess === 'refreshProfits') refresh.profits();
                 })
-                .catch(error => console.error('Error refreshing account profit:', error));
-            })
-            .catch(error => console.error('Error refreshing total net profit:', error));
+                .catch(error => utils.showError(config.element, error.message));
         }
-        
-        function refreshAccountProfit() {
-            makeAjaxRequest('index.php?ajax=total_net_profit')
-            .then(totalData => {
-                makeAjaxRequest('index.php?ajax=account_profit')
-                .then(accountData => {
-                    document.getElementById('total-net-profit-display').innerHTML = 
-                        totalData.formatted + '<br/>' + accountData.formatted;
+
+        // Consolidated refresh functions
+        const refresh = {
+            accountLog: () => refreshSection('account_log'),
+            ordersLog: () => refreshSection('orders_log', true),
+            ordersList: () => refreshSection('orders_list', true),
+            orderHistoryLog: () => refreshSection('order_history_log'),
+            approvedOrders: () => {
+                utils.request('index.php?ajax=approved_orders_list')
+                    .then(data => {
+                        const section = document.getElementById('approved-orders-section');
+                        section.style.display = data.count > 0 ? 'block' : 'none';
+                        if (data.count > 0) {
+                            utils.updateElement('approved-orders-list', data.table);
+                            utils.updateElement('approved-orders-heading', `Approved Orders (${data.count})`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing approved orders:', error);
+                        utils.showError('approved-orders-list', error.message);
+                    });
+            },
+            profits: () => {
+                Promise.all([
+                    utils.request('index.php?ajax=total_net_profit'),
+                    utils.request('index.php?ajax=account_profit')
+                ])
+                .then(([total, account]) => {
+                    utils.updateElement('total-net-profit-display', total.formatted + '<br/>' + account.formatted);
                 })
-                .catch(error => console.error('Error refreshing account profit:', error));
-            })
-            .catch(error => console.error('Error refreshing total net profit:', error));
-        }
-        
-        function refreshBothProfits() {
-            Promise.all([
-                makeAjaxRequest('index.php?ajax=total_net_profit'),
-                makeAjaxRequest('index.php?ajax=account_profit')
-            ])
-            .then(([totalNetData, accountData]) => {
-                document.getElementById('total-net-profit-display').innerHTML = 
-                    totalNetData.formatted + '<br/>' + accountData.formatted;
-            })
-            .catch(error => console.error('Error refreshing profits:', error));
-        }
-        
-        function refreshLogsList() {
-            const logsHeading = document.getElementById('logs-heading');
-            const logFileSelect = document.getElementById('log-file-select');
-            const currentSelection = logFileSelect.value;
-            
-            makeAjaxRequest('index.php?ajax=logs_list')
-            .then(data => {
-                logsHeading.textContent = `Logs (${data.count} files)`;
-                logFileSelect.innerHTML = '<option value="">-- Select a log file --</option>';
-                
-                data.files.forEach(file => {
-                    const option = document.createElement('option');
-                    const fileId = file.directory + ':' + file.name;
-                    option.value = fileId;
-                    option.textContent = file.displayName + ' (' + formatBytesJs(file.size) + ')';
-                    if (fileId === currentSelection) option.selected = true;
-                    logFileSelect.appendChild(option);
-                });
-                
-                alert('Log files list refreshed successfully');
-            })
-            .catch(error => {
-                alert('Error refreshing logs list: ' + error.message);
-                console.error('Error:', error);
-            });
-        }
-        
-        function loadLogFile() {
-            const logFileSelect = document.getElementById('log-file-select');
-            const logLinesSelect = document.getElementById('log-lines-select');
-            const logContentDiv = document.getElementById('log-content');
-            
-            const selectedFile = logFileSelect.value;
-            const selectedLines = logLinesSelect.value;
-            
-            if (!selectedFile) {
-                logContentDiv.innerHTML = '<p class="info-message">Select a log file to view its contents.</p>';
-                return;
+                .catch(error => console.error('Error refreshing profits:', error));
             }
-            
-            logContentDiv.innerHTML = '<p style="color: #856404;">Loading log file...</p>';
-            
-            makeAjaxRequest(`index.php?ajax=read_log&file=${encodeURIComponent(selectedFile)}&lines=${selectedLines}`)
-            .then(data => {
-                logContentDiv.innerHTML = data.success ? 
-                    data.content : 
-                    `<p class="error-message">Error: ${data.message}</p>`;
-            })
-            .catch(error => {
-                logContentDiv.innerHTML = `<p class="error-message">Error loading log file: ${error.message}</p>`;
-                console.error('Error:', error);
-            });
-        }
-        
-        function formatBytesJs(bytes) {
-            if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
-            if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB';
-            if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KB';
-            return bytes + ' bytes';
+        };
+
+        // Legacy function aliases for backward compatibility
+        const refreshAccountLog = refresh.accountLog;
+        const refreshOrdersLogList = refresh.ordersLog;
+        const refreshOrdersList = refresh.ordersList;
+        const refreshApprovedOrdersList = refresh.approvedOrders;
+        const refreshOrderHistoryLog = refresh.orderHistoryLog;
+
+        // Consolidated profit refresh
+        function refreshProfits() {
+            refresh.profits();
         }
 
         // Generic action handler
-        function handleAction(action, rowNumber, confirmMessage = null) {
-            if (confirmMessage && !confirm(confirmMessage)) return;
+        function handleAction(actionKey, rowNumber) {
+            const config = APP.actions[actionKey];
+            if (config.confirm && !confirm(config.confirm)) return;
             
-            makeAjaxRequest(`index.php?ajax=${action}&row=${rowNumber}`)
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    
-                    // Refresh appropriate sections based on action
-                    if (action === 'remove_approved') {
-                        refreshApprovedOrdersList();
-                    } else {
-                        refreshOrdersList();
-                        if (data.message.includes('moved to approved list')) {
-                            refreshApprovedOrdersList();
+            utils.request(`index.php?ajax=${actionKey}&row=${rowNumber}`)
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                    if (data.success) {
+                        if (config.refresh === 'approved') refresh.approvedOrders();
+                        else {
+                            refresh.ordersList();
+                            if (data.message.includes('moved to approved list')) refresh.approvedOrders();
                         }
                     }
-                } else {
-                    alert('Error: ' + data.message);
-                }
-            })
-            .catch(error => {
-                alert(`Error: ${error.message}`);
-                console.error('Error:', error);
-            });
+                })
+                .catch(error => alert('Error: ' + error.message));
         }
-        
-        function handlePAction(rowNumber) { handleAction('add_p', rowNumber); }
-        function handleRAction(rowNumber) { handleAction('add_r', rowNumber); }
-        function handleCancelAction(rowNumber) { 
-            handleAction('cancel_order', rowNumber, 'Are you sure you want to cancel and remove this order?'); 
-        }
-        function handleRemoveApprovedAction(rowNumber) { 
-            handleAction('remove_approved', rowNumber, 'Are you sure you want to remove this approved order?'); 
-        }
-        
+
+        // Action wrappers
+        const handlePAction = (row) => handleAction('add_p', row);
+        const handleRAction = (row) => handleAction('add_r', row);
+        const handleCancelAction = (row) => handleAction('cancel_order', row);
+        const handleRemoveApprovedAction = (row) => handleAction('remove_approved', row);
+
+        // Form and logs functions
         function addNewOrder(formData) {
-            makeAjaxRequest('index.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    refreshOrdersList();
-                    document.getElementById('new-order-form').reset();
-                } else {
-                    alert('Error: ' + data.message);
-                }
-            })
-            .catch(error => {
-                alert('Error adding new order: ' + error.message);
-                console.error('Error:', error);
-            });
+            utils.request('index.php', { method: 'POST', body: formData })
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                    if (data.success) {
+                        refresh.ordersList();
+                        document.getElementById('new-order-form').reset();
+                    }
+                })
+                .catch(error => alert('Error adding order: ' + error.message));
         }
-        
-        // Auto-refresh functions
-        function startAutoRefresh() {
-            setInterval(function() {
-                refreshAccountLog();
-                refreshOrdersLogList();
-                refreshOrderHistoryLog();
-            }, 1000);
+
+        function refreshLogsList() {
+            const select = document.getElementById('log-file-select');
+            const currentValue = select.value;
+            
+            utils.request('index.php?ajax=logs_list')
+                .then(data => {
+                    utils.updateElement('logs-heading', `Logs (${data.count} files)`);
+                    select.innerHTML = '<option value="">-- Select a log file --</option>';
+                    data.files.forEach(file => {
+                        const option = new Option(
+                            `${file.displayName} (${utils.formatBytes(file.size)})`,
+                            `${file.directory}:${file.name}`
+                        );
+                        if (option.value === currentValue) option.selected = true;
+                        select.add(option);
+                    });
+                    alert('Log files refreshed');
+                })
+                .catch(error => alert('Error: ' + error.message));
         }
-        
-        // Handle new order form submission
-        document.addEventListener('DOMContentLoaded', function() {
-            const newOrderForm = document.getElementById('new-order-form');
-            if (newOrderForm) {
-                newOrderForm.addEventListener('submit', function(e) {
+
+        function loadLogFile() {
+            const fileSelect = document.getElementById('log-file-select');
+            const linesSelect = document.getElementById('log-lines-select');
+            const contentDiv = document.getElementById('log-content');
+            
+            if (!fileSelect.value) {
+                contentDiv.innerHTML = '<p class="info-message">Select a log file to view its contents.</p>';
+                return;
+            }
+            
+            contentDiv.innerHTML = '<p style="color: #856404;">Loading...</p>';
+            
+            utils.request(`index.php?ajax=read_log&file=${encodeURIComponent(fileSelect.value)}&lines=${linesSelect.value}`)
+                .then(data => {
+                    contentDiv.innerHTML = data.success ? data.content : `<p class="error-message">Error: ${data.message}</p>`;
+                })
+                .catch(error => utils.showError('log-content', error.message));
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', () => {
+            // Form handler
+            const form = document.getElementById('new-order-form');
+            if (form) {
+                form.addEventListener('submit', (e) => {
                     e.preventDefault();
-                    const formData = new FormData(this);
+                    const formData = new FormData(form);
                     formData.append('ajax', 'add_new_order');
                     addNewOrder(formData);
                 });
             }
             
-            // Start auto-refresh for Account Log and Orders Log
-            startAutoRefresh();
+            // Auto-refresh
+            setInterval(() => {
+                refresh.accountLog();
+                refresh.ordersLog();
+                refresh.orderHistoryLog();
+            }, 1000);
         });
     </script>
 </body>
