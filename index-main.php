@@ -280,8 +280,8 @@ function generateOrdersLogTable($ordersLog) {
     }
     $html .= '</div>'; // End orders-log-cards
     
-    global $timestamp;
-    $html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    //global $timestamp;
+    //$html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
     
     return $html;
 }
@@ -354,7 +354,7 @@ function refreshAccountLog() {
         // replace | with <br/>
         $content = str_replace('| ', '<br/>', $content);
         echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
-        echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+        //echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
     } else {
         echo '<p class="error-message">Account log file not found.</p>';
     }
@@ -878,9 +878,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <div id="account-log" class="content-section account-log">
             <?php refreshAccountLog(); ?>
         </div>
-        
-        <button onclick="refreshAccountLog()" style="margin-top: 15px;">Refresh</button>
-                
+
+        <!--<button onclick="refreshAccountLog()" style="margin-top: 15px;">Refresh</button>-->
+
         <hr style="margin: 30px 0;">
         
         <h2 id="orders-log-heading">Orders Log (<?php $orders_log = getOrdersLogData(); echo count($orders_log); ?>)</h2>
@@ -889,9 +889,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             echo generateOrdersLogTable($orders_log);
             ?>
         </div>
-        
-        <button onclick="refreshOrdersLogList()" style="margin-top: 15px;">Refresh</button>
-	
+
+        <!--<button onclick="refreshOrdersLogList()" style="margin-top: 15px;">Refresh</button>-->
+
         <hr style="margin: 30px 0;">
         
         <div class="new-order-section">
@@ -970,9 +970,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <div id="order-history-log" class="content-section order-history-log">
             <?php refreshOrderHistoryLog(); ?>
         </div>
-        
-        <button onclick="refreshOrderHistoryLog()" style="margin-top: 15px;">Refresh</button>
-	
+
+        <!--<button onclick="refreshOrderHistoryLog()" style="margin-top: 15px;">Refresh</button>-->
+
         <hr style="margin: 30px 0;">
         
         <h2 id="logs-heading">Logs (<?php $logFiles = getLogFilesList(); echo count($logFiles); ?> files)</h2>
@@ -1040,7 +1040,8 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 'account_log': {
                     elementId: 'account-log',
                     ajaxAction: 'account_log',
-                    returnText: true
+                    returnText: true,
+                    onSuccess: () => refreshBothProfits()
                 },
                 'orders_log': {
                     elementId: 'orders-log-list',
@@ -1073,7 +1074,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             const element = document.getElementById(config.elementId);
             const originalContent = element.innerHTML;
-            element.innerHTML = '<p style="color: #856404;">Refreshing...</p>';
+            //element.innerHTML = '<p style="color: #856404;">Refreshing...</p>';
             
             makeAjaxRequest(`index.php?ajax=${config.ajaxAction}`, {
                 returnText: config.returnText || false
@@ -1258,6 +1259,15 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             });
         }
         
+        // Auto-refresh functions
+        function startAutoRefresh() {
+            setInterval(function() {
+                refreshAccountLog();
+                refreshOrdersLogList();
+                refreshOrderHistoryLog();
+            }, 1000);
+        }
+        
         // Handle new order form submission
         document.addEventListener('DOMContentLoaded', function() {
             const newOrderForm = document.getElementById('new-order-form');
@@ -1269,6 +1279,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     addNewOrder(formData);
                 });
             }
+            
+            // Start auto-refresh for Account Log and Orders Log
+            startAutoRefresh();
         });
     </script>
 </body>

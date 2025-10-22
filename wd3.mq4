@@ -267,22 +267,22 @@ void OnTick()
    datetime currentTime = TimeCurrent();
    hearbeat++;
    
-   // Log account info every 5 seconds
-   if(currentTime - lastLogTime >= 5)
+   // Log account info
+   if(currentTime - lastLogTime >= 1)
    {
       LogAccountInfo();
       LogAllOrders();
       lastLogTime = currentTime;
    }
    
-   // Log order history every 5 seconds
-   if(currentTime - lastHistoryLogTime >= 5)
+   // Log order history
+   if(currentTime - lastHistoryLogTime >= 1)
    {
       LogOrderHistory();
       lastHistoryLogTime = currentTime;
    }
    
-   // Check for file orders every 5 seconds
+   // Check for file orders
    if(currentTime - lastFileCheck >= 5)
    {
       ReadAndSendOrderFromFile();
