@@ -487,3 +487,30 @@ button:hover {
 .add-order-btn:hover {
     background-color: #138496;
 }
+
+/* Selectable rows and cards styling */
+.selectable-row,
+.selectable-card {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.selectable-row:hover {
+    background-color: #e3f2fd !important;
+}
+
+.selectable-card:hover {
+    background-color: #e3f2fd;
+    border-color: #2196f3;
+}
+
+.selectable-row.selected {
+    background-color: #bbdefb !important;
+    box-shadow: 0 0 0 2px #2196f3;
+}
+
+.selectable-card.selected {
+    background-color: #bbdefb;
+    border-color: #2196f3;
+    box-shadow: 0 0 0 2px #2196f3;
+}

@@ -223,8 +223,8 @@ function generateOrdersLogTable($ordersLog) {
     $html .= '</thead>';
     $html .= '<tbody>';
     
-    foreach ($ordersLog as $order) {
-        $html .= '<tr>';
+    foreach ($ordersLog as $index => $order) {
+        $html .= '<tr class="selectable-row" onclick="selectOrderLogRow(' . $index . ', this)" data-order=\'' . htmlspecialchars(json_encode($order)) . '\'>';
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
@@ -241,8 +241,8 @@ function generateOrdersLogTable($ordersLog) {
     
     // Generate mobile card layout
     $html .= '<div class="orders-log-cards">';
-    foreach ($ordersLog as $order) {
-        $html .= '<div class="order-card">';
+    foreach ($ordersLog as $index => $order) {
+        $html .= '<div class="order-card selectable-card" onclick="selectOrderLogRow(' . $index . ', this)" data-order=\'' . htmlspecialchars(json_encode($order)) . '\'>';
         
         // First row: Labels (Ticket, Type, Symbol, Lots)
         $html .= '<div class="card-row labels">';
@@ -895,7 +895,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <hr style="margin: 30px 0;">
         
         <div class="new-order-section">
-            <h3>Add New Order</h3>
+            <h3>Add/Modify Order</h3>
             <form id="new-order-form" class="new-order-form">
                 <div class="form-row">
                     <div class="form-group">
@@ -1145,6 +1145,86 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const handleRAction = (row) => handleAction('add_r', row);
         const handleCancelAction = (row) => handleAction('cancel_order', row);
         const handleRemoveApprovedAction = (row) => handleAction('remove_approved', row);
+
+        // Order log row selection function
+        function selectOrderLogRow(index, element) {
+            // Remove previous selection
+            document.querySelectorAll('.selectable-row, .selectable-card').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Add selection to clicked element
+            element.classList.add('selected');
+            
+            // Get order data
+            const orderData = JSON.parse(element.getAttribute('data-order'));
+            
+            // Map order types
+            const typeMapping = {
+                'BUY': 'BUY',
+                'SELL': 'SELL',
+                'BUY LIMIT': 'BUYLIMIT',
+                'SELL LIMIT': 'SELLLIMIT',
+                'BUY STOP': 'BUYSTOP',
+                'SELL STOP': 'SELLSTOP'
+            };
+            
+            // Populate form fields
+            const form = document.getElementById('new-order-form');
+            if (form) {
+                const symbolSelect = form.querySelector('#symbol');
+                const typeSelect = form.querySelector('#orderType');
+                const lotsInput = form.querySelector('#lots');
+                const priceInput = form.querySelector('#price');
+                const stopLossInput = form.querySelector('#stopLoss');
+                const takeProfitInput = form.querySelector('#takeProfit');
+                
+                // Set symbol (add option if it doesn't exist)
+                if (symbolSelect && orderData.symbol && orderData.symbol !== 'N/A') {
+                    let optionExists = false;
+                    for (let option of symbolSelect.options) {
+                        if (option.value === orderData.symbol) {
+                            optionExists = true;
+                            break;
+                        }
+                    }
+                    if (!optionExists) {
+                        const newOption = new Option(orderData.symbol, orderData.symbol);
+                        symbolSelect.add(newOption);
+                    }
+                    symbolSelect.value = orderData.symbol;
+                }
+                
+                // Set type
+                if (typeSelect && orderData.type) {
+                    const mappedType = typeMapping[orderData.type.toUpperCase()] || orderData.type.toUpperCase();
+                    typeSelect.value = mappedType;
+                }
+                
+                // Set lots
+                if (lotsInput && orderData.lots && orderData.lots !== 'N/A') {
+                    lotsInput.value = orderData.lots;
+                }
+                
+                // Set price
+                if (priceInput && orderData.openPrice && orderData.openPrice !== 'N/A') {
+                    priceInput.value = orderData.openPrice;
+                }
+                
+                // Set stop loss
+                if (stopLossInput && orderData.stopLoss && orderData.stopLoss !== 'N/A' && orderData.stopLoss !== '0') {
+                    stopLossInput.value = orderData.stopLoss;
+                }
+                
+                // Set take profit
+                if (takeProfitInput && orderData.takeProfit && orderData.takeProfit !== 'N/A' && orderData.takeProfit !== '0') {
+                    takeProfitInput.value = orderData.takeProfit;
+                }
+                
+                // Scroll to form
+                form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
 
         // Form and logs functions
         function addNewOrder(formData) {
