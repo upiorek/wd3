@@ -496,16 +496,37 @@ function generateToBeModifiedOrdersTable($toBeModifiedOrders) {
 
 function refreshAccountLog() {
     global $timestamp;
+    $output = '';
+    
+    // Read account log
     if (file_exists(ACCOUNT_LOG_FILE)) {
-        $content = file_get_contents(ACCOUNT_LOG_FILE);
-        $content = htmlspecialchars($content);
+        $accountContent = file_get_contents(ACCOUNT_LOG_FILE);
+        $accountContent = htmlspecialchars($accountContent);
         // replace | with <br/>
-        $content = str_replace('| ', '<br/>', $content);
-        echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
-        //echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+        $accountContent = str_replace('| ', '<br/>', $accountContent);
+        $output .= $accountContent;
     } else {
-        echo '<p class="error-message">Account log file not found.</p>';
+        $output .= 'Account log file not found.';
     }
+    
+    // Add separator and market log
+    $marketLogFile = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/market_log.txt';
+    if (file_exists($marketLogFile)) {
+        $marketContent = file_get_contents($marketLogFile);
+        $marketContent = htmlspecialchars($marketContent);
+        // replace | with <br/>
+        $marketContent = str_replace('| ', '<br/>', $marketContent);
+        $output .= '<br/><br/>' . $marketContent;
+    } else {
+        $output .= '<br/><br/>Market log file not found.';
+    }
+    
+    if (strpos($output, 'not found') !== false && strpos($output, 'not found') === strpos($output, 'Account log file not found.')) {
+        echo '<p class="error-message">' . $output . '</p>';
+    } else {
+        echo '<pre style="margin: 0; white-space: pre-wrap;">' . $output . '</pre>';
+    }
+    //echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
 }
 
 /**
@@ -1247,7 +1268,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         <hr style="margin: 30px 0;">
         
-        <h2>Account Log</h2>
+        <h2>Account and Market Log</h2>
         <div id="account-log" class="content-section account-log">
             <?php refreshAccountLog(); ?>
         </div>
