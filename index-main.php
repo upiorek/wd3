@@ -186,6 +186,39 @@ function orderHasBothFlags($order) {
 }
 
 /**
+ * Read password from password file
+ * @param string $action The action ('p' or 'r')
+ * @return string|null The password or null if file not found
+ */
+function getPasswordForAction($action) {
+    $passwordFile = '';
+    if ($action === 'p') {
+        $passwordFile = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/pass_p.txt';
+    } elseif ($action === 'r') {
+        $passwordFile = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/pass_r.txt';
+    } else {
+        return null;
+    }
+    
+    if (file_exists($passwordFile)) {
+        return trim(file_get_contents($passwordFile));
+    }
+    
+    return null;
+}
+
+/**
+ * Validate password for action
+ * @param string $action The action ('p' or 'r')
+ * @param string $password The provided password
+ * @return bool True if password is correct
+ */
+function validatePassword($action, $password) {
+    $correctPassword = getPasswordForAction($action);
+    return $correctPassword !== null && $password === $correctPassword;
+}
+
+/**
  * Move an order from orders.txt to approved.txt
  * @param string $order The order to move
  * @return bool Success status
@@ -1000,6 +1033,17 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             $rowNumber = intval($_GET['row']);
             
+            // Check password for P and R actions
+            if (in_array($action, ['add_p', 'add_r', 'add_p_to_be_modified', 'add_r_to_be_modified'])) {
+                $actionType = (strpos($action, '_p') !== false) ? 'p' : 'r';
+                $password = isset($_GET['password']) ? $_GET['password'] : '';
+                
+                if (!validatePassword($actionType, $password)) {
+                    echo json_encode(['success' => false, 'message' => 'Invalid password for action ' . strtoupper($actionType)]);
+                    break;
+                }
+            }
+            
             if ($action === 'remove_approved') {
                 $approved_orders = getApprovedOrdersList();
                 
@@ -1694,7 +1738,30 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             const config = APP.actions[actionKey];
             if (config.confirm && !confirm(config.confirm)) return;
             
-            utils.request(`index.php?ajax=${actionKey}&row=${rowNumber}`)
+            // Check if this is a P or R action that requires password
+            const isPasswordAction = ['add_p', 'add_r', 'add_p_to_be_modified', 'add_r_to_be_modified'].includes(actionKey);
+            let password = '';
+            
+            if (isPasswordAction) {
+                const actionType = actionKey.includes('_p') ? 'P' : 'R';
+                password = prompt(`Enter password for action ${actionType}:`);
+                
+                if (password === null) {
+                    // User cancelled the prompt
+                    return;
+                }
+                
+                if (password === '') {
+                    alert('Password cannot be empty');
+                    return;
+                }
+            }
+            
+            const url = isPasswordAction 
+                ? `index.php?ajax=${actionKey}&row=${rowNumber}&password=${encodeURIComponent(password)}`
+                : `index.php?ajax=${actionKey}&row=${rowNumber}`;
+                
+            utils.request(url)
                 .then(data => {
                     alert(data.success ? data.message : 'Error: ' + data.message);
                     if (data.success) {
