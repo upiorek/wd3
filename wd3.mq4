@@ -8,8 +8,9 @@ datetime lastFileCheck = 0;
 datetime lastHistoryLogTime = 0;
 datetime lastDroppedCheck = 0;
 datetime lastModifiedCheck = 0;
+datetime lastMarketLogTime = 0;
 int hearbeat = 0;
-string version = "3.10";
+string version = "3.11";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -35,6 +36,36 @@ void LogAccountInfo()
    else
    {
       Print("Error opening log file: ", GetLastError());
+   }
+}
+
+void LogMarketData()
+{
+   int fileHandle = FileOpen("market_log.txt", FILE_WRITE|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      // Get current prices for US100.f and EURUSD
+      double us100Bid = MarketInfo("US100.f", MODE_BID);
+      double us100Ask = MarketInfo("US100.f", MODE_ASK);
+      double us100 = (us100Bid + us100Ask) / 2;
+      double eurusdBid = MarketInfo("EURUSD", MODE_BID);
+      double eurusdAsk = MarketInfo("EURUSD", MODE_ASK);
+      double eurusd = (eurusdBid + eurusdAsk) / 2;
+      
+      string logData = "WD: " + version + " | " + 
+                      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
+                      "US100.f: " + DoubleToString(us100, 2) + " | " +
+                      "EURUSD: " + DoubleToString(eurusd, 5) + " | " +
+                      "Heartbeat: " + IntegerToString(hearbeat) + "\n";
+      
+      FileSeek(fileHandle, 0, SEEK_END);
+      FileWriteString(fileHandle, logData);
+      FileClose(fileHandle);
+   }
+   else
+   {
+      Print("Error opening market log file: ", GetLastError());
    }
 }
 
@@ -490,6 +521,13 @@ void OnTick()
       LogAccountInfo();
       LogAllOrders();
       lastLogTime = currentTime;
+   }
+   
+   // Log market data
+   if(currentTime - lastMarketLogTime >= 1)
+   {
+      LogMarketData();
+      lastMarketLogTime = currentTime;
    }
    
    // Log order history
