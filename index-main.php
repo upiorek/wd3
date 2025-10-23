@@ -1,18 +1,12 @@
 <?php
+// Load configuration
+require_once __DIR__ . '/config.php';
+
 // Set content type
 header('Content-Type: text/html; charset=utf-8');
 
-// Set timezone to match system timezone
-date_default_timezone_set('Europe/Warsaw');
-
-// File path constants
-const ORDERS_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders.txt';
-const APPROVED_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt';
-const ACCOUNT_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/account_log.txt';
-const ORDERS_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders_log.txt';
-const ORDER_HISTORY_LOG_FILE = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/order_history_log.txt';
-const LOGS_DIR_MQL4 = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Logs';
-const LOGS_DIR_MAIN = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/logs';
+// Set timezone from config
+date_default_timezone_set(APP_TIMEZONE);
 
 // Get current timestamp
 $timestamp = date('Y-m-d H:i:s');
@@ -54,6 +48,14 @@ function getOrdersList() {
  */
 function getApprovedOrdersList() {
     return getOrdersFromFile(APPROVED_FILE);
+}
+
+/**
+ * Read modified orders from modified.txt file and return as array of rows
+ * @return array Array of modified order rows
+ */
+function getModifiedOrdersList() {
+    return getOrdersFromFile(MODIFIED_FILE);
 }
 
 /**
@@ -223,8 +225,8 @@ function generateOrdersLogTable($ordersLog) {
     $html .= '</thead>';
     $html .= '<tbody>';
     
-    foreach ($ordersLog as $index => $order) {
-        $html .= '<tr class="selectable-row" onclick="selectOrderLogRow(' . $index . ', this)" data-order=\'' . htmlspecialchars(json_encode($order)) . '\'>';
+    foreach ($ordersLog as $order) {
+        $html .= '<tr>';
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
@@ -241,8 +243,8 @@ function generateOrdersLogTable($ordersLog) {
     
     // Generate mobile card layout
     $html .= '<div class="orders-log-cards">';
-    foreach ($ordersLog as $index => $order) {
-        $html .= '<div class="order-card selectable-card" onclick="selectOrderLogRow(' . $index . ', this)" data-order=\'' . htmlspecialchars(json_encode($order)) . '\'>';
+    foreach ($ordersLog as $order) {
+        $html .= '<div class="order-card">';
         
         // First row: Labels (Ticket, Type, Symbol, Lots)
         $html .= '<div class="card-row labels">';
@@ -346,6 +348,50 @@ function generateOrdersTable($orders, $showActions = false, $isApproved = false)
     return $html;
 }
 
+/**
+ * Generate HTML table for modified orders
+ * @param array $modifiedOrders Array of modified order strings
+ * @return string HTML table
+ */
+function generateModifiedOrdersTable($modifiedOrders) {
+    if (empty($modifiedOrders)) {
+        return '<p class="error-message">No modified orders found or modified orders file not found.</p>';
+    }
+    
+    $html = '<table class="table">';
+    $html .= '<thead>';
+    $html .= '<tr>';
+    $html .= '<th>Ticket</th>';
+    $html .= '<th>Stop Loss</th>';
+    $html .= '<th>Take Profit</th>';
+    $html .= '<th>Actions</th>';
+    $html .= '</tr>';
+    $html .= '</thead>';
+    $html .= '<tbody>';
+    
+    foreach ($modifiedOrders as $index => $modifiedOrder) {
+        $parts = explode(' ', trim($modifiedOrder));
+        $ticket = isset($parts[0]) ? htmlspecialchars($parts[0]) : '';
+        $stopLoss = isset($parts[1]) ? htmlspecialchars($parts[1]) : '';
+        $takeProfit = isset($parts[2]) ? htmlspecialchars($parts[2]) : '';
+        
+        $html .= '<tr>';
+        $html .= '<td>' . $ticket . '</td>';
+        $html .= '<td>' . ($stopLoss === '0' ? '<span class="na-value">0</span>' : $stopLoss) . '</td>';
+        $html .= '<td>' . ($takeProfit === '0' ? '<span class="na-value">0</span>' : $takeProfit) . '</td>';
+        $html .= '<td><button onclick="handleRemoveModifiedAction(' . ($index + 1) . ')" class="action-button btn-cancel">Remove</button></td>';
+        $html .= '</tr>';
+    }
+    
+    $html .= '</tbody>';
+    $html .= '</table>';
+    
+    global $timestamp;
+    $html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    
+    return $html;
+}
+
 function refreshAccountLog() {
     global $timestamp;
     if (file_exists(ACCOUNT_LOG_FILE)) {
@@ -419,6 +465,19 @@ function extractAccountProfit($content) {
 }
 
 /**
+ * Extract orders count from account log content
+ * @param string $content The raw content of the account log
+ * @return string|null The orders count or null if not found
+ */
+function extractAccountOrders($content) {
+    // Look for "Orders:" pattern in the content
+    if (preg_match('/Orders:\s*(\d+)/', $content, $matches)) {
+        return $matches[1];
+    }
+    return null;
+}
+
+/**
  * Get profit value from account log
  * @return string|null The profit value or null if not found
  */
@@ -426,6 +485,18 @@ function getAccountProfit() {
     if (file_exists(ACCOUNT_LOG_FILE)) {
         $content = file_get_contents(ACCOUNT_LOG_FILE);
         return extractAccountProfit($content);
+    }
+    return null;
+}
+
+/**
+ * Get orders count from account log
+ * @return string|null The orders count or null if not found
+ */
+function getAccountOrders() {
+    if (file_exists(ACCOUNT_LOG_FILE)) {
+        $content = file_get_contents(ACCOUNT_LOG_FILE);
+        return extractAccountOrders($content);
     }
     return null;
 }
@@ -627,13 +698,15 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'account_profit':
             $accountProfit = getAccountProfit();
+            $accountOrders = getAccountOrders();
             echo json_encode([
                 'value' => $accountProfit,
+                'orders' => $accountOrders,
                 'formatted' => $accountProfit !== null ? 
-                    '<strong style="font-size: 1.2em;">otwarte: <span class="' . 
+                    '<strong style="font-size: 1.2em;">otwarte (' . ($accountOrders !== null ? $accountOrders : '0') . '): <span class="' . 
                     ((floatval($accountProfit) >= 0) ? 'profit-positive' : 'profit-negative') . 
                     '">' . htmlspecialchars($accountProfit) . '</span></strong>' :
-                    '<strong style="color: #6c757d;">otwarte: N/A</strong>'
+                    '<strong style="color: #6c757d;">otwarte (' . ($accountOrders !== null ? $accountOrders : '0') . '): N/A</strong>'
             ]);
             break;
             
@@ -657,10 +730,26 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             ]);
             break;
             
+        case 'modified_orders_list':
+            $modified_orders = getModifiedOrdersList();
+            echo json_encode([
+                'table' => generateModifiedOrdersTable($modified_orders),
+                'count' => count($modified_orders)
+            ]);
+            break;
+            
         case 'orders_log_list':
             $orders_log = getOrdersLogData();
             echo json_encode([
                 'table' => generateOrdersLogTable($orders_log),
+                'count' => count($orders_log)
+            ]);
+            break;
+            
+        case 'orders_log_data':
+            $orders_log = getOrdersLogData();
+            echo json_encode([
+                'orders' => $orders_log,
                 'count' => count($orders_log)
             ]);
             break;
@@ -769,6 +858,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         case 'add_r':
         case 'cancel_order':
         case 'remove_approved':
+        case 'remove_modified':
             if (!isset($_GET['row'])) {
                 echo json_encode(['success' => false, 'message' => 'Row parameter required']);
                 break;
@@ -783,6 +873,16 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     array_splice($approved_orders, $rowNumber - 1, 1);
                     file_put_contents(APPROVED_FILE, implode("\n", $approved_orders));
                     echo json_encode(['success' => true, 'message' => 'Approved order row ' . $rowNumber . ' removed']);
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+                }
+            } elseif ($action === 'remove_modified') {
+                $modified_orders = getModifiedOrdersList();
+                
+                if ($rowNumber > 0 && $rowNumber <= count($modified_orders)) {
+                    array_splice($modified_orders, $rowNumber - 1, 1);
+                    file_put_contents(MODIFIED_FILE, implode("\n", $modified_orders));
+                    echo json_encode(['success' => true, 'message' => 'Modified order row ' . $rowNumber . ' removed']);
                 } else {
                     echo json_encode(['success' => false, 'message' => 'Invalid row number']);
                 }
@@ -825,6 +925,93 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             }
             break;
             
+        case 'drop_order':
+            if (!isset($_POST['ticket'])) {
+                echo json_encode(['success' => false, 'message' => 'Ticket parameter required']);
+                break;
+            }
+            
+            $ticket = trim($_POST['ticket']);
+            
+            if (empty($ticket)) {
+                echo json_encode(['success' => false, 'message' => 'Valid ticket ID is required']);
+                break;
+            }
+            
+            // Ensure proper newline handling
+            $needsNewlineBefore = false;
+            if (file_exists(DROPPED_FILE)) {
+                $existingContent = file_get_contents(DROPPED_FILE);
+                if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
+                    $needsNewlineBefore = true;
+                }
+            }
+            
+            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $ticket . "\n";
+            $result = file_put_contents(DROPPED_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
+            
+            if ($result !== false) {
+                echo json_encode(['success' => true, 'message' => 'Ticket ' . $ticket . ' added to dropped orders']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to add ticket to dropped orders file']);
+            }
+            break;
+            
+        case 'modify_order':
+            if (!isset($_POST['ticket']) || !isset($_POST['stop_loss']) || !isset($_POST['take_profit'])) {
+                echo json_encode(['success' => false, 'message' => 'Ticket, stop loss, and take profit parameters required']);
+                break;
+            }
+            
+            $ticket = trim($_POST['ticket']);
+            $stopLoss = trim($_POST['stop_loss']);
+            $takeProfit = trim($_POST['take_profit']);
+            
+            if (empty($ticket)) {
+                echo json_encode(['success' => false, 'message' => 'Valid ticket ID is required']);
+                break;
+            }
+            
+            // Validate numeric fields
+            if (!empty($stopLoss) && !is_numeric($stopLoss)) {
+                echo json_encode(['success' => false, 'message' => 'Stop Loss must be a valid number']);
+                break;
+            }
+            
+            if (!empty($takeProfit) && !is_numeric($takeProfit)) {
+                echo json_encode(['success' => false, 'message' => 'Take Profit must be a valid number']);
+                break;
+            }
+            
+            // Set default values for empty fields
+            $stopLoss = empty($stopLoss) ? '0' : $stopLoss;
+            $takeProfit = empty($takeProfit) ? '0' : $takeProfit;
+            
+            // Create modification string: TICKET STOPLOSS TAKEPROFIT
+            $modificationLine = $ticket . ' ' . $stopLoss . ' ' . $takeProfit;
+            
+            // Define the modified.txt file path
+            $modifiedFile = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/modified.txt';
+            
+            // Ensure proper newline handling
+            $needsNewlineBefore = false;
+            if (file_exists($modifiedFile)) {
+                $existingContent = file_get_contents($modifiedFile);
+                if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
+                    $needsNewlineBefore = true;
+                }
+            }
+            
+            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $modificationLine . "\n";
+            $result = file_put_contents($modifiedFile, $contentToAppend, FILE_APPEND | LOCK_EX);
+            
+            if ($result !== false) {
+                echo json_encode(['success' => true, 'message' => 'Modification request for ticket ' . $ticket . ' added (SL: ' . $stopLoss . ', TP: ' . $takeProfit . ')']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to add modification request to file']);
+            }
+            break;
+            
         default:
             echo json_encode(['success' => false, 'message' => 'Invalid action']);
             break;
@@ -839,7 +1026,14 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>watchdog</title>
+    <title><?php echo APP_TITLE; ?>: <?php 
+        $accountProfit = getAccountProfit();
+        if ($accountProfit !== null) {
+            echo htmlspecialchars($accountProfit);
+        } else {
+            echo 'N/A';
+        }
+    ?></title>
     <style>
         <?php echo file_get_contents('/home/ubuntu/repo/styles.css'); ?>
     </style>
@@ -863,11 +1057,12 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             <br/>
             <?php 
             $accountProfit = getAccountProfit();
+            $accountOrders = getAccountOrders();
             if ($accountProfit !== null) {
                 $profitClass = (floatval($accountProfit) >= 0) ? 'profit-positive' : 'profit-negative';
-                echo '<strong style="font-size: 1.2em;">otwarte: <span class="' . $profitClass . '">' . htmlspecialchars($accountProfit) . '</span></strong>';
+                echo '<strong style="font-size: 1.2em;">otwarte (' . ($accountOrders !== null ? $accountOrders : '0') . '): <span class="' . $profitClass . '">' . htmlspecialchars($accountProfit) . '</span></strong>';
             } else {
-                echo '<strong style="color: #6c757d;">otwarte: N/A</strong>';
+                echo '<strong style="color: #6c757d;">otwarte (' . ($accountOrders !== null ? $accountOrders : '0') . '): N/A</strong>';
             }
             ?>
         </div>
@@ -891,11 +1086,87 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         </div>
 
         <!--<button onclick="refreshOrdersLogList()" style="margin-top: 15px;">Refresh</button>-->
-
+        
         <hr style="margin: 30px 0;">
         
+        <div class="modify-order-section">
+            <h3>Modify Order</h3>
+            <div class="modify-order-form">
+                <div class="form-group">
+                    <label for="modify-ticket-select">Select Ticket</label>
+                    <select id="modify-ticket-select" name="modify_ticket" onchange="loadOrderDetails()">
+                        <option value="">Select Ticket</option>
+                        <?php
+                        $orders_log = getOrdersLogData();
+                        foreach ($orders_log as $order) {
+                            echo '<option value="' . htmlspecialchars($order['ticket']) . '" 
+                                    data-sl="' . htmlspecialchars($order['stopLoss']) . '" 
+                                    data-tp="' . htmlspecialchars($order['takeProfit']) . '">' . 
+                                 htmlspecialchars($order['ticket']) . ' - ' . 
+                                 htmlspecialchars($order['symbol']) . ' (' . 
+                                 htmlspecialchars($order['type']) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="modify-stop-loss">Stop Loss</label>
+                        <input type="number" id="modify-stop-loss" name="stop_loss" step="0.00001" min="0" placeholder="0.00000">
+                    </div>
+                    <div class="form-group">
+                        <label for="modify-take-profit">Take Profit</label>
+                        <input type="number" id="modify-take-profit" name="take_profit" step="0.00001" min="0" placeholder="0.00000">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <button type="button" onclick="modifyOrder()" class="modify-order-btn">Modify</button>
+                </div>
+            </div>
+        </div>
+        
+        <?php $modified_orders = getModifiedOrdersList(); ?>
+        <div id="modified-orders-section" <?php if (empty($modified_orders)): ?>style="display: none;"<?php endif; ?>>
+            <hr style="margin: 30px 0;">
+            
+            <h2 id="modified-orders-heading">Modified Orders (<?php echo count($modified_orders); ?>)</h2>
+            <div id="modified-orders-list" class="content-section modified-orders">
+                <?php
+                echo generateModifiedOrdersTable($modified_orders);
+                ?>
+            </div>
+            
+            <button onclick="refreshModifiedOrdersList()" style="margin-top: 15px;">Refresh</button>
+        </div>
+	
+        <hr style="margin: 30px 0;">
+        
+        <div class="drop-order-section">
+            <h3>Drop Order</h3>
+            <div class="drop-order-form">
+                <div class="form-group">
+                    <label for="ticket-select">Select Ticket</label>
+                    <select id="ticket-select" name="ticket">
+                        <option value="">Select Ticket</option>
+                        <?php
+                        $orders_log = getOrdersLogData();
+                        foreach ($orders_log as $order) {
+                            echo '<option value="' . htmlspecialchars($order['ticket']) . '">' . 
+                                 htmlspecialchars($order['ticket']) . ' - ' . 
+                                 htmlspecialchars($order['symbol']) . ' (' . 
+                                 htmlspecialchars($order['type']) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="button" onclick="dropOrder()" class="drop-order-btn">Drop</button>
+                </div>
+            </div>
+        </div>        <hr style="margin: 30px 0;">
+        
         <div class="new-order-section">
-            <h3>Add/Modify Order</h3>
+            <h3>Add New Order</h3>
             <form id="new-order-form" class="new-order-form">
                 <div class="form-row">
                     <div class="form-group">
@@ -942,16 +1213,19 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             </form>
         </div>
         
-        <hr style="margin: 30px 0;">
-        
-        <h2 id="orders-list-heading">Review List (<?php $orders = getOrdersList(); echo count($orders); ?>)</h2>
-        <div id="orders-list" class="content-section orders-list">
-            <?php
-            echo generateOrdersTable($orders, true);
-            ?>
+        <?php $orders = getOrdersList(); ?>
+        <div id="orders-list-section" <?php if (empty($orders)): ?>style="display: none;"<?php endif; ?>>
+            <hr style="margin: 30px 0;">
+            
+            <h2 id="orders-list-heading">Review New Orders (<?php echo count($orders); ?>)</h2>
+            <div id="orders-list" class="content-section orders-list">
+                <?php
+                echo generateOrdersTable($orders, true);
+                ?>
+            </div>
+            
+            <button onclick="refreshOrdersList()" style="margin-top: 15px;">Refresh</button>
         </div>
-        
-        <button onclick="refreshOrdersList()" style="margin-top: 15px;">Refresh</button>
         
         <?php $approved_orders = getApprovedOrdersList(); ?>
         <div id="approved-orders-section" <?php if (empty($approved_orders)): ?>style="display: none;"<?php endif; ?>>
@@ -965,7 +1239,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             </div>
             
             <button onclick="refreshApprovedOrdersList()" style="margin-top: 15px;">Refresh</button>
-        </div>
+        </div>        
 	
         <hr style="margin: 30px 0;">
         
@@ -1022,13 +1296,15 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 orders_log: { element: 'orders-log-list', action: 'orders_log_list', heading: 'orders-log-heading', prefix: 'Orders Log' },
                 orders_list: { element: 'orders-list', action: 'orders_list', heading: 'orders-list-heading', prefix: 'Review List' },
                 approved_orders: { element: 'approved-orders-list', action: 'approved_orders_list', heading: 'approved-orders-heading', prefix: 'Approved Orders' },
+                modified_orders: { element: 'modified-orders-list', action: 'modified_orders_list', heading: 'modified-orders-heading', prefix: 'Modified Orders' },
                 order_history_log: { element: 'order-history-log', action: 'order_history_log', text: true, onSuccess: 'refreshProfits' }
             },
             actions: {
                 add_p: { confirm: false, refresh: 'orders' },
                 add_r: { confirm: false, refresh: 'orders' },
                 cancel_order: { confirm: 'Are you sure you want to cancel and remove this order?', refresh: 'orders' },
-                remove_approved: { confirm: 'Are you sure you want to remove this approved order?', refresh: 'approved' }
+                remove_approved: { confirm: 'Are you sure you want to remove this approved order?', refresh: 'approved' },
+                remove_modified: { confirm: 'Are you sure you want to remove this modified order?', refresh: 'modified' }
             }
         };
 
@@ -1079,8 +1355,26 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         // Consolidated refresh functions
         const refresh = {
             accountLog: () => refreshSection('account_log'),
-            ordersLog: () => refreshSection('orders_log', true),
-            ordersList: () => refreshSection('orders_list', true),
+            ordersLog: () => {
+                refreshSection('orders_log', true);
+                // Also refresh the drop order list when orders log updates
+                refreshDropOrderList();
+            },
+            ordersList: () => {
+                utils.request('index.php?ajax=orders_list')
+                    .then(data => {
+                        const section = document.getElementById('orders-list-section');
+                        section.style.display = data.count > 0 ? 'block' : 'none';
+                        if (data.count > 0) {
+                            utils.updateElement('orders-list', data.table);
+                            utils.updateElement('orders-list-heading', `Review New Orders (${data.count})`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing orders list:', error);
+                        utils.showError('orders-list', error.message);
+                    });
+            },
             orderHistoryLog: () => refreshSection('order_history_log'),
             approvedOrders: () => {
                 utils.request('index.php?ajax=approved_orders_list')
@@ -1097,6 +1391,21 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                         utils.showError('approved-orders-list', error.message);
                     });
             },
+            modifiedOrders: () => {
+                utils.request('index.php?ajax=modified_orders_list')
+                    .then(data => {
+                        const section = document.getElementById('modified-orders-section');
+                        section.style.display = data.count > 0 ? 'block' : 'none';
+                        if (data.count > 0) {
+                            utils.updateElement('modified-orders-list', data.table);
+                            utils.updateElement('modified-orders-heading', `Modified Orders (${data.count})`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing modified orders:', error);
+                        utils.showError('modified-orders-list', error.message);
+                    });
+            },
             profits: () => {
                 Promise.all([
                     utils.request('index.php?ajax=total_net_profit'),
@@ -1104,6 +1413,8 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 ])
                 .then(([total, account]) => {
                     utils.updateElement('total-net-profit-display', total.formatted + '<br/>' + account.formatted);
+                    // Update page title with current profit
+                    document.title = 'watchdog: ' + (account.value !== null ? account.value : 'N/A');
                 })
                 .catch(error => console.error('Error refreshing profits:', error));
             }
@@ -1114,6 +1425,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const refreshOrdersLogList = refresh.ordersLog;
         const refreshOrdersList = refresh.ordersList;
         const refreshApprovedOrdersList = refresh.approvedOrders;
+        const refreshModifiedOrdersList = refresh.modifiedOrders;
         const refreshOrderHistoryLog = refresh.orderHistoryLog;
 
         // Consolidated profit refresh
@@ -1131,6 +1443,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     alert(data.success ? data.message : 'Error: ' + data.message);
                     if (data.success) {
                         if (config.refresh === 'approved') refresh.approvedOrders();
+                        else if (config.refresh === 'modified') refresh.modifiedOrders();
                         else {
                             refresh.ordersList();
                             if (data.message.includes('moved to approved list')) refresh.approvedOrders();
@@ -1145,86 +1458,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const handleRAction = (row) => handleAction('add_r', row);
         const handleCancelAction = (row) => handleAction('cancel_order', row);
         const handleRemoveApprovedAction = (row) => handleAction('remove_approved', row);
-
-        // Order log row selection function
-        function selectOrderLogRow(index, element) {
-            // Remove previous selection
-            document.querySelectorAll('.selectable-row, .selectable-card').forEach(el => {
-                el.classList.remove('selected');
-            });
-            
-            // Add selection to clicked element
-            element.classList.add('selected');
-            
-            // Get order data
-            const orderData = JSON.parse(element.getAttribute('data-order'));
-            
-            // Map order types
-            const typeMapping = {
-                'BUY': 'BUY',
-                'SELL': 'SELL',
-                'BUY LIMIT': 'BUYLIMIT',
-                'SELL LIMIT': 'SELLLIMIT',
-                'BUY STOP': 'BUYSTOP',
-                'SELL STOP': 'SELLSTOP'
-            };
-            
-            // Populate form fields
-            const form = document.getElementById('new-order-form');
-            if (form) {
-                const symbolSelect = form.querySelector('#symbol');
-                const typeSelect = form.querySelector('#orderType');
-                const lotsInput = form.querySelector('#lots');
-                const priceInput = form.querySelector('#price');
-                const stopLossInput = form.querySelector('#stopLoss');
-                const takeProfitInput = form.querySelector('#takeProfit');
-                
-                // Set symbol (add option if it doesn't exist)
-                if (symbolSelect && orderData.symbol && orderData.symbol !== 'N/A') {
-                    let optionExists = false;
-                    for (let option of symbolSelect.options) {
-                        if (option.value === orderData.symbol) {
-                            optionExists = true;
-                            break;
-                        }
-                    }
-                    if (!optionExists) {
-                        const newOption = new Option(orderData.symbol, orderData.symbol);
-                        symbolSelect.add(newOption);
-                    }
-                    symbolSelect.value = orderData.symbol;
-                }
-                
-                // Set type
-                if (typeSelect && orderData.type) {
-                    const mappedType = typeMapping[orderData.type.toUpperCase()] || orderData.type.toUpperCase();
-                    typeSelect.value = mappedType;
-                }
-                
-                // Set lots
-                if (lotsInput && orderData.lots && orderData.lots !== 'N/A') {
-                    lotsInput.value = orderData.lots;
-                }
-                
-                // Set price
-                if (priceInput && orderData.openPrice && orderData.openPrice !== 'N/A') {
-                    priceInput.value = orderData.openPrice;
-                }
-                
-                // Set stop loss
-                if (stopLossInput && orderData.stopLoss && orderData.stopLoss !== 'N/A' && orderData.stopLoss !== '0') {
-                    stopLossInput.value = orderData.stopLoss;
-                }
-                
-                // Set take profit
-                if (takeProfitInput && orderData.takeProfit && orderData.takeProfit !== 'N/A' && orderData.takeProfit !== '0') {
-                    takeProfitInput.value = orderData.takeProfit;
-                }
-                
-                // Scroll to form
-                form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
+        const handleRemoveModifiedAction = (row) => handleAction('remove_modified', row);
 
         // Form and logs functions
         function addNewOrder(formData) {
@@ -1237,6 +1471,146 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     }
                 })
                 .catch(error => alert('Error adding order: ' + error.message));
+        }
+
+        function dropOrder() {
+            const ticketSelect = document.getElementById('ticket-select');
+            const selectedTicket = ticketSelect.value;
+            
+            if (!selectedTicket) {
+                alert('Please select a ticket to drop.');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to drop ticket ' + selectedTicket + '?')) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('ajax', 'drop_order');
+            formData.append('ticket', selectedTicket);
+            
+            utils.request('index.php', { method: 'POST', body: formData })
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                    if (data.success) {
+                        // Reset the dropdown to default selection
+                        ticketSelect.value = '';
+                    }
+                })
+                .catch(error => alert('Error dropping order: ' + error.message));
+        }
+
+        function loadOrderDetails() {
+            const modifyTicketSelect = document.getElementById('modify-ticket-select');
+            const selectedOption = modifyTicketSelect.options[modifyTicketSelect.selectedIndex];
+            
+            if (selectedOption && selectedOption.value) {
+                const stopLoss = selectedOption.getAttribute('data-sl');
+                const takeProfit = selectedOption.getAttribute('data-tp');
+                
+                // Pre-fill the fields with current values (if not 'N/A' or '0')
+                const slField = document.getElementById('modify-stop-loss');
+                const tpField = document.getElementById('modify-take-profit');
+                
+                slField.value = (stopLoss && stopLoss !== 'N/A' && stopLoss !== '0') ? stopLoss : '';
+                tpField.value = (takeProfit && takeProfit !== 'N/A' && takeProfit !== '0') ? takeProfit : '';
+            } else {
+                // Clear fields if no selection
+                document.getElementById('modify-stop-loss').value = '';
+                document.getElementById('modify-take-profit').value = '';
+            }
+        }
+
+        function modifyOrder() {
+            const ticketSelect = document.getElementById('modify-ticket-select');
+            const selectedTicket = ticketSelect.value;
+            const stopLoss = document.getElementById('modify-stop-loss').value;
+            const takeProfit = document.getElementById('modify-take-profit').value;
+            
+            if (!selectedTicket) {
+                alert('Please select a ticket to modify.');
+                return;
+            }
+            
+            if (!stopLoss && !takeProfit) {
+                alert('Please enter at least one value (Stop Loss or Take Profit) to modify.');
+                return;
+            }
+            
+            const confirmMessage = `Are you sure you want to modify ticket ${selectedTicket}?\n` +
+                                 `Stop Loss: ${stopLoss || '0'}\n` +
+                                 `Take Profit: ${takeProfit || '0'}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('ajax', 'modify_order');
+            formData.append('ticket', selectedTicket);
+            formData.append('stop_loss', stopLoss || '0');
+            formData.append('take_profit', takeProfit || '0');
+            
+            utils.request('index.php', { method: 'POST', body: formData })
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                    if (data.success) {
+                        // Reset the form
+                        ticketSelect.value = '';
+                        document.getElementById('modify-stop-loss').value = '';
+                        document.getElementById('modify-take-profit').value = '';
+                        // Refresh modified orders list to show the new modification
+                        refresh.modifiedOrders();
+                    }
+                })
+                .catch(error => alert('Error modifying order: ' + error.message));
+        }
+
+        function refreshDropOrderList() {
+            utils.request('index.php?ajax=orders_log_data')
+                .then(data => {
+                    // Update Drop Order dropdown
+                    const ticketSelect = document.getElementById('ticket-select');
+                    const currentDropValue = ticketSelect.value;
+                    
+                    // Clear existing options except the first one
+                    ticketSelect.innerHTML = '<option value="">Select Ticket</option>';
+                    
+                    // Update Modify Order dropdown
+                    const modifyTicketSelect = document.getElementById('modify-ticket-select');
+                    const currentModifyValue = modifyTicketSelect.value;
+                    
+                    // Clear existing options except the first one
+                    modifyTicketSelect.innerHTML = '<option value="">Select Ticket</option>';
+                    
+                    // Add options from orders data to both dropdowns
+                    if (data && data.orders) {
+                        data.orders.forEach(order => {
+                            // Drop order option
+                            const dropOption = new Option(
+                                `${order.ticket} - ${order.symbol} (${order.type})`,
+                                order.ticket
+                            );
+                            if (dropOption.value === currentDropValue) dropOption.selected = true;
+                            ticketSelect.add(dropOption);
+                            
+                            // Modify order option with data attributes
+                            const modifyOption = new Option(
+                                `${order.ticket} - ${order.symbol} (${order.type})`,
+                                order.ticket
+                            );
+                            modifyOption.setAttribute('data-sl', order.stopLoss || '0');
+                            modifyOption.setAttribute('data-tp', order.takeProfit || '0');
+                            if (modifyOption.value === currentModifyValue) modifyOption.selected = true;
+                            modifyTicketSelect.add(modifyOption);
+                        });
+                    }
+                    
+                    // Note: We don't automatically reload order details during refresh
+                    // to avoid overwriting user input in the modify form fields
+                })
+                .catch(error => console.error('Error refreshing order lists:', error));
         }
 
         function refreshLogsList() {
@@ -1297,6 +1671,12 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 refresh.accountLog();
                 refresh.ordersLog();
                 refresh.orderHistoryLog();
+                refresh.profits();
+            }, 1000);
+            
+            // Additional interval for title updates every 10 seconds
+            setInterval(() => {
+                refresh.profits();
             }, 1000);
         });
     </script>

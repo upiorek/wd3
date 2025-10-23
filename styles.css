@@ -488,29 +488,61 @@ button:hover {
     background-color: #138496;
 }
 
-/* Selectable rows and cards styling */
-.selectable-row,
-.selectable-card {
+.drop-order-section {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 5px;
+    border-left: 4px solid #dc3545;
+}
+
+.drop-order-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.drop-order-btn {
+    background-color: #dc3545;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    font-size: 14px;
+    min-width: 100px;
+    height: 42px; /* Match the height of the select element */
 }
 
-.selectable-row:hover {
-    background-color: #e3f2fd !important;
+.drop-order-btn:hover {
+    background-color: #c82333;
 }
 
-.selectable-card:hover {
-    background-color: #e3f2fd;
-    border-color: #2196f3;
+.modify-order-section {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 5px;
+    border-left: 4px solid #ffc107;
 }
 
-.selectable-row.selected {
-    background-color: #bbdefb !important;
-    box-shadow: 0 0 0 2px #2196f3;
+.modify-order-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
 }
 
-.selectable-card.selected {
-    background-color: #bbdefb;
-    border-color: #2196f3;
-    box-shadow: 0 0 0 2px #2196f3;
+.modify-order-btn {
+    background-color: #ffc107;
+    color: #212529;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    min-width: 100px;
+    height: 42px; /* Match the height of the select element */
+    font-weight: 600;
+}
+
+.modify-order-btn:hover {
+    background-color: #e0a800;
 }

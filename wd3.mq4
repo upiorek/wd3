@@ -6,8 +6,10 @@
 datetime lastLogTime = 0;
 datetime lastFileCheck = 0;
 datetime lastHistoryLogTime = 0;
+datetime lastDroppedCheck = 0;
+datetime lastModifiedCheck = 0;
 int hearbeat = 0;
-string version = "3.7";
+string version = "3.10";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -29,8 +31,6 @@ void LogAccountInfo()
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
       FileClose(fileHandle);
-      
-      Print("WD: " + version + " heartbeat: " + hearbeat);
    }
    else
    {
@@ -123,6 +123,17 @@ void ClearApprovedFile()
    }
 }
 
+void ClearModifiedFile()
+{
+   int fileHandle = FileOpen("modified.txt", FILE_WRITE|FILE_TXT);
+   if(fileHandle != INVALID_HANDLE)
+   {
+      string clearMessage = "\n";
+      FileWriteString(fileHandle, clearMessage);
+      FileClose(fileHandle);
+   }
+}
+
 void LogAllOrders()
 {
    int fileHandle = FileOpen("orders_log.txt", FILE_WRITE|FILE_TXT);
@@ -169,6 +180,109 @@ void LogAllOrders()
    }
 }
 
+void CheckAndCancelDroppedOrders()
+{
+   int fileHandle = FileOpen("dropped.txt", FILE_READ|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      string ticketsToCancel[];
+      string remainingTickets[];
+      int cancelCount = 0;
+      int remainingCount = 0;
+      
+      // Read all tickets from dropped.txt
+      while(!FileIsEnding(fileHandle))
+      {
+         string line = FileReadString(fileHandle);
+         line = StringTrimLeft(StringTrimRight(line));
+         if(line != "")
+         {
+            int ticket = StringToInteger(line);
+            if(ticket > 0)
+            {
+               // Check if this ticket is an open order
+               bool orderFound = false;
+               for(int i = 0; i < OrdersTotal(); i++)
+               {
+                  if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+                  {
+                     if(OrderTicket() == ticket)
+                     {
+                        orderFound = true;
+                        break;
+                     }
+                  }
+               }
+               
+               if(orderFound)
+               {
+                  // Add to cancel list
+                  ArrayResize(ticketsToCancel, cancelCount + 1);
+                  ticketsToCancel[cancelCount] = line;
+                  cancelCount++;
+               }
+               else
+               {
+                  // Keep in file (order not found or already closed)
+                  ArrayResize(remainingTickets, remainingCount + 1);
+                  remainingTickets[remainingCount] = line;
+                  remainingCount++;
+               }
+            }
+         }
+      }
+      FileClose(fileHandle);
+      
+      // Cancel the found orders
+      for(int j = 0; j < cancelCount; j++)
+      {
+         int ticketToCancel = StringToInteger(ticketsToCancel[j]);
+         if(OrderSelect(ticketToCancel, SELECT_BY_TICKET))
+         {
+            bool closed = false;
+            if(OrderType() == OP_BUY)
+            {
+               closed = OrderClose(ticketToCancel, OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 3, clrRed);
+            }
+            else if(OrderType() == OP_SELL)
+            {
+               closed = OrderClose(ticketToCancel, OrderLots(), MarketInfo(OrderSymbol(), MODE_ASK), 3, clrRed);
+            }
+            else
+            {
+               // For pending orders
+               closed = OrderDelete(ticketToCancel);
+            }
+            
+            if(closed)
+            {
+               Print("Successfully cancelled order: ", ticketToCancel);
+            }
+            else
+            {
+               Print("Failed to cancel order: ", ticketToCancel, " Error: ", GetLastError());
+               // If failed to cancel, keep the ticket in the file
+               ArrayResize(remainingTickets, remainingCount + 1);
+               remainingTickets[remainingCount] = ticketsToCancel[j];
+               remainingCount++;
+            }
+         }
+      }
+      
+      // Rewrite dropped.txt with only remaining tickets
+      int writeHandle = FileOpen("dropped.txt", FILE_WRITE|FILE_TXT);
+      if(writeHandle != INVALID_HANDLE)
+      {
+         for(int k = 0; k < remainingCount; k++)
+         {
+            FileWriteString(writeHandle, remainingTickets[k] + "\n");
+         }
+         FileClose(writeHandle);
+      }
+   }
+}
+
 void LogOrderHistory()
 {
    int fileHandle = FileOpen("order_history_log.txt", FILE_WRITE|FILE_TXT);
@@ -195,8 +309,9 @@ void LogOrderHistory()
          {
             datetime orderCloseTime = OrderCloseTime();
             
-            // Check if order was closed today
-            if(orderCloseTime >= currentDay && orderCloseTime < nextDay)
+            // Check if order was closed today and is BUY or SELL order only
+            if(orderCloseTime >= currentDay && orderCloseTime < nextDay && 
+               (OrderType() == OP_BUY || OrderType() == OP_SELL))
             {
                todayOrdersCount++;
                double orderProfit = OrderProfit();
@@ -215,10 +330,6 @@ void LogOrderHistory()
                {
                   case OP_BUY: orderType = "BUY"; break;
                   case OP_SELL: orderType = "SELL"; break;
-                  case OP_BUYLIMIT: orderType = "BUY LIMIT"; break;
-                  case OP_SELLLIMIT: orderType = "SELL LIMIT"; break;
-                  case OP_BUYSTOP: orderType = "BUY STOP"; break;
-                  case OP_SELLSTOP: orderType = "SELL STOP"; break;
                }
                
                logData += IntegerToString(OrderTicket()) + " | " + orderType + " | " + OrderSymbol() + " | " +
@@ -262,6 +373,112 @@ void LogOrderHistory()
    }
 }
 
+void CheckAndModifyOrders()
+{
+   int fileHandle = FileOpen("modified.txt", FILE_READ|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      string remainingLines[];
+      int modificationCount = 0;
+      int remainingCount = 0;
+      
+      // Read all modification requests from modified.txt
+      while(!FileIsEnding(fileHandle))
+      {
+         string line = FileReadString(fileHandle);
+         line = StringTrimLeft(StringTrimRight(line));
+         if(line != "" && StringFind(line, "#") != 0)
+         {
+            // Parse the modification line
+            // Expected format: TICKET STOPLOSS TAKEPROFIT
+            // Example: 12345 1.2500 1.3000
+            string parts[];
+            int partsCount = StringSplit(line, ' ', parts);
+            
+            if(partsCount >= 3)
+            {
+               int ticket = StringToInteger(parts[0]);
+               double newStopLoss = StringToDouble(parts[1]);
+               double newTakeProfit = StringToDouble(parts[2]);
+               
+               if(ticket > 0)
+               {
+                  // Try to modify the order
+                  bool orderFound = false;
+                  if(OrderSelect(ticket, SELECT_BY_TICKET))
+                  {
+                     orderFound = true;
+                     
+                     // Get current order information
+                     double currentPrice = OrderOpenPrice();
+                     
+                     // For market orders, we need current market price for validation
+                     if(OrderType() == OP_BUY || OrderType() == OP_SELL)
+                     {
+                        currentPrice = (OrderType() == OP_BUY) ? MarketInfo(OrderSymbol(), MODE_BID) : MarketInfo(OrderSymbol(), MODE_ASK);
+                     }
+                     
+                     // Use current values if new values are 0
+                     if(newStopLoss == 0.0) newStopLoss = OrderStopLoss();
+                     if(newTakeProfit == 0.0) newTakeProfit = OrderTakeProfit();
+                     
+                     // Attempt to modify the order
+                     bool modified = OrderModify(ticket, OrderOpenPrice(), newStopLoss, newTakeProfit, OrderExpiration(), clrNONE);
+                     
+                     if(modified)
+                     {
+                        Print("Successfully modified order: ", ticket, 
+                              " SL: ", DoubleToString(newStopLoss, 5), 
+                              " TP: ", DoubleToString(newTakeProfit, 5));
+                     }
+                     else
+                     {
+                        Print("Failed to modify order: ", ticket, " Error: ", GetLastError());
+                        // If failed to modify, keep the line in the file for retry
+                        ArrayResize(remainingLines, remainingCount + 1);
+                        remainingLines[remainingCount] = line;
+                        remainingCount++;
+                     }
+                  }
+                  else
+                  {
+                     Print("Order not found for modification: ", ticket);
+                     // Order not found, remove from file (might be closed)
+                  }
+               }
+               else
+               {
+                  Print("Invalid ticket number in modified.txt: ", parts[0]);
+                  // Invalid ticket, remove from file
+               }
+            }
+            else
+            {
+               Print("Invalid format in modified.txt line: ", line);
+               Print("Expected format: TICKET STOPLOSS TAKEPROFIT");
+               // Invalid format, keep in file for manual review
+               ArrayResize(remainingLines, remainingCount + 1);
+               remainingLines[remainingCount] = line;
+               remainingCount++;
+            }
+         }
+      }
+      FileClose(fileHandle);
+      
+      // Rewrite modified.txt with only remaining lines (failed modifications)
+      int writeHandle = FileOpen("modified.txt", FILE_WRITE|FILE_TXT);
+      if(writeHandle != INVALID_HANDLE)
+      {
+         for(int k = 0; k < remainingCount; k++)
+         {
+            FileWriteString(writeHandle, remainingLines[k] + "\n");
+         }
+         FileClose(writeHandle);
+      }
+   }
+}
+
 void OnTick()
 {
    datetime currentTime = TimeCurrent();
@@ -282,10 +499,29 @@ void OnTick()
       lastHistoryLogTime = currentTime;
    }
    
-   // Check for file orders
+   // Check for dropped orders
+   if(currentTime - lastDroppedCheck >= 1)
+   {
+      CheckAndCancelDroppedOrders();
+      lastDroppedCheck = currentTime;
+   }
+   
+   // Check for orders to modify
+   if(currentTime - lastModifiedCheck >= 1)
+   {
+      CheckAndModifyOrders();
+      lastModifiedCheck = currentTime;
+   }
+   
+   // Check for orders
    if(currentTime - lastFileCheck >= 5)
    {
       ReadAndSendOrderFromFile();
       lastFileCheck = currentTime;
+   }
+
+   if(currentTime - lastFileCheck >= 30)
+   {
+      Print("WD: " + version + " heartbeat: " + hearbeat);
    }
 }
