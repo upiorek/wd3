@@ -15,6 +15,7 @@ const FILES = [
     'orders' => 'orders.txt',
     'approved' => 'approved.txt',
     'modified' => 'modified.txt',
+    'to_be_modified' => 'to_be_modified.txt',
     'account_log' => 'account_log.txt',
     'orders_log' => 'orders_log.txt',
     'order_history_log' => 'order_history_log.txt',
@@ -33,6 +34,7 @@ function getFilePath($fileKey) {
 const ORDERS_FILE = MQL4_FILES_PATH . '/orders.txt';
 const APPROVED_FILE = MQL4_FILES_PATH . '/approved.txt';
 const MODIFIED_FILE = MQL4_FILES_PATH . '/modified.txt';
+const TO_BE_MODIFIED_FILE = MQL4_FILES_PATH . '/to_be_modified.txt';
 const ACCOUNT_LOG_FILE = MQL4_FILES_PATH . '/account_log.txt';
 const ORDERS_LOG_FILE = MQL4_FILES_PATH . '/orders_log.txt';
 const ORDER_HISTORY_LOG_FILE = MQL4_FILES_PATH . '/order_history_log.txt';

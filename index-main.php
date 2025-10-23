@@ -59,6 +59,14 @@ function getModifiedOrdersList() {
 }
 
 /**
+ * Read to be modified orders from to_be_modified.txt file and return as array of rows
+ * @return array Array of to be modified order rows
+ */
+function getToBeModifiedOrdersList() {
+    return getOrdersFromFile(TO_BE_MODIFIED_FILE);
+}
+
+/**
  * Parse orders log file and return structured data
  * @return array Array of order log entries with parsed data
  */
@@ -380,6 +388,61 @@ function generateModifiedOrdersTable($modifiedOrders) {
         $html .= '<td>' . ($stopLoss === '0' ? '<span class="na-value">0</span>' : $stopLoss) . '</td>';
         $html .= '<td>' . ($takeProfit === '0' ? '<span class="na-value">0</span>' : $takeProfit) . '</td>';
         $html .= '<td><button onclick="handleRemoveModifiedAction(' . ($index + 1) . ')" class="action-button btn-cancel">Remove</button></td>';
+        $html .= '</tr>';
+    }
+    
+    $html .= '</tbody>';
+    $html .= '</table>';
+    
+    global $timestamp;
+    $html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    
+    return $html;
+}
+
+/**
+ * Generate HTML table for to be modified orders
+ * @param array $toBeModifiedOrders Array of to be modified order strings
+ * @return string HTML table
+ */
+function generateToBeModifiedOrdersTable($toBeModifiedOrders) {
+    if (empty($toBeModifiedOrders)) {
+        return '<p class="error-message">No orders to be modified found or to_be_modified orders file not found.</p>';
+    }
+    
+    $html = '<table class="table">';
+    $html .= '<thead>';
+    $html .= '<tr>';
+    $html .= '<th>Ticket</th>';
+    $html .= '<th>Stop Loss</th>';
+    $html .= '<th>Take Profit</th>';
+    $html .= '<th>Actions</th>';
+    $html .= '</tr>';
+    $html .= '</thead>';
+    $html .= '<tbody>';
+    
+    foreach ($toBeModifiedOrders as $index => $toBeModifiedOrder) {
+        $parts = explode(' ', trim($toBeModifiedOrder));
+        $ticket = isset($parts[0]) ? htmlspecialchars($parts[0]) : '';
+        $stopLoss = isset($parts[1]) ? htmlspecialchars($parts[1]) : '';
+        $takeProfit = isset($parts[2]) ? htmlspecialchars($parts[2]) : '';
+        
+        // Check for P and R flags
+        $hasP = orderHasFlag($toBeModifiedOrder, 'p');
+        $hasR = orderHasFlag($toBeModifiedOrder, 'r');
+        
+        $pButtonClass = $hasP ? 'btn-p-active' : 'btn-p-inactive';
+        $rButtonClass = $hasR ? 'btn-r-active' : 'btn-r-inactive';
+        
+        $html .= '<tr>';
+        $html .= '<td>' . $ticket . '</td>';
+        $html .= '<td>' . ($stopLoss === '0' ? '<span class="na-value">0</span>' : $stopLoss) . '</td>';
+        $html .= '<td>' . ($takeProfit === '0' ? '<span class="na-value">0</span>' : $takeProfit) . '</td>';
+        $html .= '<td>';
+        $html .= '<button onclick="handlePToBeModifiedAction(' . ($index + 1) . ')" class="action-button ' . $pButtonClass . '">P</button>';
+        $html .= '<button onclick="handleRToBeModifiedAction(' . ($index + 1) . ')" class="action-button ' . $rButtonClass . '">R</button>';
+        $html .= '<button onclick="handleRemoveToBeModifiedAction(' . ($index + 1) . ')" class="action-button btn-cancel">Remove</button>';
+        $html .= '</td>';
         $html .= '</tr>';
     }
     
@@ -738,6 +801,14 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             ]);
             break;
             
+        case 'to_be_modified_orders_list':
+            $to_be_modified_orders = getToBeModifiedOrdersList();
+            echo json_encode([
+                'table' => generateToBeModifiedOrdersTable($to_be_modified_orders),
+                'count' => count($to_be_modified_orders)
+            ]);
+            break;
+            
         case 'orders_log_list':
             $orders_log = getOrdersLogData();
             echo json_encode([
@@ -856,9 +927,12 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'add_p':
         case 'add_r':
+        case 'add_p_to_be_modified':
+        case 'add_r_to_be_modified':
         case 'cancel_order':
         case 'remove_approved':
         case 'remove_modified':
+        case 'remove_to_be_modified':
             if (!isset($_GET['row'])) {
                 echo json_encode(['success' => false, 'message' => 'Row parameter required']);
                 break;
@@ -883,6 +957,74 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     array_splice($modified_orders, $rowNumber - 1, 1);
                     file_put_contents(MODIFIED_FILE, implode("\n", $modified_orders));
                     echo json_encode(['success' => true, 'message' => 'Modified order row ' . $rowNumber . ' removed']);
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+                }
+            } elseif ($action === 'remove_to_be_modified') {
+                $to_be_modified_orders = getToBeModifiedOrdersList();
+                
+                if ($rowNumber > 0 && $rowNumber <= count($to_be_modified_orders)) {
+                    array_splice($to_be_modified_orders, $rowNumber - 1, 1);
+                    file_put_contents(TO_BE_MODIFIED_FILE, implode("\n", $to_be_modified_orders));
+                    echo json_encode(['success' => true, 'message' => 'To be modified order row ' . $rowNumber . ' removed']);
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'Invalid row number']);
+                }
+            } elseif ($action === 'add_p_to_be_modified' || $action === 'add_r_to_be_modified') {
+                $to_be_modified_orders = getToBeModifiedOrdersList();
+                
+                if ($rowNumber > 0 && $rowNumber <= count($to_be_modified_orders)) {
+                    $orderIndex = $rowNumber - 1;
+                    $flag = ($action === 'add_p_to_be_modified') ? 'p' : 'r';
+                    $flagName = strtoupper($flag);
+                    
+                    if (!orderHasFlag($to_be_modified_orders[$orderIndex], $flag)) {
+                        $to_be_modified_orders[$orderIndex] .= ' ' . $flag;
+                        
+                        if (orderHasBothFlags($to_be_modified_orders[$orderIndex])) {
+                            // Move to modified.txt when both P and R flags are set
+                            $orderToMove = $to_be_modified_orders[$orderIndex];
+                            
+                            // Remove the 'p' and 'r' flags from the order before moving to modified
+                            $orderParts = explode(' ', trim($orderToMove));
+                            $cleanedOrder = array();
+                            foreach ($orderParts as $part) {
+                                if ($part !== 'p' && $part !== 'r') {
+                                    $cleanedOrder[] = $part;
+                                }
+                            }
+                            $cleanOrderString = implode(' ', $cleanedOrder);
+                            
+                            // Ensure proper newline handling for modified.txt
+                            $needsNewlineBefore = false;
+                            if (file_exists(MODIFIED_FILE)) {
+                                $existingContent = file_get_contents(MODIFIED_FILE);
+                                if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
+                                    $needsNewlineBefore = true;
+                                }
+                            }
+                            
+                            // Prepare the content to append to modified.txt
+                            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $cleanOrderString . "\n";
+                            
+                            // Append to modified.txt
+                            $result = file_put_contents(MODIFIED_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
+                            
+                            if ($result !== false) {
+                                // Remove from to_be_modified.txt
+                                array_splice($to_be_modified_orders, $orderIndex, 1);
+                                file_put_contents(TO_BE_MODIFIED_FILE, implode("\n", $to_be_modified_orders));
+                                echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber . '. Order moved to modified list (both P and R flags set)']);
+                            } else {
+                                echo json_encode(['success' => false, 'message' => 'Failed to move order to modified list']);
+                            }
+                        } else {
+                            file_put_contents(TO_BE_MODIFIED_FILE, implode("\n", $to_be_modified_orders));
+                            echo json_encode(['success' => true, 'message' => $flagName . ' added to row ' . $rowNumber]);
+                        }
+                    } else {
+                        echo json_encode(['success' => false, 'message' => $flagName . ' already exists in row ' . $rowNumber]);
+                    }
                 } else {
                     echo json_encode(['success' => false, 'message' => 'Invalid row number']);
                 }
@@ -990,20 +1132,17 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             // Create modification string: TICKET STOPLOSS TAKEPROFIT
             $modificationLine = $ticket . ' ' . $stopLoss . ' ' . $takeProfit;
             
-            // Define the modified.txt file path
-            $modifiedFile = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/modified.txt';
-            
             // Ensure proper newline handling
             $needsNewlineBefore = false;
-            if (file_exists($modifiedFile)) {
-                $existingContent = file_get_contents($modifiedFile);
+            if (file_exists(TO_BE_MODIFIED_FILE)) {
+                $existingContent = file_get_contents(TO_BE_MODIFIED_FILE);
                 if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
                     $needsNewlineBefore = true;
                 }
             }
             
             $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $modificationLine . "\n";
-            $result = file_put_contents($modifiedFile, $contentToAppend, FILE_APPEND | LOCK_EX);
+            $result = file_put_contents(TO_BE_MODIFIED_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
             
             if ($result !== false) {
                 echo json_encode(['success' => true, 'message' => 'Modification request for ticket ' . $ticket . ' added (SL: ' . $stopLoss . ', TP: ' . $takeProfit . ')']);
@@ -1125,6 +1264,20 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             </div>
         </div>
         
+        <?php $to_be_modified_orders = getToBeModifiedOrdersList(); ?>
+        <div id="to-be-modified-orders-section" <?php if (empty($to_be_modified_orders)): ?>style="display: none;"<?php endif; ?>>
+            <hr style="margin: 30px 0;">
+            
+            <h2 id="to-be-modified-orders-heading">Orders To Be Modified (<?php echo count($to_be_modified_orders); ?>)</h2>
+            <div id="to-be-modified-orders-list" class="content-section to-be-modified-orders">
+                <?php
+                echo generateToBeModifiedOrdersTable($to_be_modified_orders);
+                ?>
+            </div>
+            
+            <button onclick="refreshToBeModifiedOrdersList()" style="margin-top: 15px;">Refresh</button>
+        </div>
+	
         <?php $modified_orders = getModifiedOrdersList(); ?>
         <div id="modified-orders-section" <?php if (empty($modified_orders)): ?>style="display: none;"<?php endif; ?>>
             <hr style="margin: 30px 0;">
@@ -1138,7 +1291,6 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             <button onclick="refreshModifiedOrdersList()" style="margin-top: 15px;">Refresh</button>
         </div>
-	
         <hr style="margin: 30px 0;">
         
         <div class="drop-order-section">
@@ -1297,14 +1449,18 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 orders_list: { element: 'orders-list', action: 'orders_list', heading: 'orders-list-heading', prefix: 'Review List' },
                 approved_orders: { element: 'approved-orders-list', action: 'approved_orders_list', heading: 'approved-orders-heading', prefix: 'Approved Orders' },
                 modified_orders: { element: 'modified-orders-list', action: 'modified_orders_list', heading: 'modified-orders-heading', prefix: 'Modified Orders' },
+                to_be_modified_orders: { element: 'to-be-modified-orders-list', action: 'to_be_modified_orders_list', heading: 'to-be-modified-orders-heading', prefix: 'Orders To Be Modified' },
                 order_history_log: { element: 'order-history-log', action: 'order_history_log', text: true, onSuccess: 'refreshProfits' }
             },
             actions: {
                 add_p: { confirm: false, refresh: 'orders' },
                 add_r: { confirm: false, refresh: 'orders' },
+                add_p_to_be_modified: { confirm: false, refresh: 'to_be_modified' },
+                add_r_to_be_modified: { confirm: false, refresh: 'to_be_modified' },
                 cancel_order: { confirm: 'Are you sure you want to cancel and remove this order?', refresh: 'orders' },
                 remove_approved: { confirm: 'Are you sure you want to remove this approved order?', refresh: 'approved' },
-                remove_modified: { confirm: 'Are you sure you want to remove this modified order?', refresh: 'modified' }
+                remove_modified: { confirm: 'Are you sure you want to remove this modified order?', refresh: 'modified' },
+                remove_to_be_modified: { confirm: 'Are you sure you want to remove this order to be modified?', refresh: 'to_be_modified' }
             }
         };
 
@@ -1406,6 +1562,21 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                         utils.showError('modified-orders-list', error.message);
                     });
             },
+            toBeModifiedOrders: () => {
+                utils.request('index.php?ajax=to_be_modified_orders_list')
+                    .then(data => {
+                        const section = document.getElementById('to-be-modified-orders-section');
+                        section.style.display = data.count > 0 ? 'block' : 'none';
+                        if (data.count > 0) {
+                            utils.updateElement('to-be-modified-orders-list', data.table);
+                            utils.updateElement('to-be-modified-orders-heading', `Orders To Be Modified (${data.count})`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing to be modified orders:', error);
+                        utils.showError('to-be-modified-orders-list', error.message);
+                    });
+            },
             profits: () => {
                 Promise.all([
                     utils.request('index.php?ajax=total_net_profit'),
@@ -1426,6 +1597,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const refreshOrdersList = refresh.ordersList;
         const refreshApprovedOrdersList = refresh.approvedOrders;
         const refreshModifiedOrdersList = refresh.modifiedOrders;
+        const refreshToBeModifiedOrdersList = refresh.toBeModifiedOrders;
         const refreshOrderHistoryLog = refresh.orderHistoryLog;
 
         // Consolidated profit refresh
@@ -1444,6 +1616,10 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     if (data.success) {
                         if (config.refresh === 'approved') refresh.approvedOrders();
                         else if (config.refresh === 'modified') refresh.modifiedOrders();
+                        else if (config.refresh === 'to_be_modified') {
+                            refresh.toBeModifiedOrders();
+                            if (data.message.includes('moved to modified list')) refresh.modifiedOrders();
+                        }
                         else {
                             refresh.ordersList();
                             if (data.message.includes('moved to approved list')) refresh.approvedOrders();
@@ -1459,6 +1635,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const handleCancelAction = (row) => handleAction('cancel_order', row);
         const handleRemoveApprovedAction = (row) => handleAction('remove_approved', row);
         const handleRemoveModifiedAction = (row) => handleAction('remove_modified', row);
+        const handleRemoveToBeModifiedAction = (row) => handleAction('remove_to_be_modified', row);
+        const handlePToBeModifiedAction = (row) => handleAction('add_p_to_be_modified', row);
+        const handleRToBeModifiedAction = (row) => handleAction('add_r_to_be_modified', row);
 
         // Form and logs functions
         function addNewOrder(formData) {
@@ -1560,8 +1739,8 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                         ticketSelect.value = '';
                         document.getElementById('modify-stop-loss').value = '';
                         document.getElementById('modify-take-profit').value = '';
-                        // Refresh modified orders list to show the new modification
-                        refresh.modifiedOrders();
+                        // Refresh to be modified orders list to show the new modification
+                        refresh.toBeModifiedOrders();
                     }
                 })
                 .catch(error => alert('Error modifying order: ' + error.message));
