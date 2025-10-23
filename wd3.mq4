@@ -53,11 +53,8 @@ void LogMarketData()
       double eurusdAsk = MarketInfo("EURUSD", MODE_ASK);
       double eurusd = (eurusdBid + eurusdAsk) / 2;
       
-      string logData = "WD: " + version + " | " + 
-                      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
-                      "US100.f: " + DoubleToString(us100, 2) + " | " +
-                      "EURUSD: " + DoubleToString(eurusd, 5) + " | " +
-                      "Heartbeat: " + IntegerToString(hearbeat) + "\n";
+      string logData = "US100.f: " + DoubleToString(us100, 2) + " | " +
+                      "EURUSD: " + DoubleToString(eurusd, 5) + "\n";
       
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
