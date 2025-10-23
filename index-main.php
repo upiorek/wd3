@@ -131,6 +131,42 @@ function getOrdersLogData() {
 }
 
 /**
+ * Get precision for price formatting based on symbol
+ * @param string $symbol The trading symbol
+ * @return int Number of decimal places
+ */
+function getPricePrecision($symbol) {
+    // Define precision rules for different symbols
+    $precisionMap = array(
+        'US100.f' => 2,  // 2 digits for US100.f
+        'EURUSD' => 5,   // 5 digits for EURUSD
+    );
+    
+    // Return specific precision if symbol is in map, otherwise default to 2
+    return isset($precisionMap[$symbol]) ? $precisionMap[$symbol] : 2;
+}
+
+/**
+ * Format price value with symbol-specific precision
+ * @param float|string $value The value to format
+ * @param string $symbol The trading symbol (optional, defaults to 2 decimal places)
+ * @return string Formatted price
+ */
+function formatPrice($value, $symbol = '') {
+    if ($value === 'N/A' || $value === '' || $value === null) {
+        return 'N/A';
+    }
+    
+    // Handle zero values
+    if ($value === '0' || $value === 0 || floatval($value) === 0.0) {
+        return '0';
+    }
+    
+    $precision = empty($symbol) ? 2 : getPricePrecision($symbol);
+    return number_format(floatval($value), $precision);
+}
+
+/**
  * Check if order contains specific flag (p or r)
  * @param string $order The order string
  * @param string $flag The flag to check for ('p' or 'r')
@@ -239,9 +275,9 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
         $html .= '<td>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</td>';
-        $html .= '<td>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['openPrice']), 2)) . '</td>';
-        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['stopLoss']), 2)) . '</td>';
-        $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['takeProfit']), 2)) . '</td>';
+        $html .= '<td>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['openPrice'], $order['symbol'])) . '</td>';
+        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['stopLoss'], $order['symbol'])) . '</td>';
+        $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['takeProfit'], $order['symbol'])) . '</td>';
         $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</td>';
         $html .= '</tr>';
     }
@@ -280,9 +316,9 @@ function generateOrdersLogTable($ordersLog) {
         
         // Fourth row: Values (Open, SL, TP, Profit)
         $html .= '<div class="card-row values">';
-        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['openPrice']), 2)) . '</div>';
-        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['stopLoss']), 2)) . '</div>';
-        $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['takeProfit']), 2)) . '</div>';
+        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['openPrice'], $order['symbol'])) . '</div>';
+        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['stopLoss'], $order['symbol'])) . '</div>';
+        $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['takeProfit'], $order['symbol'])) . '</div>';
         $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</div>';
         $html .= '</div>';
         
@@ -334,13 +370,16 @@ function generateOrdersTable($orders, $showActions = false, $isApproved = false)
         $sl = isset($parts[4]) ? htmlspecialchars($parts[4]) : '';
         $tp = isset($parts[5]) ? htmlspecialchars($parts[5]) : '';
         
+        // Get symbol without HTML encoding for precision calculation
+        $rawSymbol = isset($parts[0]) ? $parts[0] : '';
+        
         $html .= '<tr>';
         $html .= '<td>' . $symbol . '</td>';
         $html .= '<td>' . $type . '</td>';
         $html .= '<td>' . $lots . '</td>';
-        $html .= '<td>' . $price . '</td>';
-        $html .= '<td>' . $sl . '</td>';
-        $html .= '<td>' . $tp . '</td>';
+        $html .= '<td>' . ($price === '0' ? '0' : formatPrice($price, $rawSymbol)) . '</td>';
+        $html .= '<td>' . ($sl === '0' ? '0' : formatPrice($sl, $rawSymbol)) . '</td>';
+        $html .= '<td>' . ($tp === '0' ? '0' : formatPrice($tp, $rawSymbol)) . '</td>';
         if ($showActions) {
             $html .= '<td>' . generateActionButtons($index + 1, $order, $isApproved) . '</td>';
         }
@@ -1323,7 +1362,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 <div class="form-row">
                     <div class="form-group">
                         <label for="symbol">Symbol *</label>
-                        <select id="symbol" name="symbol" required>
+                        <select id="symbol" name="symbol" required onchange="updateFormPrecision()">
                             <option value="">Select Symbol</option>
                             <option value="EURUSD">EURUSD</option>
                             <option value="US100.f">US100.f</option>
@@ -1485,6 +1524,30 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             showError: (element, message) => {
                 utils.updateElement(element, `<p style="color: #dc3545;">Error: ${message}</p>`);
+            },
+            
+            // Get step value for price inputs based on symbol
+            getPriceStep: (symbol) => {
+                switch(symbol) {
+                    case 'US100.f':
+                        return '0.01';  // 2 decimal places
+                    case 'EURUSD':
+                        return '0.00001';  // 5 decimal places
+                    default:
+                        return '0.00001';  // Default to 5 decimal places
+                }
+            },
+            
+            // Get placeholder text based on symbol
+            getPricePlaceholder: (symbol) => {
+                switch(symbol) {
+                    case 'US100.f':
+                        return '0.00';
+                    case 'EURUSD':
+                        return '0.00000';
+                    default:
+                        return '0.00000';
+                }
             }
         };
 
@@ -1640,6 +1703,45 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const handleRToBeModifiedAction = (row) => handleAction('add_r_to_be_modified', row);
 
         // Form and logs functions
+        function updateFormPrecision() {
+            const symbolSelect = document.getElementById('symbol');
+            const selectedSymbol = symbolSelect.value;
+            
+            // Update price input fields based on selected symbol
+            const priceField = document.getElementById('price');
+            const stopLossField = document.getElementById('stopLoss');
+            const takeProfitField = document.getElementById('takeProfit');
+            
+            const step = utils.getPriceStep(selectedSymbol);
+            const placeholder = utils.getPricePlaceholder(selectedSymbol);
+            
+            if (priceField) {
+                priceField.step = step;
+                priceField.placeholder = placeholder + ' (optional)';
+            }
+            if (stopLossField) {
+                stopLossField.step = step;
+                stopLossField.placeholder = placeholder + ' (optional)';
+            }
+            if (takeProfitField) {
+                takeProfitField.step = step;
+                takeProfitField.placeholder = placeholder + ' (optional)';
+            }
+            
+            // Also update modify order form fields
+            const modifyStopLossField = document.getElementById('modify-stop-loss');
+            const modifyTakeProfitField = document.getElementById('modify-take-profit');
+            
+            if (modifyStopLossField) {
+                modifyStopLossField.step = step;
+                modifyStopLossField.placeholder = placeholder;
+            }
+            if (modifyTakeProfitField) {
+                modifyTakeProfitField.step = step;
+                modifyTakeProfitField.placeholder = placeholder;
+            }
+        }
+
         function addNewOrder(formData) {
             utils.request('index.php', { method: 'POST', body: formData })
                 .then(data => {
@@ -1844,6 +1946,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     addNewOrder(formData);
                 });
             }
+            
+            // Initialize form precision
+            updateFormPrecision();
             
             // Auto-refresh
             setInterval(() => {
