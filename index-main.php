@@ -1283,7 +1283,26 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 </head>
 <body>
     <div class="container">
-        <h1>pora zarobić</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>pora zarobić?</h1>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <?php if (function_exists('getUserType') && function_exists('isLoggedIn') && isLoggedIn()): ?>
+                    <?php 
+                    $userType = getUserType();
+                    if ($userType): 
+                    ?>
+                        <span style="background: #e3f2fd; color: #1976d2; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: 500;">
+                            👤 <?php echo htmlspecialchars($userType); ?> logged in
+                        </span>
+                    <?php endif; ?>
+                    <a href="?logout=1" style="color: #dc3545; text-decoration: none; font-size: 14px; padding: 8px 16px; border: 1px solid #dc3545; border-radius: 4px; transition: all 0.3s ease;"
+                       onmouseover="this.style.backgroundColor='#dc3545'; this.style.color='white';"
+                       onmouseout="this.style.backgroundColor='transparent'; this.style.color='#dc3545';">
+                        🚪 Logout
+                    </a>
+                <?php endif; ?>
+            </div>
+        </div>
         
         <!-- Total Net Profit Display -->
         <div id="total-net-profit-display" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px; text-align: center;">
