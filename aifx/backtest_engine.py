@@ -1,6 +1,22 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import os
+import logging
+
+# Setup logger to write to same debug file used by strategy (support_charts/debug.txt)
+import sys
+main_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if len(sys.argv) > 0 else os.getcwd()
+logs_dir = os.path.join(main_dir, 'support_charts')
+os.makedirs(logs_dir, exist_ok=True)
+_log_path = os.path.join(logs_dir, 'debug.txt')
+_logger = logging.getLogger('aifx_debug')
+if not _logger.handlers:
+    _fh = logging.FileHandler(_log_path, mode='a', encoding='utf-8')
+    _fh.setLevel(logging.DEBUG)
+    _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
+    _logger.addHandler(_fh)
+_logger.setLevel(logging.DEBUG)
 
 class BacktestEngine:
     """
@@ -81,7 +97,7 @@ class BacktestEngine:
             if last_date is None or current_date != last_date:
                 days_processed += 1
                 if days_processed % 10 == 0:  # Co 10 dni
-                    print(f"  Przetworzono {days_processed} dni... ({current_date})", flush=True)
+                    _logger.debug(f"Przetworzono {days_processed} dni... ({current_date})")
                 last_date = current_date
             
             # Sprawdź czy jest aktywny trade

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import mplfinance as mpf
 import os
+import logging
 
 class SupportBreakoutStrategy:
     """
@@ -25,6 +26,22 @@ class SupportBreakoutStrategy:
         
         self.support_lines = {}  # Cache dla support lines
         self.daily_support_data = []  # Lista: {date, slope, intercept, lookback_start, lookback_end}
+        # Setup logger (file-based) - write debug logs to support_charts/debug.txt
+        # Use the directory of the invoking script (sys.argv[0]) so logs land in the same folder
+        # as generated charts even when scripts are executed from another cwd.
+        import sys
+        main_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if len(sys.argv) > 0 else os.getcwd()
+        logs_dir = os.path.join(main_dir, 'support_charts')
+        os.makedirs(logs_dir, exist_ok=True)
+        log_path = os.path.join(logs_dir, 'debug.txt')
+        self._logger = logging.getLogger('aifx_debug')
+        if not self._logger.handlers:
+            fh = logging.FileHandler(log_path, mode='a', encoding='utf-8')
+            fh.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+            fh.setFormatter(formatter)
+            self._logger.addHandler(fh)
+        self._logger.setLevel(logging.DEBUG)
         
     def calculate_indicators(self, df):
         """
@@ -89,7 +106,7 @@ class SupportBreakoutStrategy:
                     })
                     
                     if days_calculated % 10 == 0:
-                        print(f"  Przetworzono {days_calculated} dni... ({current_date})", flush=True)
+                        self._logger.debug(f"Przetworzono {days_calculated} dni... ({current_date})")
                 
                 # Użyj cache'owanej wartości dla tego dnia
                 support_slopes.append(cached_slope)
@@ -314,7 +331,7 @@ class SupportBreakoutStrategy:
                 sl_price = entry_price - self.risk_pips
                 tp_price = entry_price + self.reward_pips
                 
-                print(f"  🔔 BREAKOUT: {current['DateTime']} | Prev Close: {previous['Close']:.2f} <= Support: {support_price:.2f} < Close: {current['Close']:.2f}", flush=True)
+                self._logger.info(f"BREAKOUT: {current['DateTime']} | Prev Close: {previous['Close']:.2f} <= Support: {support_price:.2f} < Close: {current['Close']:.2f}")
                 
                 return {
                     'direction': 'long',
@@ -406,11 +423,11 @@ class SupportBreakoutStrategy:
         
         if len(df_plot) == 0:
             return
-        
+
         # Debug: ile dni na wykresie
         unique_dates = df_plot.index.date
         num_days = len(set(unique_dates))
-        print(f"    Wykres {date}: {num_days} dni (od {start_date_plot} do {end_date_plot}), {len(df_plot)} świeczek", flush=True)
+        self._logger.debug(f"Wykres {date}: {num_days} dni (od {start_date_plot} do {end_date_plot}), {len(df_plot)} świeczek")
         
         # Przygotuj dane dla mplfinance
         df_plot = df_plot.rename(columns={
@@ -478,17 +495,17 @@ class SupportBreakoutStrategy:
         # Filtruj vlines - usuwaj daty sprzed pierwszej świeczki
         vlines_dates = [d for d in vlines_dates if d >= df_plot.index[0]]
         
-        # DEBUG: ile świeczek w każdej sekcji dziennej
-        print(f"    DEBUG: Podział na dni dla wykresu {date}:")
+        # DEBUG: ile świeczek w każdej sekcji dziennej (log)
+        self._logger.debug(f"Podział na dni dla wykresu {date}:")
         for i, vline_date in enumerate(vlines_dates):
             if i < len(vlines_dates) - 1:
                 # Świeczki między tym a następnym vline
                 day_candles = df_plot[(df_plot.index >= vline_date) & (df_plot.index < vlines_dates[i+1])]
-                print(f"      {vline_date.strftime('%Y-%m-%d')}: {len(day_candles)} świeczek")
+                self._logger.debug(f"{vline_date.strftime('%Y-%m-%d')}: {len(day_candles)} świeczek")
             else:
                 # Ostatni dzień - do końca wykresu
                 day_candles = df_plot[df_plot.index >= vline_date]
-                print(f"      {vline_date.strftime('%Y-%m-%d')}: {len(day_candles)} świeczek (ostatni dzień)")
+                self._logger.debug(f"{vline_date.strftime('%Y-%m-%d')}: {len(day_candles)} świeczek (ostatni dzień)")
         
         fig, axes = mpf.plot(
             df_plot[['Open', 'High', 'Low', 'Close', 'Volume']],

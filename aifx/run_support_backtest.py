@@ -3,6 +3,7 @@ import sys
 import os
 import shutil
 import json
+import logging
 from support_breakout_strategy import SupportBreakoutStrategy
 from backtest_engine import BacktestEngine
 
@@ -180,6 +181,9 @@ def main():
         reward_ratio=options['reward_ratio'],
         retest_mode=options['retest_mode']
     )
+
+    # Get module-level logger (handler is configured inside BacktestEngine or Strategy)
+    logger = logging.getLogger('aifx_debug')
     
     engine = BacktestEngine(
         initial_capital=options['initial_capital'],
@@ -201,7 +205,8 @@ def main():
         print(f"\n📊 Generuję wykresy...")
         print(f"Daily support data entries: {len(strategy.daily_support_data)}")
         if strategy.daily_support_data:
-            print(f"Daty z support data: {[str(d['date']) for d in strategy.daily_support_data]}")
+            # Write dates list to debug log instead of printing to console
+            logger.debug(f"Daty z support data: {[str(d['date']) for d in strategy.daily_support_data]}")
         
         # Użyj PEŁNEGO df (nie filtrowanego) dla poprawnego obliczenia dni handlowych
         df_full = load_data(data_file)
