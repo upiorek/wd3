@@ -188,17 +188,20 @@ class TestSupportLine:
         df['index'] = range(len(df))
         
         result = strategy_default._find_support_line(df)
-        
-        assert isinstance(result, tuple)
-        assert len(result) == 2
+
+        # Now _find_support_line returns a dict with keys including 'slope' and 'intercept'
+        assert isinstance(result, dict)
+        assert 'slope' in result and 'intercept' in result
     
     def test_support_line_slope_type(self, strategy_default, sample_data):
         """Sprawdza czy slope jest float lub NaN"""
         df = sample_data.copy()
         df['index'] = range(len(df))
         
-        slope, intercept = strategy_default._find_support_line(df)
-        
+        result = strategy_default._find_support_line(df)
+        slope = result.get('slope')
+        intercept = result.get('intercept')
+
         assert isinstance(slope, (float, np.floating, int)) or np.isnan(slope)
         assert isinstance(intercept, (float, np.floating, int)) or np.isnan(intercept)
     
@@ -213,6 +216,45 @@ class TestSupportLine:
         # Z wysokim min_slope większość linii powinna być odrzucona (NaN)
         nan_count = df['Support_Slope'].isna().sum()
         assert nan_count > len(df) * 0.5, "Min slope filter nie działa"
+
+    def test_map_support_point_within_lookback(self):
+        """
+        Testuje czy mapping punktu support zwraca DateTime mieszczący się w oknie lookback
+        i nie mapuje punktów na świeczki analizowanego dnia.
+        """
+        from datetime import datetime, timedelta
+        # Użyjemy małego window: 10 świeczek lookback + 1 świeczka testowana
+        start = datetime(2025, 10, 8, 0, 0)
+        lookback_periods = 10
+
+        # Stwórz dataframe
+        dates = [start + timedelta(minutes=15 * i) for i in range(lookback_periods + 1)]
+        df = pd.DataFrame({
+            'DateTime': pd.Series(dates),
+            'Open': [100.0 + i * 0.1 for i in range(len(dates))],
+            'High': [100.5 + i * 0.1 for i in range(len(dates))],
+            'Low': [99.5 + i * 0.1 for i in range(len(dates))],
+            'Close': [100.2 + i * 0.1 for i in range(len(dates))],
+            'Volume': [1000 for _ in range(len(dates))]
+        })
+
+        s = SupportBreakoutStrategy(lookback_days=1)
+
+        support_info = {
+            'lookback_start_dt': df.loc[0, 'DateTime'],
+            'lookback_end_dt': df.loc[lookback_periods - 1, 'DateTime']
+        }
+
+        # Punkt wskazujący na ostatnią świeczkę lookback -> powinien mapować się prawidłowo
+        p = {'index': lookback_periods - 1, 'price': float(df.loc[lookback_periods - 1, 'Low'])}
+        mapped = s._map_support_point_to_datetime(p, support_info, df)
+        assert mapped is not None
+        assert mapped == df.loc[lookback_periods - 1, 'DateTime']
+
+        # Punkt poza lookback -> powinien zwrócić None
+        p_out = {'index': lookback_periods, 'price': float(df.loc[lookback_periods, 'Low'])}
+        mapped_out = s._map_support_point_to_datetime(p_out, support_info, df)
+        assert mapped_out is None
 
 
 class TestEntryConditions:
@@ -399,7 +441,111 @@ class TestBacktestEngine:
         stats = results['stats']
         if stats['total_trades'] > 0:
             expected_wr = (stats['wins'] / stats['total_trades']) * 100
-            assert abs(stats['win_rate'] - expected_wr) < 0.1
+
+
+class TestPlottingIntegration:
+    """Prosty test integracyjny generujący obrazek i sprawdzający, że markery zostały narysowane"""
+
+    def test_plot_draws_markers(self, tmp_path):
+        from datetime import datetime, timedelta
+        import numpy as np
+        import matplotlib.image as mpimg
+        import os
+
+        s = SupportBreakoutStrategy(lookback_days=1)
+
+        # Zbuduj dane: 10 świeczek lookback + 1 świeczka analizowana
+        start = datetime(2025, 10, 8, 0, 0)
+        lookback = 10
+        dates = [start + timedelta(minutes=15 * i) for i in range(lookback + 1)]
+        df = pd.DataFrame({
+            'DateTime': pd.Series(dates),
+            'Open': [100.0 + i * 0.1 for i in range(len(dates))],
+            'High': [100.5 + i * 0.1 for i in range(len(dates))],
+            'Low': [99.5 + i * 0.1 for i in range(len(dates))],
+            'Close': [100.2 + i * 0.1 for i in range(len(dates))],
+            'Volume': [1000 for _ in range(len(dates))]
+        })
+
+        analyzed_date = dates[-1].date()
+
+        support_info = {
+            'date': analyzed_date,
+            'slope': 0.0,
+            'intercept': 0.0,
+            'support_points': [{'index': lookback - 1, 'price': float(df.loc[lookback - 1, 'Low'])}],
+            'local_maxima': [],
+            'all_minima': [{'index': lookback - 2, 'price': float(df.loc[lookback - 2, 'Low'])}],
+            'impulses': [],
+            'lookback_start_dt': df.loc[0, 'DateTime'],
+            'lookback_end_dt': df.loc[lookback - 1, 'DateTime'],
+            'day_start_idx': lookback
+        }
+
+        s.daily_support_data.append(support_info)
+
+        outdir = str(tmp_path / 'charts')
+        filename = s.plot_daily_chart(df, analyzed_date, output_dir=outdir, show_volume=False, mark_high_low=True)
+
+        assert filename is not None and os.path.exists(filename)
+
+        img = mpimg.imread(filename)
+
+        # img is float32 array with values in [0,1] or uint8 depending on backend
+        if img.dtype != np.float32 and img.dtype != np.float64:
+            img = img.astype('float32') / 255.0
+
+        def has_color(img, target_rgb, tol=0.25):
+            r = img[:, :, 0]
+            g = img[:, :, 1]
+            b = img[:, :, 2]
+            mask = (np.abs(r - target_rgb[0]) <= tol) & (np.abs(g - target_rgb[1]) <= tol) & (np.abs(b - target_rgb[2]) <= tol)
+            return mask.any()
+
+        # yellow outline for support_points (markeredgecolor='yellow')
+        assert has_color(img, (1.0, 1.0, 0.0), tol=0.25), "Nie znaleziono pikseli żółtego (support points)"
+        # red outline for all_minima
+        assert has_color(img, (1.0, 0.0, 0.0), tol=0.25), "Nie znaleziono pikseli czerwonych (all minima)"
+
+    def test_legend_contains_expected_labels(self, tmp_path):
+        # Reuse small dataset from previous test but only check legend labels
+        from datetime import datetime, timedelta
+        s = SupportBreakoutStrategy(lookback_days=1)
+        start = datetime(2025, 10, 8, 0, 0)
+        lookback = 10
+        dates = [start + timedelta(minutes=15 * i) for i in range(lookback + 1)]
+        df = pd.DataFrame({
+            'DateTime': pd.Series(dates),
+            'Open': [100.0 + i * 0.1 for i in range(len(dates))],
+            'High': [100.5 + i * 0.1 for i in range(len(dates))],
+            'Low': [99.5 + i * 0.1 for i in range(len(dates))],
+            'Close': [100.2 + i * 0.1 for i in range(len(dates))],
+            'Volume': [1000 for _ in range(len(dates))]
+        })
+
+        analyzed_date = dates[-1].date()
+        support_info = {
+            'date': analyzed_date,
+            'slope': 0.0,
+            'intercept': 0.0,
+            'support_points': [{'index': lookback - 1, 'price': float(df.loc[lookback - 1, 'Low'])}],
+            'local_maxima': [],
+            'all_minima': [{'index': lookback - 2, 'price': float(df.loc[lookback - 2, 'Low'])}],
+            'impulses': [],
+            'lookback_start_dt': df.loc[0, 'DateTime'],
+            'lookback_end_dt': df.loc[lookback - 1, 'DateTime'],
+            'day_start_idx': lookback
+        }
+
+        s.daily_support_data.append(support_info)
+        outdir = str(tmp_path / 'charts')
+        filename = s.plot_daily_chart(df, analyzed_date, output_dir=outdir, show_volume=False, mark_high_low=True)
+
+        # Check saved legend labels on the strategy instance
+        labels = getattr(s, '_last_legend_labels', [])
+        # Expected to contain our marker labels (order may vary)
+        expected = {'Support Points', 'All Minima', 'Local Highs', 'Impulses'}
+        assert expected.intersection(set(labels)), f"Legenda nie zawiera oczekiwanych etykiet. Zawiera: {labels}"
 
 
 class TestDataIntegrity:

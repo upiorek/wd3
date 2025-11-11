@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import matplotlib
+# Use non-interactive backend for headless environments/tests
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import mplfinance as mpf
 import os
@@ -80,8 +83,14 @@ class SupportBreakoutStrategy:
                     lookback_df_indexed = lookback_df.copy()
                     lookback_df_indexed['index'] = range(len(lookback_df_indexed))
                     
-                    # Oblicz support line (zwraca slope/intercept dla indeksów 0-479)
-                    cached_slope, cached_intercept = self._find_support_line(lookback_df_indexed)
+                    # Oblicz support line (zwraca dict z slope/intercept i punktami użytymi do dopasowania)
+                    cached = self._find_support_line(lookback_df_indexed)
+                    cached_slope = cached.get('slope', 0)
+                    cached_intercept = cached.get('intercept', 0)
+                    cached_used_minima = cached.get('used_minima', [])
+                    cached_local_maxima = cached.get('local_maxima', [])
+                    cached_all_minima = cached.get('all_minima', [])
+                    cached_impulses = cached.get('impulses', [])
                     
                     # DEBUG: sprawdź kierunek linii
                     #if cached_slope > 0:
@@ -100,6 +109,10 @@ class SupportBreakoutStrategy:
                         'date': current_date,
                         'slope': cached_slope,
                         'intercept': cached_intercept,
+                        'support_points': cached_used_minima,  # lista minimów (DateTime, price)
+                        'local_maxima': cached_local_maxima,
+                        'all_minima': cached_all_minima,
+                        'impulses': cached_impulses,
                         'lookback_start_dt': lookback_start_dt,  # DateTime początku lookback
                         'lookback_end_dt': lookback_end_dt,       # DateTime końca lookback
                         'day_start_idx': idx  # Index początku tego dnia w df (dla backtestu)
@@ -183,6 +196,21 @@ class SupportBreakoutStrategy:
                 'price': lookback_df.iloc[min_idx]['Low'],
                 'type': 'minimum'
             })
+
+        # Zbierz wszystkie lokalne minima (do celów wizualnych)
+        all_minima = []
+        for min_idx in minima_idx:
+            all_minima.append({'index': int(lookback_df.iloc[min_idx]['index']), 'price': float(lookback_df.iloc[min_idx]['Low'])})
+
+        # Zbierz lokalne maksima (do celów wizualnych)
+        local_maxima = []
+        for max_idx in maxima_idx:
+            local_maxima.append({'index': int(lookback_df.iloc[max_idx]['index']), 'price': float(lookback_df.iloc[max_idx]['High'])})
+
+        # Zbierz impulsy jako punkty (do celów wizualnych)
+        impulse_points = []
+        for imp_idx in impulses:
+            impulse_points.append({'index': int(lookback_df.iloc[imp_idx]['index']), 'price': float(lookback_df.iloc[imp_idx]['Low'])})
         
         if len(points) < 2:
             # Fallback: użyj dwóch najniższych punktów
@@ -190,27 +218,28 @@ class SupportBreakoutStrategy:
             points = [{'index': lookback_df.index.get_loc(i), 
                       'price': lookback_df.loc[i, 'Low'],
                       'type': 'fallback'} for i in sorted_idx]
-        
+
         # 4. Znajdź najlepszą WZNOSZĄCĄ linię (bounce/breakout scoring jak w impulse_detector)
         best_slope = 0
         best_intercept = 0
         best_score = -1
-        
+        best_used_minima = []
+
         for i in range(len(points)):
             for j in range(i + 1, len(points)):
                 p1, p2 = points[i], points[j]
-                
+
                 if p2['index'] == p1['index']:
                     continue
-                
+
                 slope = (p2['price'] - p1['price']) / (p2['index'] - p1['index'])
-                
+
                 # WYMÓG: tylko wznoszące linie (slope >= min_slope) dla strategii long
                 if slope < self.min_slope:
                     continue
-                
+
                 intercept = p1['price'] - slope * p1['index']
-                
+
                 # Scoring: impulses mają wyższą wagę
                 score = 0
                 impulse_hits = 0
@@ -218,7 +247,7 @@ class SupportBreakoutStrategy:
                 for p in points:
                     expected_price = slope * p['index'] + intercept
                     dist = abs(p['price'] - expected_price)
-                    
+
                     if dist <= 30:  # tolerance
                         weight = 2 if p['type'] == 'impulse' else 1
                         score += weight
@@ -226,16 +255,32 @@ class SupportBreakoutStrategy:
                             impulse_hits += 1
                         elif p['type'] == 'minimum':
                             minima_hits += 1
-                
+
                 if score > best_score:
                     best_score = score
                     best_slope = slope
                     best_intercept = intercept
                     best_impulse_hits = impulse_hits
                     best_minima_hits = minima_hits
-        
+                    # Zapisz punkty, które trafiły w tolerancję (użyte do dopasowania)
+                    used = []
+                    for p in points:
+                        expected_price = slope * p['index'] + intercept
+                        dist = abs(p['price'] - expected_price)
+                        if dist <= 30:
+                            used.append({'index': p['index'], 'price': float(p['price'])})
+                    best_used_minima = used
+
         #print(f"  DEBUG: Najlepsza linia: {best_impulse_hits} impulsów, {best_minima_hits} minimów (score={best_score})")
-        return best_slope, best_intercept
+        return {
+            'slope': best_slope,
+            'intercept': best_intercept,
+            'score': best_score,
+            'used_minima': best_used_minima,
+            'local_maxima': local_maxima,
+            'all_minima': all_minima,
+            'impulses': impulse_points
+        }
     
     def _detect_impulses_full(self, df):
         """
@@ -303,6 +348,35 @@ class SupportBreakoutStrategy:
                 impulses.append(i)
         
         return impulses
+
+    def _map_support_point_to_datetime(self, point, support_info, df):
+        """
+        Zamienia punkt support (z kluczem 'index' będącym offsetem od lookback_start_dt)
+        na DateTime, ale TYLKO w obrębie okna lookback (lookback_start_dt .. lookback_end_dt).
+        Zwraca DateTime lub None jeśli mapping nie jest możliwy.
+        """
+        try:
+            lookback_start = support_info['lookback_start_dt']
+            lookback_end = support_info.get('lookback_end_dt', None)
+        except Exception:
+            return None
+
+        # Ogranicz kandydatów tylko do okna lookback
+        candidates = df[(df['DateTime'] >= lookback_start)]
+        if lookback_end is not None:
+            candidates = candidates[(candidates['DateTime'] <= lookback_end)]
+
+        # Upewnij się, że offset mieści się w oknie
+        try:
+            offset = int(point['index'])
+        except Exception:
+            return None
+
+        if offset < 0 or offset >= len(candidates):
+            return None
+
+        # Zwróć DateTime tej świeczki
+        return candidates.iloc[offset]['DateTime']
     
     def should_enter(self, df, idx):
         """
@@ -377,7 +451,7 @@ class SupportBreakoutStrategy:
         
         return None
     
-    def plot_daily_chart(self, df, date, output_dir='support_charts', show_volume=True):
+    def plot_daily_chart(self, df, date, output_dir='support_charts', show_volume=True, mark_high_low=False):
         """
         Generuje wykres dla danego dnia z support line + zakres lookback
         Pokazuje zawsze 5 PEŁNYCH dni handlowych + analizowany dzień
@@ -442,8 +516,8 @@ class SupportBreakoutStrategy:
         slope = support_info['slope']
         intercept = support_info['intercept']
         
-        #print(f"  DEBUG: Support line params - slope={slope:.6f}, intercept={intercept:.2f}", flush=True)
-        #print(f"  DEBUG: Lookback range DateTime: {support_info['lookback_start_dt']} - {support_info['lookback_end_dt']}", flush=True)
+        self._logger.debug(f"  DEBUG: Support line params - slope={slope:.6f}, intercept={intercept:.2f}")
+        self._logger.debug(f"  DEBUG: Lookback range DateTime: {support_info['lookback_start_dt']} - {support_info['lookback_end_dt']}")
         
         # Support line została wyznaczona na lookback_df z indeksami 0 do (lookback_candles-1)
         # lookback_start_dt to DateTime pierwszej świeczki w oknie lookback (indeks 0 w lookback_df)
@@ -469,8 +543,67 @@ class SupportBreakoutStrategy:
         
         # Dodatkowe linie
         apds = [
-            mpf.make_addplot(df_plot['Support'], color='red', width=1.5, linestyle='--', label=f'Support ({self.lookback_days}d)')
+            mpf.make_addplot(df_plot['Support'], color='red', width=1.5, linestyle='--', label=f'Support ({self.lookback_days} days)')
         ]
+
+        # Optionally mark the exact minima used to fit the support line (and highs if desired)
+        if mark_high_low:
+            try:
+                # support_points stored earlier are in terms of lookback_df index and price
+                # Use helper _map_support_point_to_datetime to convert offsets to DateTime strictly inside lookback window
+                support_points = support_info.get('support_points', [])
+
+                # Build marker arrays aligned with df_plot index
+                used_min_markers = np.array([np.nan] * len(df_plot), dtype=float)   # minima użyte do dopasowania (yellow)
+                all_min_markers = np.array([np.nan] * len(df_plot), dtype=float)    # wszystkie lokalne minima (red)
+                exact_high_markers = np.array([np.nan] * len(df_plot), dtype=float) # lokalne maksima (green)
+                impulse_markers = np.array([np.nan] * len(df_plot), dtype=float)    # impulses (magenta)
+
+                # For each support point: map strictly within lookback window
+                lookback_start = support_info['lookback_start_dt']
+                for p in support_points:
+                    point_dt = self._map_support_point_to_datetime(p, support_info, df)
+                    if point_dt is None:
+                        # point lies outside lookback window — skip
+                        continue
+                    if point_dt in df_plot.index:
+                        plot_idx = df_plot.index.get_loc(point_dt)
+                        used_min_markers[plot_idx] = float(p['price'])
+
+                # exact highs
+                local_maxima = support_info.get('local_maxima', [])
+                if local_maxima:
+                    for hm in local_maxima:
+                        dt = self._map_support_point_to_datetime(hm, support_info, df)
+                        if dt is None:
+                            continue
+                        if dt in df_plot.index:
+                            idx_pos = df_plot.index.get_loc(dt)
+                            exact_high_markers[idx_pos] = float(hm['price'])
+
+                # all minima
+                all_minima = support_info.get('all_minima', [])
+                if all_minima:
+                    for mm in all_minima:
+                        dtm = self._map_support_point_to_datetime(mm, support_info, df)
+                        if dtm is None:
+                            continue
+                        if dtm in df_plot.index:
+                            idx_pos = df_plot.index.get_loc(dtm)
+                            all_min_markers[idx_pos] = float(mm['price'])
+
+                # impulses
+                impulse_pts = support_info.get('impulses', [])
+                if impulse_pts:
+                    for im in impulse_pts:
+                        dt_imp = self._map_support_point_to_datetime(im, support_info, df)
+                        if dt_imp is None:
+                            continue
+                        if dt_imp in df_plot.index:
+                            idx_pos = df_plot.index.get_loc(dt_imp)
+                            impulse_markers[idx_pos] = float(im['price'])
+            except Exception as e:
+                self._logger.debug(f'mark_high_low enabled but failed to place exact support points: {e}')
         
         # Oznacz breakouty
         breakouts = df_plot[df_plot.index.date == date]
@@ -488,7 +621,7 @@ class SupportBreakoutStrategy:
                             if idx in df_plot.index:
                                 plot_idx = df_plot.index.get_loc(idx)
                                 breakout_marker[plot_idx] = current['Close']
-                                apds.append(mpf.make_addplot(breakout_marker, type='scatter', markersize=100, marker='o', color='green', label='Breakout'))
+                                apds.append(mpf.make_addplot(breakout_marker, marker='o', markersize=100, mfc='none', mec='green', linestyle='None', label='Breakout'))
         
         # Wykres
         vlines_dates = df_plot.resample('D').first().index.tolist()
@@ -543,6 +676,50 @@ class SupportBreakoutStrategy:
         # Zapisz
         os.makedirs(output_dir, exist_ok=True)
         filename = f'{output_dir}/support_{date}.png'
+        # Before saving, draw hollow markers on top of mplfinance figure using axes[0].scatter
+        ax = axes[0]
+
+        def _scatter_from_array(arr, color, markersize, marker='o', hollow=True, label=None):
+            try:
+                arr_np = np.array(arr, dtype=float)
+            except Exception:
+                return
+            mask = ~np.isnan(arr_np)
+            if not mask.any():
+                return
+            x = np.where(mask)[0]
+            y = arr_np[mask]
+            s = max(8, markersize)  # basic size
+            if marker == 'x':
+                ax.scatter(x, y, s=s, c=color, marker='x', zorder=6, label=label)
+            else:
+                if hollow:
+                    ax.scatter(x, y, s=s, facecolors='none', edgecolors=color, linewidths=1.2, marker=marker, zorder=6, label=label)
+                else:
+                    ax.scatter(x, y, s=s, c=color, marker=marker, zorder=6, label=label)
+        if mark_high_low:
+            # Draw support points (yellow hollow)
+            _scatter_from_array(used_min_markers, 'yellow', 120, marker='o', hollow=True, label='Support Points')
+            # Draw all minima (red hollow)
+            _scatter_from_array(all_min_markers, 'red', 80, marker='o', hollow=True, label='All Minima')
+            # Draw local highs (green hollow)
+            _scatter_from_array(exact_high_markers, 'green', 120, marker='o', hollow=True, label='Local Highs')
+            # Draw impulses (magenta x)
+            _scatter_from_array(impulse_markers, 'magenta', 80, marker='x', hollow=False, label='Impulses')
+
+            # Ensure legend is present and remembered for tests
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                try:
+                    ax.legend(handles, labels, loc='lower right', fontsize=9)
+                except Exception:
+                    # ignore legend failures on some mpl backends
+                    pass
+            self._last_legend_labels = labels
+        else:
+            # No markers drawn
+            self._last_legend_labels = []
+
         fig.savefig(filename, dpi=150, bbox_inches='tight')
         plt.close(fig)
         

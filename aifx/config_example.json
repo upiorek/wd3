@@ -1,6 +1,6 @@
 {
   "_start_date": "data początkowa",
-  "start_date": "2025-10-10",
+  "start_date": "2025-10-01",
 
   "_end_date": "data końcowa",
   "end_date": "2025-10-20",
@@ -29,6 +29,9 @@
   "_show_volume": "pokaż wolumen na wykresach (true/false)",
   "show_volume": false,
   
+  "_mark_high_low": "oznacz lokalne H i L zielonymi kółkami na wykresie (true/false)",
+  "mark_high_low": true,
+
   "_generate_charts": "generuj wykresy PNG dla każdego dnia (true/false, wolniejsze dla długich okresów)",
   "generate_charts": true
 }

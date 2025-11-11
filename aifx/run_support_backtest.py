@@ -220,7 +220,13 @@ def main():
         charts_generated = 0
         
         for date in support_dates:
-            filename = strategy.plot_daily_chart(df_full, date, output_dir=charts_dir, show_volume=options['show_volume'])
+            filename = strategy.plot_daily_chart(
+                df_full,
+                date,
+                output_dir=charts_dir,
+                show_volume=options['show_volume'],
+                mark_high_low=options.get('mark_high_low', False)
+            )
             if filename:
                 charts_generated += 1
                 print(f"  ✓ {filename}")
