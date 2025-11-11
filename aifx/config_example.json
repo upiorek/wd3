@@ -1,0 +1,34 @@
+{
+  "_start_date": "data początkowa",
+  "start_date": "2025-10-10",
+
+  "_end_date": "data końcowa",
+  "end_date": "2025-10-20",
+
+  "_lookback_days": "liczba dni do wyznaczenia linii supportu (5 = ostatnie 5 dni handlowych)",
+  "lookback_days": 3,
+  
+  "_risk_pips": "Stop Loss w pipsach (50 = 50 punktów)",
+  "risk_pips": 50,
+  
+  "_reward_ratio": "stosunek zysku do ryzyka (3 = TP jest 3x dalej niż SL)",
+  "reward_ratio": 3,
+  
+  "_retest_mode": "tryb retestowania (false = wejście natychmiastowe, true = czeka na powrót do supportu)",
+  "retest_mode": false,
+  
+  "_initial_capital": "kapitał początkowy w USD",
+  "initial_capital": 10000,
+  
+  "_risk_per_trade_pct": "ryzyko na transakcję w % kapitału (2.0 = 2%)",
+  "risk_per_trade_pct": 2.0,
+  
+  "_min_slope": "minimalny slope linii supportu (0.2 = ~96 pips na 5 dni, odrzuca płaskie linie)",
+  "min_slope": 0.3,
+  
+  "_show_volume": "pokaż wolumen na wykresach (true/false)",
+  "show_volume": false,
+  
+  "_generate_charts": "generuj wykresy PNG dla każdego dnia (true/false, wolniejsze dla długich okresów)",
+  "generate_charts": true
+}
