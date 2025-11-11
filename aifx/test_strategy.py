@@ -5,6 +5,7 @@ Uruchomienie: pytest test_strategy.py -v
 import pytest
 import pandas as pd
 import numpy as np
+import os
 from datetime import datetime, timedelta
 from support_breakout_strategy import SupportBreakoutStrategy
 from backtest_engine import BacktestEngine
@@ -667,6 +668,110 @@ class TestPerformance:
         
         # Powinno zająć <5 sekund dla tygodnia danych
         assert elapsed < 5.0, f"Obliczenia trwały {elapsed:.2f}s (>5s)"
+
+
+# ===== TOP 5 PRIORITY TESTS =====
+
+class TestEdgeCases:
+    """Testy przypadków brzegowych i walidacji"""
+    
+    def test_support_line_returns_all_expected_keys(self):
+        """Sprawdza czy _find_support_line zwraca wszystkie oczekiwane klucze"""
+        s = SupportBreakoutStrategy(lookback_days=1)
+        dates = pd.date_range('2025-01-01', periods=100, freq='15min')
+        df = pd.DataFrame({
+            'DateTime': dates,
+            'Open': [100.0] * 100,
+            'High': [101.0] * 100,
+            'Low': [99.0] * 100,
+            'Close': [100.5] * 100,
+            'Volume': [1000] * 100,
+            'index': range(100)
+        })
+        
+        result = s._find_support_line(df)
+        
+        # Sprawdź wszystkie wymagane klucze
+        required_keys = ['slope', 'intercept', 'score', 'used_minima', 
+                        'local_maxima', 'all_minima', 'impulses']
+        for key in required_keys:
+            assert key in result, f"Brak klucza {key} w wyniku _find_support_line"
+    
+    def test_support_line_with_insufficient_data(self):
+        """Test z bardzo małą ilością danych (< 50 świeczek dla impulsów)"""
+        s = SupportBreakoutStrategy(lookback_days=1)
+        dates = pd.date_range('2025-01-01', periods=20, freq='15min')
+        df = pd.DataFrame({
+            'DateTime': dates,
+            'Open': [100.0] * 20,
+            'High': [101.0] * 20,
+            'Low': [99.0] * 20,
+            'Close': [100.5] * 20,
+            'Volume': [1000] * 20,
+            'index': range(20)
+        })
+        
+        result = s._find_support_line(df)
+        
+        # Powinien zwrócić dict mimo małej ilości danych (fallback)
+        assert isinstance(result, dict)
+        assert 'slope' in result and 'intercept' in result
+    
+    def test_daily_support_data_structure(self, strategy_default, sample_data):
+        """Weryfikuje strukturę zapisywanych daily_support_data"""
+        df = strategy_default.calculate_indicators(sample_data.copy())
+        
+        # Sprawdź czy są jakieś wpisy
+        assert len(strategy_default.daily_support_data) > 0
+        
+        # Sprawdź strukturę pierwszego wpisu
+        entry = strategy_default.daily_support_data[0]
+        required_keys = ['date', 'slope', 'intercept', 'support_points', 
+                        'local_maxima', 'all_minima', 'impulses',
+                        'lookback_start_dt', 'lookback_end_dt', 'day_start_idx']
+        
+        for key in required_keys:
+            assert key in entry, f"Brak klucza {key} w daily_support_data"
+        
+        # Sprawdź typy danych
+        assert isinstance(entry['support_points'], list)
+        assert isinstance(entry['all_minima'], list)
+        assert isinstance(entry['local_maxima'], list)
+        assert isinstance(entry['impulses'], list)
+    
+    def test_plot_with_no_support_info(self, tmp_path):
+        """Test wykres gdy brak danych support dla danego dnia"""
+        s = SupportBreakoutStrategy(lookback_days=1)
+        dates = pd.date_range('2025-01-01', periods=50, freq='15min')
+        df = pd.DataFrame({
+            'DateTime': dates,
+            'Open': [100.0] * 50,
+            'High': [101.0] * 50,
+            'Low': [99.0] * 50,
+            'Close': [100.5] * 50,
+            'Volume': [1000] * 50
+        })
+        
+        # Wywołaj plot_daily_chart dla dnia, którego nie ma w daily_support_data
+        from datetime import date
+        test_date = date(2025, 1, 1)
+        
+        outdir = str(tmp_path / 'charts')
+        filename = s.plot_daily_chart(df, test_date, output_dir=outdir, show_volume=False)
+        
+        # Powinien zwrócić None lub obsłużyć brak danych bez crashu
+        assert filename is None or not os.path.exists(filename)
+    
+    def test_invalid_lookback_days(self):
+        """Test walidacji dla nieprawidłowych parametrów"""
+        # Strategia powinna działać nawet z lookback_days=1 (minimalny)
+        s = SupportBreakoutStrategy(lookback_days=1)
+        assert s.lookback_days == 1
+        assert s.lookback_candles == 96
+        
+        # lookback_days=0 technicalnie możliwe ale bez sensu
+        s_zero = SupportBreakoutStrategy(lookback_days=0)
+        assert s_zero.lookback_candles == 0
 
 
 # ===== HELPER DO URUCHOMIENIA =====
