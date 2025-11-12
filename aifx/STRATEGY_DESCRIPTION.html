@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategia Multi-Level Impulse Breakout</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        
+        h4 {
+            color: #666;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+        
+        .toc {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        
+        .toc ol {
+            margin-left: 20px;
+        }
+        
+        .toc a {
+            color: #2980b9;
+            text-decoration: none;
+        }
+        
+        .toc a:hover {
+            text-decoration: underline;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 20px 0;
+        }
+        
+        .warning {
+            background: #f8d7da;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            margin: 20px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            padding: 15px;
+            border-left: 4px solid #28a745;
+            margin: 20px 0;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            padding: 15px;
+            border-left: 4px solid #17a2b8;
+            margin: 20px 0;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .diagram {
+            margin: 30px 0;
+            padding: 20px;
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        svg {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .criteria-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .criteria-item {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 3px solid #3498db;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: #34495e;
+            color: white;
+        }
+        
+        tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .checkbox-list input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #777;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Strategia Multi-Level Impulse Breakout</h1>
+        
+        <div class="toc">
+            <h3>Spis treści</h3>
+            <ol>
+                <li><a href="#podstawowe-zalozenia">Podstawowe założenia</a></li>
+                <li><a href="#linie-wsparcia">Linie wsparcia i oporu</a></li>
+                <li><a href="#symetryczne-kanaly">Symetryczne kanały i trójkąty</a></li>
+                <li><a href="#hierarchia-poziomow">Hierarchia poziomów (rzędy)</a></li>
+                <li><a href="#psychologia-rynku">Psychologia rynku i impulsy</a></li>
+                <li><a href="#zarzadzanie-pozycja">Zarządzanie pozycją</a></li>
+                <li><a href="#przyklady-graficzne">Przykłady graficzne</a></li>
+                <li><a href="#podsumowanie">Podsumowanie</a></li>
+            </ol>
+        </div>
+
+        <hr>
+
+        <h2 id="podstawowe-zalozenia">Podstawowe założenia</h2>
+        
+        <p>Strategia opiera się na trzech filarach:</p>
+        
+        <ol>
+            <li><strong>Impulsy jako wyznaczniki kluczowych poziomów</strong> - miejsca gdzie rynek pokazał prawdziwą siłę i zaangażowanie</li>
+            <li><strong>Geometria price action</strong> - symetryczne kanały i trójkąty jako wzorce konsolidacji i wybicia</li>
+            <li><strong>Hierarchia poziomów</strong> - zagnieżdżone struktury o rosnącej sile psychologicznej</li>
+        </ol>
+
+        <h3>Czym są impulsy?</h3>
+        
+        <p>Impulsy to momenty ekstremalnego zaangażowania rynku, wykrywane przez 7 kryteriów:</p>
+        
+        <div class="criteria-list">
+            <div class="criteria-item">
+                <strong>1. Wysoka objętość</strong><br>
+                Wolumen powyżej średniej
+            </div>
+            <div class="criteria-item">
+                <strong>2. Duży spread świecy</strong><br>
+                High - Low znaczący
+            </div>
+            <div class="criteria-item">
+                <strong>3. Silne momentum</strong><br>
+                Duża zmiana Close względem poprzedniej świecy
+            </div>
+            <div class="criteria-item">
+                <strong>4. Dominacja kierunku</strong><br>
+                Mały knot, długi korpus
+            </div>
+            <div class="criteria-item">
+                <strong>5. Przebicie ekstremów</strong><br>
+                Lokalnych High/Low
+            </div>
+            <div class="criteria-item">
+                <strong>6. Szybkość ruchu</strong><br>
+                Delta ceny w jednostce czasu
+            </div>
+            <div class="criteria-item">
+                <strong>7. Ciągłość kierunku</strong><br>
+                Brak odwrotu w kolejnych świecach
+            </div>
+        </div>
+
+        <div class="info">
+            <strong>Ważne punkty (Key Points):</strong>
+            <ul>
+                <li><strong>Impulsy (I)</strong> - świece spełniające 7 kryteriów</li>
+                <li><strong>High/Low (H/L)</strong> - lokalne ekstrema</li>
+                <li><strong>Luki cenowe (gaps)</strong> - miejsca skokowej zmiany ceny</li>
+            </ul>
+        </div>
+
+        <hr>
+
+        <h2 id="linie-wsparcia">Linie wsparcia i oporu</h2>
+
+        <h3>Wyznaczanie linii</h3>
+        
+        <p>Linie wsparcia (support) i oporu (resistance) są dopasowywane do <strong>ważnych punktów</strong>:</p>
+        
+        <ul>
+            <li>Impulsy (waga 2x)</li>
+            <li>Lokalne minima/maxima</li>
+            <li>Punkty rozpoczęcia/zakończenia luk cenowych</li>
+        </ul>
+
+        <h3>Scoring linii</h3>
+        
+        <p>Linia jest tym silniejsza, im:</p>
+        <ul>
+            <li>Więcej ważnych punktów przechodzi (liczba "touchów")</li>
+            <li>Większa waga punktów (impulsy > lokalne ekstrema > pozostałe minima)</li>
+            <li>Bardziej aktualna (nowsze punkty > starsze)</li>
+        </ul>
+        
+        <div class="highlight">
+            <code>Score = Σ(waga_punktu × współczynnik_czasowy)</code>
+        </div>
+
+        <h3>Kluczowe cechy dobrej linii</h3>
+        
+        <ol>
+            <li><strong>Maksymalna liczba touchów</strong> - potwierdza psychologiczną ważność poziomu</li>
+            <li><strong>Właściwe nachylenie</strong> - odzwierciedla kierunek trendu</li>
+            <li><strong>Historyczne potwierdzenie</strong> - poziom wielokrotnie testowany w przeszłości</li>
+        </ol>
+
+        <hr>
+
+        <h2 id="symetryczne-kanaly">Symetryczne kanały i trójkąty</h2>
+
+        <h3>Zasada symetryczności</h3>
+        
+        <p>Dla danej sytuacji rynkowej:</p>
+        <ul>
+            <li><strong>Wszystkie linie w górę (resistance) są równoległe między sobą</strong></li>
+            <li><strong>Wszystkie linie w dół (support) są równoległe między sobą</strong></li>
+            <li><strong>Nachylenie support i resistance:</strong> symetrycznie odbite<br>
+                <code>slope_resistance = -slope_support</code> (czyli <code>|slope_resistance| = |slope_support|</code> ale przeciwne znaki)</li>
+        </ul>
+
+        <h3>Typy struktur</h3>
+
+        <h4>1. Symetryczny trójkąt zbieżny (Converging Triangle)</h4>
+        
+        <div class="diagram">
+            <svg viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="600" height="300" fill="#fafafa"/>
+                
+                <!-- Grid -->
+                <line x1="0" y1="150" x2="600" y2="150" stroke="#ddd" stroke-width="1" stroke-dasharray="5,5"/>
+                
+                <!-- Resistance line (opadająca) -->
+                <line x1="50" y1="50" x2="550" y2="150" stroke="#e74c3c" stroke-width="3"/>
+                <text x="560" y="155" fill="#e74c3c" font-size="14" font-weight="bold">R</text>
+                
+                <!-- Support line (wznosząca) -->
+                <line x1="50" y1="250" x2="550" y2="150" stroke="#27ae60" stroke-width="3"/>
+                <text x="560" y="255" fill="#27ae60" font-size="14" font-weight="bold">S</text>
+                
+                <!-- Price action (zigzag w trójkącie) -->
+                <polyline points="100,200 150,100 200,180 250,120 300,160 350,140 400,150" 
+                          fill="none" stroke="#3498db" stroke-width="2"/>
+                
+                <!-- Apex point -->
+                <circle cx="550" cy="150" r="5" fill="#f39c12"/>
+                <text x="555" y="145" fill="#f39c12" font-size="12" font-weight="bold">APEX</text>
+                
+                <!-- Labels -->
+                <text x="50" y="30" fill="#666" font-size="12">Szerokość kanału → maleje</text>
+                <text x="250" y="290" fill="#666" font-size="14" font-weight="bold">|slope_R| = |slope_S|</text>
+            </svg>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ PUŁAPKA - NIE TRADUJ!</strong>
+            <p><strong>Dlaczego zbieżny jest niebezpieczny:</strong></p>
+            <ul>
+                <li><strong>Im bliżej apex, tym więcej fakeoutów</strong> - linie coraz bliżej siebie, każdy mały ruch "dotyka" linii</li>
+                <li><strong>Kompresja volatilności = nieprzewidywalność</strong> - ciśnienie rośnie, ale kierunku nie znasz</li>
+                <li><strong>Słaby impuls przy wybiciu</strong> - brak przestrzeni = słabe momentum = łatwy reversal</li>
+                <li><strong>Niskie R:R</strong> - SL musi być duży (linie blisko), TP niepewny</li>
+                <li><strong>Po apex → transformacja w rozszerzający</strong> - jeśli nie wybił wcześniej, dostaniesz chaos</li>
+            </ul>
+            <p><strong>ZALECENIE: Nie traduj zbieżnego, czekaj aż przekształci się w rozszerzający</strong></p>
+        </div>
+
+        <h4>2. Rozszerzający się trójkąt (Broadening/Expanding Triangle)</h4>
+        
+        <div class="diagram">
+            <svg viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="600" height="300" fill="#fafafa"/>
+                
+                <!-- Grid -->
+                <line x1="0" y1="150" x2="600" y2="150" stroke="#ddd" stroke-width="1" stroke-dasharray="5,5"/>
+                
+                <!-- Resistance line (wznosząca) -->
+                <line x1="50" y1="150" x2="550" y2="50" stroke="#e74c3c" stroke-width="3"/>
+                <text x="560" y="55" fill="#e74c3c" font-size="14" font-weight="bold">R</text>
+                
+                <!-- Support line (opadająca) -->
+                <line x1="50" y1="150" x2="550" y2="250" stroke="#27ae60" stroke-width="3"/>
+                <text x="560" y="255" fill="#27ae60" font-size="14" font-weight="bold">S</text>
+                
+                <!-- Price action (rosnące huśtawki) -->
+                <polyline points="100,150 150,120 200,180 250,90 300,210 350,70 400,230" 
+                          fill="none" stroke="#3498db" stroke-width="2"/>
+                
+                <!-- Volatility indicator -->
+                <path d="M 450 100 Q 500 150 450 200" fill="none" stroke="#f39c12" stroke-width="2" stroke-dasharray="3,3"/>
+                <text x="505" y="155" fill="#f39c12" font-size="12" font-weight="bold">Volatilność ↑</text>
+                
+                <!-- Labels -->
+                <text x="50" y="30" fill="#666" font-size="12">Szerokość kanału → rośnie</text>
+                <text x="250" y="290" fill="#666" font-size="14" font-weight="bold">|slope_R| = |slope_S|</text>
+            </svg>
+        </div>
+
+        <div class="success">
+            <strong>✓ GŁÓWNY SETUP STRATEGII - traduj ostrożnie!</strong>
+            <p><strong>Dlaczego rozszerzający jest lepszy do tradowania:</strong></p>
+            <ul>
+                <li><strong>Volatilność już wysoka</strong> - rynek aktywny, kierunek się określa</li>
+                <li><strong>Breakout ma przestrzeń</strong> - szeroki kanał = silny impuls, dobre momentum</li>
+                <li><strong>Po przejściu apex zbieżnego</strong> - ciśnienie zostało uwolnione, teraz rynek "decyduje"</li>
+                <li><strong>Lepsze R:R</strong> - większa przestrzeń na ruch, wyraźniejsze cele (poziomy 2, 3)</li>
+            </ul>
+        </div>
+
+        <div class="info">
+            <strong>Warunki wejścia w rozszerzającym (WSZYSTKIE muszą być spełnione):</strong>
+            <ol>
+                <li><strong>Zamknięcie świecy poza linią</strong> (nie tylko knot/cień)</li>
+                <li><strong>Wolumen +50% lub więcej</strong> powyżej średniej</li>
+                <li><strong>Impuls zgodny z 7 kryteriami</strong> (spread, momentum, dominacja kierunku, etc.)</li>
+                <li><strong>Breakout zgodny z trendem</strong> (jeśli support rośnie → breakout resistance w górę)</li>
+                <li><strong>Brak conflictu z poziomem wyższego rzędu</strong> (poziom 2/3 nie blokuje ruchu)</li>
+            </ol>
+            
+            <p><strong>SL Management:</strong></p>
+            <ul>
+                <li>SL większy niż zwykle (15-20 pips zamiast 5-10) - wysoka volatilność</li>
+                <li>Jeśli brak potwierdzenia → <strong>pomiń setup całkowicie</strong></li>
+                <li>Jeśli wahasz się → <strong>nie wchodź</strong> (rozszerzający wybacza mniej błędów)</li>
+            </ul>
+        </div>
+
+        <hr>
+
+        <h2 id="hierarchia-poziomow">Hierarchia poziomów (rzędy)</h2>
+
+        <h3>Struktura równoodległych poziomów</h3>
+        
+        <p>Strategia identyfikuje <strong>zagnieżdżone poziomy</strong> o różnej skali czasowej:</p>
+
+        <div class="info">
+            <strong>Kluczowa obserwacja:</strong> Odległość między poszczególnymi równoległymi liniami wyższych rzędów jest często stała (struktura <em>równoodległa</em>, nie prawdziwie fraktalna):
+            <ul>
+                <li>Odległość R1 → R2 ≈ Odległość R2 → R3 ≈ const</li>
+                <li>Odległość S1 → S2 ≈ Odległość S2 → S3 ≈ const</li>
+                <li>Ta równomierność pozwala <strong>przewidywać kolejne cele ruchu</strong> przez ekstrapolację</li>
+                <li><strong>To nie jest prawdziwa fraktalność</strong> (brak samopodobieństwa), ale regularny "stepping" poziomów</li>
+            </ul>
+        </div>
+
+        <div class="highlight">
+            <strong>Uwaga o nachyleniu linii i czasie:</strong>
+            <p>Linie zawsze mają nachylenie (slope ≠ 0), więc <strong>wraz z upływem czasu oczekiwana cena zmienia się</strong>:</p>
+            <ul>
+                <li>Jeśli trend wzrostowy (slope > 0): im dalej w czasie, tym wyższe poziomy cenowe dla wszystkich rzędów</li>
+                <li>Jeśli trend spadkowy (slope < 0): im dalej w czasie, tym niższe poziomy cenowe</li>
+                <li><strong>Odległość "d" to przesunięcie pionowe</strong> (w cenę), ale rzeczywista cena zależy od czasu (pozycja na linii)</li>
+                <li>To wyjaśnia dlaczego inwestorzy mają "coraz większą chęć na ruch" - z czasem oczekiwania cenowe rosną</li>
+            </ul>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Poziom</th>
+                    <th>Odległość od poziomu 1</th>
+                    <th>Charakterystyka</th>
+                    <th>Rola</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Poziom 1</strong></td>
+                    <td>0 (bazowy)</td>
+                    <td>Najnowsze impulsy i H/L<br>Podstawowa szerokość kanału</td>
+                    <td>Podstawowy setup</td>
+                </tr>
+                <tr>
+                    <td><strong>Poziom 2</strong></td>
+                    <td>d<sub>1</sub></td>
+                    <td>Linie równoległe do poziomu 1,<br>przesunięte o stałą odległość d<sub>1</sub></td>
+                    <td><strong>Cel ruchu po wybiciu poziomu 1</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Poziom 3+</strong></td>
+                    <td>2×d<sub>1</sub>, 3×d<sub>1</sub>, ...</td>
+                    <td>Linie przesunięte o d<sub>2</sub> ≈ d<sub>1</sub><br>(równomierne stepping)</td>
+                    <td><strong>Target dla "heaven scenario"</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="diagram">
+            <svg viewBox="0 0 700 500" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="700" height="500" fill="#fafafa"/>
+                
+                <!-- Time axis -->
+                <line x1="50" y1="480" x2="650" y2="480" stroke="#999" stroke-width="1" stroke-dasharray="2,2"/>
+                <text x="50" y="495" fill="#666" font-size="10">t0</text>
+                <text x="350" y="495" fill="#666" font-size="10">Czas →</text>
+                <text x="650" y="495" fill="#666" font-size="10">t+n</text>
+                
+                <!-- Resistance levels (slope > 0, wzrostowy trend) -->
+                <!-- R3 -->
+                <line x1="50" y1="100" x2="650" y2="50" stroke="#8e44ad" stroke-width="4" stroke-dasharray="8,4"/>
+                <text x="10" y="105" fill="#8e44ad" font-size="12" font-weight="bold">R3</text>
+                <text x="655" y="55" fill="#8e44ad" font-size="10">3d</text>
+                
+                <!-- R2 -->
+                <line x1="50" y1="160" x2="650" y2="110" stroke="#e67e22" stroke-width="3" stroke-dasharray="6,3"/>
+                <text x="10" y="165" fill="#e67e22" font-size="12" font-weight="bold">R2</text>
+                <text x="655" y="115" fill="#e67e22" font-size="10">2d</text>
+                
+                <!-- R1 -->
+                <line x1="50" y1="220" x2="650" y2="170" stroke="#e74c3c" stroke-width="2"/>
+                <text x="10" y="225" fill="#e74c3c" font-size="12" font-weight="bold">R1</text>
+                <text x="655" y="175" fill="#e74c3c" font-size="10">d</text>
+                
+                <!-- Poziom bazowy (cena środkowa) -->
+                <line x1="50" y1="280" x2="650" y2="230" stroke="#3498db" stroke-width="1" stroke-dasharray="5,5"/>
+                <text x="655" y="235" fill="#3498db" font-size="10">0</text>
+                
+                <!-- Support levels (slope > 0, równoległe do resistance) -->
+                <!-- S1 -->
+                <line x1="50" y1="340" x2="650" y2="290" stroke="#27ae60" stroke-width="2"/>
+                <text x="10" y="345" fill="#27ae60" font-size="12" font-weight="bold">S1</text>
+                <text x="655" y="295" fill="#27ae60" font-size="10">-d</text>
+                
+                <!-- S2 -->
+                <line x1="50" y1="400" x2="650" y2="350" stroke="#16a085" stroke-width="3" stroke-dasharray="6,3"/>
+                <text x="10" y="405" fill="#16a085" font-size="12" font-weight="bold">S2</text>
+                <text x="655" y="355" fill="#16a085" font-size="10">-2d</text>
+                
+                <!-- S3 -->
+                <line x1="50" y1="460" x2="650" y2="410" stroke="#2c3e50" stroke-width="4" stroke-dasharray="8,4"/>
+                <text x="10" y="465" fill="#2c3e50" font-size="12" font-weight="bold">S3</text>
+                <text x="655" y="415" fill="#2c3e50" font-size="10">-3d</text>
+                
+                <!-- Vertical distance indicators (d) -->
+                <line x1="670" y1="170" x2="670" y2="230" stroke="#f39c12" stroke-width="2" marker-start="url(#arrowtop)" marker-end="url(#arrowbottom)"/>
+                <text x="675" y="205" fill="#f39c12" font-size="12" font-weight="bold">d₁</text>
+                
+                <line x1="670" y1="110" x2="670" y2="170" stroke="#f39c12" stroke-width="2" marker-start="url(#arrowtop)" marker-end="url(#arrowbottom)"/>
+                <text x="675" y="145" fill="#f39c12" font-size="12" font-weight="bold">d₁</text>
+                
+                <!-- Breakout arrow -->
+                <path d="M 350 220 L 350 140" fill="none" stroke="#2ecc71" stroke-width="3" marker-end="url(#arrowhead)"/>
+                <text x="360" y="180" fill="#2ecc71" font-size="14" font-weight="bold">BREAKOUT!</text>
+                
+                <!-- Note about slope -->
+                <text x="50" y="20" fill="#666" font-size="11">Trend wzrostowy: slope > 0 (wszystkie linie równoległe, nachylone w górę)</text>
+                <text x="50" y="35" fill="#666" font-size="11">Odległość pionowa d₁ stała, ale cena rośnie z czasem →</text>
+                
+                <!-- Arrow markers -->
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+                        <polygon points="0 0, 10 5, 0 10" fill="#2ecc71"/>
+                    </marker>
+                    <marker id="arrowtop" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                        <polygon points="0 8, 4 0, 8 8" fill="#f39c12"/>
+                    </marker>
+                    <marker id="arrowbottom" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                        <polygon points="0 0, 4 8, 8 0" fill="#f39c12"/>
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+
+        <h3>Scenariusze po wybiciu</h3>
+        
+        <ol>
+            <li><strong>Normalne wybicie:</strong> Cena dociera do linii poziomu 2, tam zatrzymuje się (opór/wsparcie wyższego rzędu)</li>
+            <li><strong>Silne wybicie:</strong> Cena przebija poziom 2 i dociera do poziomu 3</li>
+            <li><strong>Heaven/Hell scenario:</strong> Cena przebija wszystkie znane poziomy (ekstremalny news, panika) - rzadkie, ale bardzo zyskowne</li>
+        </ol>
+
+        <hr>
+
+        <h2 id="psychologia-rynku">Psychologia rynku i impulsy</h2>
+
+        <h3>Stop Loss clustery</h3>
+        
+        <p>Strategia celuje w <strong>psychologiczne opory</strong> - miejsca koncentracji zleceń SL:</p>
+
+        <div class="diagram">
+            <svg viewBox="0 0 700 400" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="700" height="400" fill="#fafafa"/>
+                
+                <!-- Time axis -->
+                <line x1="50" y1="390" x2="650" y2="390" stroke="#999" stroke-width="1" stroke-dasharray="2,2"/>
+                <text x="50" y="398" fill="#666" font-size="9">t0</text>
+                <text x="650" y="398" fill="#666" font-size="9">t+n</text>
+                
+                <!-- R2 (nachylona w górę) -->
+                <line x1="50" y1="100" x2="650" y2="60" stroke="#e74c3c" stroke-width="3" stroke-dasharray="6,3"/>
+                <text x="10" y="95" fill="#e74c3c" font-size="12" font-weight="bold">R2</text>
+                <text x="655" y="65" fill="#c0392b" font-size="10">SL SHORT ↓</text>
+                
+                <!-- Breakout arrow UP -->
+                <path d="M 350 180 L 350 110" fill="none" stroke="#2ecc71" stroke-width="4" marker-end="url(#arrowgreen)"/>
+                <text x="360" y="145" fill="#2ecc71" font-size="14" font-weight="bold">↑ BREAKOUT ↑</text>
+                
+                <!-- R1 (nachylona w górę) -->
+                <line x1="50" y1="190" x2="650" y2="150" stroke="#e67e22" stroke-width="2"/>
+                <text x="10" y="185" fill="#e67e22" font-size="12" font-weight="bold">R1</text>
+                <text x="655" y="155" fill="#d35400" font-size="10">SL SHORT (więcej) ↓</text>
+                <text x="655" y="168" fill="#27ae60" font-size="10">Pending LONG ↑</text>
+                
+                <!-- Price oscillation zone -->
+                <text x="300" y="235" fill="#3498db" font-size="12">Cena oscyluje w kanale</text>
+                
+                <!-- S1 (nachylona w górę) -->
+                <line x1="50" y1="280" x2="650" y2="240" stroke="#16a085" stroke-width="2"/>
+                <text x="10" y="275" fill="#16a085" font-size="12" font-weight="bold">S1</text>
+                <text x="655" y="233" fill="#27ae60" font-size="10">SL LONG ↑</text>
+                <text x="655" y="246" fill="#c0392b" font-size="10">Pending SHORT ↓</text>
+                
+                <!-- Breakout arrow DOWN -->
+                <path d="M 350 280 L 350 350" fill="none" stroke="#e74c3c" stroke-width="4" marker-end="url(#arrowred)"/>
+                <text x="360" y="315" fill="#e74c3c" font-size="14" font-weight="bold">↓ BREAKOUT ↓</text>
+                
+                <!-- S2 (nachylona w górę) -->
+                <line x1="50" y1="370" x2="650" y2="330" stroke="#27ae60" stroke-width="3" stroke-dasharray="6,3"/>
+                <text x="10" y="365" fill="#27ae60" font-size="12" font-weight="bold">S2</text>
+                <text x="655" y="323" fill="#27ae60" font-size="10">SL LONG (mniej) ↑</text>
+                
+                <!-- Note about trend -->
+                <text x="50" y="20" fill="#666" font-size="11">Trend wzrostowy: wszystkie linie nachylone w górę (slope > 0)</text>
+                
+                <!-- Arrow markers -->
+                <defs>
+                    <marker id="arrowgreen" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+                        <polygon points="0 0, 10 5, 0 10" fill="#2ecc71"/>
+                    </marker>
+                    <marker id="arrowred" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+                        <polygon points="0 0, 10 5, 0 10" fill="#e74c3c"/>
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+
+        <div class="highlight">
+            <strong>Mechanizm lawiny zleceń:</strong>
+            <ol>
+                <li>Cena przebija resistance poziomu 1</li>
+                <li>Odpalają się SL pozycji SHORT + pending LONG orders</li>
+                <li><strong>Lawina zleceń tworzy impuls</strong> (samowzmacniający się ruch)</li>
+                <li>Momentum niesie cenę do poziomu 2</li>
+                <li>Tam kolejne SL/TP → drugi impuls lub zatrzymanie</li>
+            </ol>
+        </div>
+
+        <h3>Przewidywanie impulsów</h3>
+        
+        <p><strong>Historia pomaga przewidzieć przyszłość:</strong></p>
+        
+        <ul>
+            <li><strong>Wcześniejsze impulsy (I)</strong> - pokazują gdzie rynek wcześniej reagował gwałtownie → prawdopodobne powtórzenie</li>
+            <li><strong>H/L poziomy</strong> - granice psychologiczne, round numbers (1.0500, 1.0600)</li>
+            <li><strong>Luki cenowe</strong> - miejsca ekstremalnej nierównowagi:
+                <ul>
+                    <li><strong>Luka niezamknięta</strong> = silny poziom oporu/wsparcia (rynek "pamięta")</li>
+                    <li><strong>Luka zamknięta</strong> = poziom stracił znaczenie</li>
+                </ul>
+            </li>
+        </ul>
+
+        <hr>
+
+        <h2 id="zarzadzanie-pozycja">Zarządzanie pozycją</h2>
+
+        <h3>Kluczowa zasada: szybkie BE (Break-Even)</h3>
+        
+        <div class="success">
+            <strong>Dobre wejście = mały SL + szybki zysk</strong>
+            <ul>
+                <li>Wejście tuż po impulsie (lub na retescie linii)</li>
+                <li>SL tuż pod/nad linią support/resistance (5-10 pips)</li>
+                <li>Jeśli w ciągu <strong>10-20 świeczek</strong> pozycja nie idzie na BE → <strong>prawdopodobnie fakeout, wytnij stratę</strong></li>
+            </ul>
+        </div>
+
+        <h3>Scaling (pozycje częściowe)</h3>
+        
+        <p><strong>Zamiast 1 dużej pozycji → 3-5 mniejszych:</strong></p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Pozycja</th>
+                    <th>% Kapitału</th>
+                    <th>Entry</th>
+                    <th>SL</th>
+                    <th>TP1 (50%)</th>
+                    <th>TP2</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>A</strong></td>
+                    <td>30%</td>
+                    <td>1.0520 (breakout)</td>
+                    <td>1.0510</td>
+                    <td>1.0540 (poziom 2)</td>
+                    <td>Trailing SL</td>
+                </tr>
+                <tr>
+                    <td><strong>B</strong></td>
+                    <td>30%</td>
+                    <td>1.0525 (retest)</td>
+                    <td>1.0515</td>
+                    <td>1.0545</td>
+                    <td>Trailing SL</td>
+                </tr>
+                <tr>
+                    <td><strong>C</strong></td>
+                    <td>40%</td>
+                    <td>1.0530 (continuation)</td>
+                    <td>1.0520</td>
+                    <td>1.0550</td>
+                    <td>Heaven scenario</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="info">
+            <strong>Zalety scaling:</strong>
+            <ul>
+                <li>Jeśli fakeout → tracisz tylko część kapitału (A zamknięte na SL, B/C nie weszły)</li>
+                <li>Jeśli silny ruch → realizujesz zyski częściowo (lock profit), reszta na trailing</li>
+                <li>Jeśli heaven → jedna pozycja jedzie bardzo daleko (trailing SL)</li>
+            </ul>
+        </div>
+
+        <h3>Partial Take Profit</h3>
+        
+        <p><strong>Realizacja zysków na każdym poziomie hierarchii:</strong></p>
+        
+        <ol>
+            <li><strong>50% pozycji na TP1</strong> (poziom 2) → <strong>lock profit, już nie tracisz</strong></li>
+            <li><strong>25% pozycji na TP2</strong> (poziom 3)</li>
+            <li><strong>25% pozycji na trailing SL</strong> (heaven scenario lub odwrót)</li>
+        </ol>
+
+        <div class="highlight">
+            <strong>SL Management:</strong>
+            <ul>
+                <li>Po osiągnięciu TP1 → przesuń SL na <strong>BE</strong> (break-even)</li>
+                <li>Po osiągnięciu TP2 → przesuń SL na <strong>TP1</strong> (gwarantowany zysk)</li>
+                <li>Trailing SL: przesuń SL za cenę co X pipsów (np. każde 20 pips ruchu)</li>
+            </ul>
+        </div>
+
+        <hr>
+
+        <h2 id="przyklady-graficzne">Przykłady graficzne</h2>
+
+        <h3>Przykład: Rozszerzający się trójkąt - setup tradingowy</h3>
+
+        <div class="diagram">
+            <svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="600" height="400" fill="#f9f9f9"/>
+                
+                <!-- Title -->
+                <text x="300" y="25" text-anchor="middle" fill="#2c3e50" font-size="16" font-weight="bold">Rozszerzający się trójkąt - Przykład breakoutu w górę</text>
+                
+                <!-- R1 (expanding upward) -->
+                <line x1="100" y1="200" x2="500" y2="100" stroke="#e74c3c" stroke-width="3"/>
+                <text x="510" y="105" fill="#e74c3c" font-size="14" font-weight="bold">R1</text>
+                
+                <!-- S1 (expanding downward) -->
+                <line x1="100" y1="200" x2="500" y2="300" stroke="#27ae60" stroke-width="3"/>
+                <text x="510" y="305" fill="#27ae60" font-size="14" font-weight="bold">S1</text>
+                
+                <!-- Price action (huśtawki rosnące) -->
+                <polyline points="150,200 200,160 250,240 300,130 350,270 400,110" 
+                          fill="none" stroke="#3498db" stroke-width="2.5"/>
+                
+                <!-- Breakout point -->
+                <circle cx="400" cy="110" r="8" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+                
+                <!-- Breakout arrow -->
+                <path d="M 400 110 L 400 50" fill="none" stroke="#2ecc71" stroke-width="4" marker-end="url(#arrow-breakout)"/>
+                <text x="410" y="80" fill="#2ecc71" font-size="14" font-weight="bold">BREAKOUT!</text>
+                
+                <!-- Volume indicator at breakout -->
+                <rect x="380" y="340" width="40" height="50" fill="#3498db" opacity="0.7"/>
+                <text x="380" y="370" fill="#fff" font-size="10" font-weight="bold">Vol +80%</text>
+                
+                <!-- Entry conditions checklist -->
+                <g transform="translate(20, 50)">
+                    <rect width="200" height="130" fill="#fff" stroke="#3498db" stroke-width="2" rx="5"/>
+                    <text x="10" y="20" fill="#2c3e50" font-size="12" font-weight="bold">✓ Warunki spełnione:</text>
+                    <text x="10" y="40" fill="#27ae60" font-size="10">✓ Zamknięcie poza R1</text>
+                    <text x="10" y="55" fill="#27ae60" font-size="10">✓ Wolumen +80%</text>
+                    <text x="10" y="70" fill="#27ae60" font-size="10">✓ Impuls (7 kryteriów)</text>
+                    <text x="10" y="85" fill="#27ae60" font-size="10">✓ Trend wzrostowy (S↗)</text>
+                    <text x="10" y="100" fill="#27ae60" font-size="10">✓ Brak R2 blisko</text>
+                    <text x="10" y="120" fill="#2c3e50" font-size="11" font-weight="bold">→ WEJDŹ LONG</text>
+                </g>
+                
+                <!-- Arrow marker for breakout -->
+                <defs>
+                    <marker id="arrow-breakout" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+                        <polygon points="0 0, 10 5, 0 10" fill="#2ecc71"/>
+                    </marker>
+                </defs>
+                
+                <!-- Volatility label -->
+                <text x="250" y="350" text-anchor="middle" fill="#f39c12" font-size="12" font-weight="bold">Szerokość kanału rośnie →</text>
+            </svg>
+        </div>
+
+        <hr>
+
+        <h2 id="podsumowanie">Podsumowanie</h2>
+
+        <h3>Kluczowe zasady strategii</h3>
+        
+        <ol>
+            <li><strong>Impulsy wyznaczają kluczowe poziomy</strong> - szukaj śladów prawdziwej siły rynku</li>
+            <li><strong>Symetryczność geometrii</strong> - linie support i resistance symetrycznie odbite (<code>|slope_R| = |slope_S|</code>)</li>
+            <li><strong>Hierarchia poziomów</strong> - zagnieżdżone struktury o rosnącej sile (rzędy 1, 2, 3+)</li>
+            <li><strong>NIE traduj zbieżnego trójkąta</strong> - obserwuj, czekaj na transformację w rozszerzający</li>
+            <li><strong>Traduj TYLKO rozszerzający z pełnym potwierdzeniem</strong> - wolumen, impuls, zamknięcie poza linią, zgodność z trendem</li>
+            <li><strong>Breakout + impuls = entry</strong> - wykorzystaj lawinę SL, ale tylko przy mocnym sygnale</li>
+            <li><strong>Szybkie BE</strong> - jeśli nie ma BE w 10-20 świeczek, wytnij</li>
+            <li><strong>Scaling in/out</strong> - minimalizuj ryzyko, maksymalizuj zyski częściowe</li>
+            <li><strong>Historia przewiduje przyszłość</strong> - impulsy, H/L, luki budują mapę nastroju</li>
+            <li><strong>W wątpliwości → nie wchodź</strong> - rozszerzający wybacza mniej błędów niż inne setupy</li>
+        </ol>
+
+        <h3>Następne kroki implementacji</h3>
+        
+        <div class="checkbox-list">
+            <ul style="list-style: none; margin-left: 0;">
+                <li><input type="checkbox"> Wykrywanie linii resistance (odwrotność support)</li>
+                <li><input type="checkbox"> Algorytm symetryczności (<code>slope_resistance = -slope_support</code>)</li>
+                <li><input type="checkbox"> Wykrywanie typu trójkąta (zbieżny vs rozszerzający - szerokość kanału)</li>
+                <li><input type="checkbox"> Filtr: <strong>pomiń zbieżne</strong>, traduj <strong>tylko rozszerzające</strong></li>
+                <li><input type="checkbox"> Multi-level lookback (poziomy 1, 2, 3+)</li>
+                <li><input type="checkbox"> Walidacja warunków wejścia (5 kryteriów dla rozszerzającego)</li>
+                <li><input type="checkbox"> Detekcja zgodności z trendem (nachylenie support określa kierunek)</li>
+                <li><input type="checkbox"> Scoring linii z wagami (impulsy 2x, lokalne ekstrema 1x, luki)</li>
+                <li><input type="checkbox"> Partial position management (scaling in/out na 3-5 pozycji)</li>
+                <li><input type="checkbox"> Trailing SL logic (przesuń na BE po TP1, na TP1 po TP2)</li>
+                <li><input type="checkbox"> Backtesting na hierarchii poziomów z pełną walidacją</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p><em>Dokument wygenerowany: 11 listopada 2025</em></p>
+            <p><strong>Wersja strategii: Multi-Level Impulse Breakout v1.0</strong></p>
+        </div>
+    </div>
+
+    <script>
+        // Add interactivity for checkboxes
+        document.querySelectorAll('.checkbox-list input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                if (this.checked) {
+                    this.parentElement.style.textDecoration = 'line-through';
+                    this.parentElement.style.opacity = '0.6';
+                } else {
+                    this.parentElement.style.textDecoration = 'none';
+                    this.parentElement.style.opacity = '1';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
