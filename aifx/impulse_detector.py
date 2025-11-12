@@ -1,19 +1,86 @@
+"""
+Impulse Detector - Wykrywanie impulsów i hierarchicznych linii wsparcia/oporu
+
+Moduł implementujący strategię Multi-Level Impulse Breakout, która wykrywa:
+1. Impulsy rynkowe (momenty ekstremalnego zaangażowania)
+2. Lokalne ekstrema (H/L - High/Low)
+3. Hierarchiczne równoległe linie wsparcia i oporu
+
+KLUCZOWE KONCEPCJE:
+- Wszystkie linie wsparcia są równoległe między sobą
+- Wszystkie linie oporu są równoległe między sobą  
+- Nachylenie support i resistance: symetrycznie odbite (slope_R = -slope_S)
+- Odległość między poziomami często stała (struktura równoodległa, nie fraktalna)
+
+HIERARCHIA POZIOMÓW:
+- Poziom 1 (główny): bazowa linia wsparcia/oporu z najlepszym dopasowaniem
+- Poziom 2: równoległa linia przesunięta pionowo o odległość d₁
+- Poziom 3+: kolejne równoległe linie z odległością ≈ d₁ (stepping)
+
+FUNKCJE:
+- find_support_trendline(): Znajduje główną linię wsparcia (poziom 1)
+- find_hierarchical_parallel_lines(): Znajduje poziomy 2, 3, 4... powyżej i poniżej
+- detect_impulse_points(): Wykrywa impulsy (7 kryteriów)
+- find_local_extrema(): Wykrywa lokalne H/L
+- plot_with_impulses(): Generuje wykres z wszystkimi poziomami
+
+UŻYCIE:
+    # Analiza z domyślnymi parametrami
+    python impulse_detector.py
+    
+    # Analiza dla konkretnego zakresu dat
+    python impulse_detector.py 2025-10-01 2025-10-31
+    
+    # Uruchomienie testów
+    python impulse_detector.py --test
+
+WYMAGANIA:
+- pandas, numpy, matplotlib, mplfinance, scipy
+
+AUTOR: aifx strategy implementation
+WERSJA: 2.0 (hierarchiczne linie równoległe)
+DATA: 2025-11-12
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import mplfinance as mpf
 import numpy as np
 from scipy.signal import argrelextrema
 
-def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_levels_below=2, num_levels_above=2, tolerance=30):
+def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_levels_below=2, num_levels_above=2, tolerance=30, debug=True):
     """
-    Znajduje równoległe linie poniżej i powyżej głównej linii.
+    Znajduje hierarchiczne równoległe linie poniżej i powyżej głównej linii.
     Każda kolejna linia analizuje tylko punkty poniżej/powyżej poprzedniej.
     
+    Strategia:
+    - Linia główna (poziom 1) = bazowa linia wsparcia/oporu
+    - Poziom 2 = równoległa linia przesunięta o odległość d₁
+    - Poziom 3+ = kolejne równoległe linie z odległością ≈ d₁
+    
     Parametry:
+    - df: DataFrame z danymi OHLCV
     - base_line: główna linia (dict z 'slope' i 'intercept')
-    - num_levels_below: ile linii wsparcia poniżej
-    - num_levels_above: ile linii oporu powyżej
-    - tolerance: maksymalna odległość punktu od linii
+    - extrema: DataFrame z lokalnymi ekstremami (H/L)
+    - impulses: DataFrame z wykrytymi impulsami (I)
+    - num_levels_below: ile linii wsparcia poniżej głównej
+    - num_levels_above: ile linii oporu powyżej głównej
+    - tolerance: maksymalna odległość punktu od linii (w punktach)
+    - debug: czy wyświetlać informacje debugowe
+    
+    Zwraca:
+    - support_lines_below: lista linii wsparcia poniżej głównej
+    - resistance_lines_above: lista linii oporu powyżej głównej
+    
+    Każda linia to dict:
+    {
+        'slope': nachylenie (równoległe do głównej),
+        'intercept': przesunięcie Y,
+        'touches': lista punktów dotykających linii,
+        'offset': odległość pionowa od głównej linii,
+        'score': liczba punktów na linii,
+        'level': numer poziomu (1, 2, 3, ...)
+    }
     """
     
     # Zbierz wszystkie punkty
@@ -33,6 +100,12 @@ def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_level
             'type': 'impulse'
         })
     
+    if debug:
+        print(f"\n=== find_hierarchical_parallel_lines DEBUG ===")
+        print(f"Punktów H/L: {len(extrema)}, Impulsów: {len(impulses)}, Razem: {len(all_points)}")
+        print(f"Główna linia: slope={base_line['slope']:.6f}, intercept={base_line['intercept']:.2f}")
+        print(f"Szukam {num_levels_above} poziomów powyżej i {num_levels_below} poniżej")
+    
     # Konwertuj na indeksy
     points = []
     for p in all_points:
@@ -48,12 +121,18 @@ def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_level
     base_intercept = base_line['intercept']
     
     # Funkcja do znajdowania najlepszej równoległej linii
-    def find_best_parallel_line(candidate_points, reference_intercept, direction):
+    def find_best_parallel_line(candidate_points, reference_intercept, direction, level):
         """
-        direction: 'above' lub 'below'
+        Znajduje najlepszą równoległą linię dla danego zestawu punktów.
+        
+        direction: 'above' (szukamy oporu powyżej) lub 'below' (szukamy wsparcia poniżej)
+        level: numer poziomu hierarchii (2, 3, 4, ...)
         """
         best_score = 0
         best_line = None
+        
+        if debug:
+            print(f"\n  Poziom {level} ({direction}): kandydatów punktów = {len(candidate_points)}")
         
         # Próbuj różne offsety
         for offset in range(40, 300, 10):
@@ -84,17 +163,29 @@ def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_level
                     'intercept': test_intercept,
                     'touches': touches,
                     'offset': offset if direction == 'above' else -offset,
-                    'score': score
+                    'score': score,
+                    'level': level
                 }
+                
+                if debug:
+                    print(f"    Offset {offset if direction == 'above' else -offset:+.0f}: {score} punktów (NEW BEST)")
+        
+        if best_line and debug:
+            print(f"  ✓ Znaleziono linię poziomu {level}: offset={best_line['offset']:+.0f}, score={best_line['score']}")
+        elif debug:
+            print(f"  ✗ Nie znaleziono linii poziomu {level} (min 3 punkty)")
         
         return best_line
     
     # Znajdź linie wsparcia PONIŻEJ głównej
+    if debug:
+        print(f"\n--- Szukam linii wsparcia PONIŻEJ głównej ---")
+    
     support_lines_below = []
     current_intercept = base_intercept
     available_points = points.copy()
     
-    for level in range(num_levels_below):
+    for level in range(1, num_levels_below + 1):
         # Filtruj punkty poniżej obecnej linii
         points_below = []
         for p in available_points:
@@ -103,9 +194,11 @@ def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_level
                 points_below.append(p)
         
         if not points_below:
+            if debug:
+                print(f"  Poziom {level+1}: brak punktów poniżej")
             break
         
-        line = find_best_parallel_line(points_below, current_intercept, 'below')
+        line = find_best_parallel_line(points_below, current_intercept, 'below', level + 1)
         if line:
             support_lines_below.append(line)
             current_intercept = line['intercept']
@@ -114,11 +207,14 @@ def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_level
             available_points = [p for p in available_points if p['datetime'] not in used_datetimes]
     
     # Znajdź linie oporu POWYŻEJ głównej
+    if debug:
+        print(f"\n--- Szukam linii oporu POWYŻEJ głównej ---")
+    
     resistance_lines_above = []
     current_intercept = base_intercept
     available_points = points.copy()
     
-    for level in range(num_levels_above):
+    for level in range(1, num_levels_above + 1):
         # Filtruj punkty powyżej obecnej linii
         points_above = []
         for p in available_points:
@@ -127,15 +223,20 @@ def find_hierarchical_parallel_lines(df, base_line, extrema, impulses, num_level
                 points_above.append(p)
         
         if not points_above:
+            if debug:
+                print(f"  Poziom {level+1}: brak punktów powyżej")
             break
         
-        line = find_best_parallel_line(points_above, current_intercept, 'above')
+        line = find_best_parallel_line(points_above, current_intercept, 'above', level + 1)
         if line:
             resistance_lines_above.append(line)
             current_intercept = line['intercept']
             # Usuń użyte punkty
             used_datetimes = set(p['datetime'] for p in line['touches'])
             available_points = [p for p in available_points if p['datetime'] not in used_datetimes]
+    
+    if debug:
+        print(f"\n=== WYNIK: {len(resistance_lines_above)} linii oporu, {len(support_lines_below)} linii wsparcia ===\n")
     
     return support_lines_below, resistance_lines_above
 
@@ -780,7 +881,7 @@ def plot_with_impulses(csv_file, start_date, end_date, output_file='impulse_char
                    fontsize=8, color='dodgerblue', fontweight='bold',
                    ha='center', va='top')
     
-    # CZERWONA linia - główna linia wsparcia (ciągła)
+    # CZERWONA linia - główna linia wsparcia (ciągła, gruba)
     if support_line:
         x_start = 0
         x_end = len(df_filtered) - 1
@@ -788,44 +889,63 @@ def plot_with_impulses(csv_file, start_date, end_date, output_file='impulse_char
         y_start = support_line['slope'] * x_start + support_line['intercept']
         y_end = support_line['slope'] * x_end + support_line['intercept']
         ax.plot([x_start, x_end], [y_start, y_end], 
-               color='red', linewidth=3, linestyle='-', alpha=0.9, 
-               label=f"MAIN Support ({len(support_line['touches'])} pts)")
+               color='red', linewidth=4, linestyle='-', alpha=1.0, 
+               label=f"S1 MAIN ({len(support_line['touches'])} pts)", zorder=10)
         
+        # Punkty na głównej linii
         for p in support_line['touches']:
             p_idx = df_filtered.index.get_loc(p['datetime'])
-            ax.plot(p_idx, p['price'], 'o', color='orange', markersize=4, alpha=0.7)
+            ax.plot(p_idx, p['price'], 'o', color='orange', markersize=5, alpha=0.8, zorder=11)
     
     # CZERWONE przerywane linie PONIŻEJ (wsparcia niższego poziomu)
     if support_lines_below:
         x_start = 0
         x_end = len(df_filtered) - 1
         
-        for i, line in enumerate(support_lines_below, 1):
+        # Kolory gradientowo ciemniejsze dla kolejnych poziomów
+        colors = ['darkred', 'maroon', 'brown', 'firebrick']
+        
+        for i, line in enumerate(support_lines_below):
             y_start = line['slope'] * x_start + line['intercept']
             y_end = line['slope'] * x_end + line['intercept']
-            ax.plot([x_start, x_end], [y_start, y_end], 
-                   color='red', linewidth=2, linestyle='--', alpha=0.6, 
-                   label=f"Support L{i} ({line['offset']:.0f} pts)")
             
+            color = colors[min(i, len(colors)-1)]
+            linestyle = '--' if i == 0 else ':'
+            linewidth = 3 if i == 0 else 2
+            
+            ax.plot([x_start, x_end], [y_start, y_end], 
+                   color=color, linewidth=linewidth, linestyle=linestyle, alpha=0.7, 
+                   label=f"S{line['level']} ({line['offset']:+.0f} pts, {line['score']} p)", zorder=8-i)
+            
+            # Punkty na linii wsparcia
             for p in line['touches']:
                 p_idx = df_filtered.index.get_loc(p['datetime'])
-                ax.plot(p_idx, p['price'], 's', color='darkred', markersize=3, alpha=0.5)
+                ax.plot(p_idx, p['price'], 's', color=color, markersize=3, alpha=0.6, zorder=9-i)
     
-    # NIEBIESKIE przerywane linie POWYŻEJ (opory)
+    # NIEBIESKIE linie POWYŻEJ (opory - resistance)
     if resistance_lines_above:
         x_start = 0
         x_end = len(df_filtered) - 1
         
-        for i, line in enumerate(resistance_lines_above, 1):
+        # Kolory gradientowo jaśniejsze dla kolejnych poziomów
+        colors = ['blue', 'dodgerblue', 'deepskyblue', 'lightskyblue']
+        
+        for i, line in enumerate(resistance_lines_above):
             y_start = line['slope'] * x_start + line['intercept']
             y_end = line['slope'] * x_end + line['intercept']
-            ax.plot([x_start, x_end], [y_start, y_end], 
-                   color='blue', linewidth=2, linestyle='--', alpha=0.7, 
-                   label=f"Resistance L{i} (+{line['offset']:.0f} pts)")
             
+            color = colors[min(i, len(colors)-1)]
+            linestyle = '--' if i == 0 else ':'
+            linewidth = 3 if i == 0 else 2
+            
+            ax.plot([x_start, x_end], [y_start, y_end], 
+                   color=color, linewidth=linewidth, linestyle=linestyle, alpha=0.8, 
+                   label=f"R{line['level']} ({line['offset']:+.0f} pts, {line['score']} p)", zorder=8-i)
+            
+            # Punkty na linii oporu
             for p in line['touches']:
                 p_idx = df_filtered.index.get_loc(p['datetime'])
-                ax.plot(p_idx, p['price'], 's', color='cyan', markersize=3, alpha=0.5)
+                ax.plot(p_idx, p['price'], '^', color=color, markersize=3, alpha=0.7, zorder=9-i)
     
     if support_line or resistance_lines_above or support_lines_below:
         ax.legend(loc='upper left', fontsize=9)
@@ -842,8 +962,108 @@ def plot_with_impulses(csv_file, start_date, end_date, output_file='impulse_char
     print(f"Zmiana: {df_filtered['Close'].iloc[-1] - df_filtered['Open'].iloc[0]:.2f} pkt")
 
 
+def test_hierarchical_lines():
+    """
+    Test jednostkowy dla find_hierarchical_parallel_lines().
+    Tworzy syntetyczne dane i weryfikuje czy algorytm poprawnie znajduje linie.
+    """
+    print("\n" + "="*60)
+    print("TEST: find_hierarchical_parallel_lines()")
+    print("="*60)
+    
+    # Stwórz syntetyczne dane
+    dates = pd.date_range('2025-01-01', periods=100, freq='15min')
+    np.random.seed(42)
+    
+    # Trend wzrostowy z noise
+    prices = 20000 + np.arange(100) * 5 + np.random.normal(0, 20, 100)
+    
+    df = pd.DataFrame({
+        'Open': prices,
+        'High': prices + 10,
+        'Low': prices - 10,
+        'Close': prices,
+        'Volume': 1000
+    }, index=dates)
+    
+    # Stwórz sztuczne ekstrema (co 10 świec)
+    extrema = pd.DataFrame({
+        'datetime': dates[::10],
+        'price': prices[::10],
+        'type': ['minimum' if i % 2 == 0 else 'maximum' for i in range(10)]
+    })
+    
+    # Stwórz sztuczne impulsy (co 7 świec)
+    impulses = pd.DataFrame({
+        'datetime': dates[::7],
+        'price': prices[::7] + 20,
+        'score': 5.0
+    })
+    
+    # Główna linia (slope ~ 5, przechodzi przez środek)
+    base_line = {
+        'slope': 5.0,
+        'intercept': 20000.0,
+        'touches': [],
+        'score': 10
+    }
+    
+    # Testuj funkcję
+    support_below, resistance_above = find_hierarchical_parallel_lines(
+        df, base_line, extrema, impulses,
+        num_levels_below=2,
+        num_levels_above=2,
+        tolerance=50,
+        debug=True
+    )
+    
+    # Weryfikacje
+    print("\n--- WERYFIKACJA ---")
+    
+    assert isinstance(support_below, list), "support_below powinno być listą"
+    assert isinstance(resistance_above, list), "resistance_above powinno być listą"
+    
+    print(f"✓ Zwrócono listy: {len(support_below)} wsparć poniżej, {len(resistance_above)} oporów powyżej")
+    
+    # Sprawdź strukturę linii
+    for i, line in enumerate(resistance_above, 1):
+        assert 'slope' in line, f"Linia oporu {i} nie ma 'slope'"
+        assert 'intercept' in line, f"Linia oporu {i} nie ma 'intercept'"
+        assert 'touches' in line, f"Linia oporu {i} nie ma 'touches'"
+        assert 'offset' in line, f"Linia oporu {i} nie ma 'offset'"
+        assert 'score' in line, f"Linia oporu {i} nie ma 'score'"
+        assert 'level' in line, f"Linia oporu {i} nie ma 'level'"
+        
+        # Sprawdź równoległość
+        assert abs(line['slope'] - base_line['slope']) < 0.001, \
+            f"Linia oporu {i} nie jest równoległa! slope={line['slope']}"
+        
+        # Sprawdź że jest powyżej głównej
+        assert line['offset'] > 0, f"Linia oporu {i} ma offset <= 0"
+        
+        print(f"✓ Opór poziom {line['level']}: slope={line['slope']:.2f}, offset={line['offset']:+.0f}, {line['score']} punktów")
+    
+    for i, line in enumerate(support_below, 1):
+        assert 'slope' in line, f"Linia wsparcia {i} nie ma 'slope'"
+        assert abs(line['slope'] - base_line['slope']) < 0.001, \
+            f"Linia wsparcia {i} nie jest równoległa!"
+        assert line['offset'] < 0, f"Linia wsparcia {i} ma offset >= 0"
+        
+        print(f"✓ Wsparcie poziom {line['level']}: slope={line['slope']:.2f}, offset={line['offset']:+.0f}, {line['score']} punktów")
+    
+    print("\n✓✓✓ TEST PASSED ✓✓✓\n")
+    return True
+
+
 if __name__ == "__main__":
     import sys
+    
+    # Sprawdź czy uruchomiono w trybie testowym
+    if len(sys.argv) > 1 and sys.argv[1] == '--test':
+        print("Uruchamiam testy jednostkowe...")
+        test_hierarchical_lines()
+        print("Wszystkie testy zakończone sukcesem!")
+        sys.exit(0)
     
     # Parametry z linii poleceń lub domyślne
     if len(sys.argv) >= 3:

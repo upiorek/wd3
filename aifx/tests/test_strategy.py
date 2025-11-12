@@ -2,6 +2,12 @@
 Automated tests dla Support Breakout Strategy
 Uruchomienie: pytest test_strategy.py -v
 """
+import sys
+from pathlib import Path
+
+# Dodaj katalog nadrzędny do sys.path aby importować moduły z aifx/
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import pytest
 import pandas as pd
 import numpy as np

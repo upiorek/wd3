@@ -1,3 +1,5 @@
 aifx/__pycache__/*
 aifx/.coverage
 aifx/support_charts/*
+aifx/tests/__pycache__/*
+aifx/tests/test_charts/*

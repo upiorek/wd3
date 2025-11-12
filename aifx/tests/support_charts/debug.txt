@@ -1,0 +1,19 @@
+2025-11-12 22:52:49,539 INFO: BREAKOUT: 2025-01-01 02:45:00 | Prev Close: 0.99 <= Support: 1.00 < Close: 1.05
+2025-11-12 22:52:49,801 DEBUG: Wykres 2025-10-08: 1 dni (od 2025-10-08 do 2025-10-08), 11 świeczek
+2025-11-12 22:52:49,801 DEBUG:   DEBUG: Support line params - slope=0.000000, intercept=0.00
+2025-11-12 22:52:49,801 DEBUG:   DEBUG: Lookback range DateTime: 2025-10-08 00:00:00 - 2025-10-08 02:15:00
+2025-11-12 22:52:49,807 DEBUG: Podział na dni dla wykresu 2025-10-08:
+2025-11-12 22:52:49,807 DEBUG: 2025-10-08: 11 świeczek (ostatni dzień)
+2025-11-12 22:52:50,205 DEBUG: Wykres 2025-10-08: 1 dni (od 2025-10-08 do 2025-10-08), 11 świeczek
+2025-11-12 22:52:50,205 DEBUG:   DEBUG: Support line params - slope=0.000000, intercept=0.00
+2025-11-12 22:52:50,206 DEBUG:   DEBUG: Lookback range DateTime: 2025-10-08 00:00:00 - 2025-10-08 02:15:00
+2025-11-12 22:52:50,213 DEBUG: Podział na dni dla wykresu 2025-10-08:
+2025-11-12 22:52:50,214 DEBUG: 2025-10-08: 11 świeczek (ostatni dzień)
+2025-11-12 22:52:58,109 DEBUG: Wykres 2025-10-04: 4 dni (od 2025-10-01 do 2025-10-04), 384 świeczek
+2025-11-12 22:52:58,110 DEBUG:   DEBUG: Support line params - slope=2.044695, intercept=24889.07
+2025-11-12 22:52:58,111 DEBUG:   DEBUG: Lookback range DateTime: 2025-10-01 00:00:00 - 2025-10-03 23:45:00
+2025-11-12 22:52:58,529 DEBUG: Podział na dni dla wykresu 2025-10-04:
+2025-11-12 22:52:58,529 DEBUG: 2025-10-01: 96 świeczek
+2025-11-12 22:52:58,530 DEBUG: 2025-10-02: 96 świeczek
+2025-11-12 22:52:58,530 DEBUG: 2025-10-03: 96 świeczek
+2025-11-12 22:52:58,530 DEBUG: 2025-10-04: 96 świeczek (ostatni dzień)

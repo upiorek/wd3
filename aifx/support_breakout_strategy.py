@@ -8,12 +8,27 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 import os
 import logging
+from impulse_detector import find_hierarchical_parallel_lines
 
 class SupportBreakoutStrategy:
     """
-    Strategia breakout powyżej głównej linii support
-    Support wyznaczany z poprzednich 5 dni
-    Only LONG positions
+    Strategia breakout powyżej głównej linii support z hierarchicznymi liniami równoległymi.
+    
+    Główne cechy:
+    - Support wyznaczany z poprzednich N dni (domyślnie 5)
+    - Wykrywanie hierarchicznych linii równoległych (S2, S3, R2, R3)
+    - Tylko pozycje LONG
+    - Integracja z impulse_detector dla wykrywania impulsów
+    
+    Hierarchiczne linie:
+    - S1: główna linia wsparcia (czerwona, ciągła)
+    - S2, S3: linie wsparcia PONIŻEJ głównej (równoległe, offset ujemny)
+    - R2, R3: linie oporu POWYŻEJ głównej (równoległe, offset dodatni)
+    
+    Wszystkie linie są RÓWNOLEGŁE (ten sam slope) i przesunięte pionowo
+    o odległości d₁, 2×d₁, 3×d₁ (struktura równoodległych poziomów).
+    
+    Only LONG positions.
     """
     
     def __init__(self, lookback_days=5, risk_pips=50, reward_ratio=3, 
@@ -113,6 +128,8 @@ class SupportBreakoutStrategy:
                         'local_maxima': cached_local_maxima,
                         'all_minima': cached_all_minima,
                         'impulses': cached_impulses,
+                        'hierarchical_supports': cached.get('hierarchical_supports', []),  # linie wsparcia poniżej głównej
+                        'hierarchical_resistances': cached.get('hierarchical_resistances', []),  # linie oporu powyżej głównej
                         'lookback_start_dt': lookback_start_dt,  # DateTime początku lookback
                         'lookback_end_dt': lookback_end_dt,       # DateTime końca lookback
                         'day_start_idx': idx  # Index początku tego dnia w df (dla backtestu)
@@ -162,9 +179,27 @@ class SupportBreakoutStrategy:
     
     def _find_support_line(self, lookback_df):
         """
-        Znajduje główną linię support używając PEŁNEJ logiki z impulse_detector:
-        - Wykrywa impulsy z wszystkimi kryteriami
+        Znajduje główną linię support oraz hierarchiczne linie równoległe.
+        
+        Używa PEŁNEJ logiki z impulse_detector:
+        - Wykrywa impulsy z wszystkimi kryteriami (7 warunków)
         - Znajduje lokalne minima/maxima
+        - Wyznacza support przez te punkty (bounce/breakout scoring)
+        - Wykrywa hierarchiczne linie równoległe (S2, S3, R2, R3)
+        
+        Zwraca dict z kluczami:
+        - 'slope': nachylenie głównej linii
+        - 'intercept': punkt przecięcia Y głównej linii
+        - 'score': liczba punktów dopasowanych do głównej linii
+        - 'used_minima': lista punktów użytych do dopasowania głównej linii
+        - 'local_maxima': wszystkie lokalne maksima
+        - 'all_minima': wszystkie lokalne minima
+        - 'impulses': punkty impulsów
+        - 'hierarchical_supports': lista linii wsparcia PONIŻEJ głównej (S2, S3, ...)
+        - 'hierarchical_resistances': lista linii oporu POWYŻEJ głównej (R2, R3, ...)
+        
+        Każda hierarchiczna linia to dict z:
+        - 'slope', 'intercept', 'touches', 'offset', 'score', 'level'
         - Wyznacza support przez te punkty (bounce/breakout scoring)
         """
         from scipy.signal import argrelextrema
@@ -272,6 +307,56 @@ class SupportBreakoutStrategy:
                     best_used_minima = used
 
         #print(f"  DEBUG: Najlepsza linia: {best_impulse_hits} impulsów, {best_minima_hits} minimów (score={best_score})")
+        
+        # Teraz wykryj hierarchiczne linie równoległe używając find_hierarchical_parallel_lines()
+        base_line = {
+            'slope': best_slope,
+            'intercept': best_intercept,
+            'touches': best_used_minima,
+            'score': best_score
+        }
+        
+        # Przygotuj dane w formacie wymaganym przez find_hierarchical_parallel_lines
+        # Funkcja oczekuje DataFrame z kolumnami: datetime, price, type
+        
+        # Konwertuj ekstrema na DataFrame
+        extrema_data = []
+        for idx in argrelextrema(lookback_df['High'].values, np.greater, order=5)[0]:
+            extrema_data.append({
+                'datetime': lookback_df.iloc[idx].name if hasattr(lookback_df.iloc[idx], 'name') else idx,
+                'price': lookback_df.iloc[idx]['High'],
+                'type': 'high'
+            })
+        for idx in argrelextrema(lookback_df['Low'].values, np.less, order=5)[0]:
+            extrema_data.append({
+                'datetime': lookback_df.iloc[idx].name if hasattr(lookback_df.iloc[idx], 'name') else idx,
+                'price': lookback_df.iloc[idx]['Low'],
+                'type': 'low'
+            })
+        extrema_df = pd.DataFrame(extrema_data)
+        
+        # Konwertuj impulsy na DataFrame
+        impulse_data = []
+        for idx in impulses:
+            impulse_data.append({
+                'datetime': lookback_df.iloc[idx].name if hasattr(lookback_df.iloc[idx], 'name') else idx,
+                'price': lookback_df.iloc[idx]['Low'],
+                'type': 'impulse'
+            })
+        impulses_df = pd.DataFrame(impulse_data)
+        
+        # Wywołaj funkcję hierarchiczną (2 poziomy poniżej, 2 powyżej)
+        hierarchical_supports, hierarchical_resistances = find_hierarchical_parallel_lines(
+            lookback_df, 
+            base_line, 
+            extrema_df, 
+            impulses_df,
+            num_levels_below=2,
+            num_levels_above=2,
+            tolerance=30,
+            debug=False  # wyłącz debug logi dla każdego dnia (za dużo outputu)
+        )
+        
         return {
             'slope': best_slope,
             'intercept': best_intercept,
@@ -279,7 +364,9 @@ class SupportBreakoutStrategy:
             'used_minima': best_used_minima,
             'local_maxima': local_maxima,
             'all_minima': all_minima,
-            'impulses': impulse_points
+            'impulses': impulse_points,
+            'hierarchical_supports': hierarchical_supports,
+            'hierarchical_resistances': hierarchical_resistances
         }
     
     def _detect_impulses_full(self, df):
@@ -383,7 +470,7 @@ class SupportBreakoutStrategy:
         Sprawdza breakout powyżej support line
         
         IMMEDIATE mode: Close > Support_Price
-        RETEST mode: Close wrócił do Support ±tolerance i odbił
+        RETEST mode: Close wrócił do Support +/- tolerance i odbił
         """
         # Wymagamy poprzedniej candle (idx >= 1)
         if idx < 1:
@@ -446,16 +533,13 @@ class SupportBreakoutStrategy:
                 'exit_time': current['DateTime'],
                 'pips': pips,
                 'result': 'SL',
-                    'reason': 'Stop Loss'
+                'reason': 'Stop Loss'
             }
         
         return None
     
     def plot_daily_chart(self, df, date, output_dir='support_charts', show_volume=True, mark_high_low=False):
-        """
-        Generuje wykres dla danego dnia z support line + zakres lookback
-        Pokazuje zawsze 5 PEŁNYCH dni handlowych + analizowany dzień
-        """
+        """Plot daily chart with hierarchical parallel lines."""
         import matplotlib.pyplot as plt
         import mplfinance as mpf
         import matplotlib.dates as mdates
@@ -543,8 +627,74 @@ class SupportBreakoutStrategy:
         
         # Dodatkowe linie
         apds = [
-            mpf.make_addplot(df_plot['Support'], color='red', width=1.5, linestyle='--', label=f'Support ({self.lookback_days} days)')
+            mpf.make_addplot(df_plot['Support'], color='red', width=4, linestyle='-', label=f'S1 Main ({self.lookback_days} days)', alpha=1.0)
         ]
+        
+        # Dodaj hierarchiczne linie wsparcia PONIŻEJ głównej (S2, S3, ...)
+        hierarchical_supports = support_info.get('hierarchical_supports', [])
+        support_colors = ['darkred', 'maroon', 'brown', 'firebrick']
+        for i, supp_line in enumerate(hierarchical_supports):
+            supp_slope = supp_line['slope']
+            supp_intercept = supp_line['intercept']
+            supp_level = supp_line['level']
+            supp_offset = supp_line['offset']
+            supp_score = supp_line['score']
+            
+            # Oblicz wartości dla tej linii
+            supp_values = []
+            for idx_val in df_plot.index:
+                offset_in_lookback = len(df[(df['DateTime'] >= support_info['lookback_start_dt']) & 
+                                            (df['DateTime'] < idx_val)])
+                supp_price = supp_intercept + supp_slope * offset_in_lookback
+                supp_values.append(supp_price)
+            
+            df_plot[f'Support_L{supp_level}'] = supp_values
+            
+            color = support_colors[i % len(support_colors)]
+            linestyle = '--' if i == 0 else ':'
+            linewidth = 3 if i == 0 else 2
+            
+            apds.append(
+                mpf.make_addplot(df_plot[f'Support_L{supp_level}'], 
+                                color=color, 
+                                width=linewidth, 
+                                linestyle=linestyle, 
+                                label=f'S{supp_level} ({supp_offset:+.0f} pts, {supp_score} p)',
+                                alpha=0.8)
+            )
+        
+        # Dodaj hierarchiczne linie oporu POWYŻEJ głównej (R2, R3, ...)
+        hierarchical_resistances = support_info.get('hierarchical_resistances', [])
+        resistance_colors = ['blue', 'dodgerblue', 'deepskyblue', 'lightskyblue']
+        for i, res_line in enumerate(hierarchical_resistances):
+            res_slope = res_line['slope']
+            res_intercept = res_line['intercept']
+            res_level = res_line['level']
+            res_offset = res_line['offset']
+            res_score = res_line['score']
+            
+            # Oblicz wartości dla tej linii
+            res_values = []
+            for idx_val in df_plot.index:
+                offset_in_lookback = len(df[(df['DateTime'] >= support_info['lookback_start_dt']) & 
+                                            (df['DateTime'] < idx_val)])
+                res_price = res_intercept + res_slope * offset_in_lookback
+                res_values.append(res_price)
+            
+            df_plot[f'Resistance_L{res_level}'] = res_values
+            
+            color = resistance_colors[i % len(resistance_colors)]
+            linestyle = '--' if i == 0 else ':'
+            linewidth = 3 if i == 0 else 2
+            
+            apds.append(
+                mpf.make_addplot(df_plot[f'Resistance_L{res_level}'], 
+                                color=color, 
+                                width=linewidth, 
+                                linestyle=linestyle, 
+                                label=f'R{res_level} ({res_offset:+.0f} pts, {res_score} p)',
+                                alpha=0.8)
+            )
 
         # Optionally mark the exact minima used to fit the support line (and highs if desired)
         if mark_high_low:
