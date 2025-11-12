@@ -24,7 +24,7 @@
   "risk_per_trade_pct": 2.0,
   
   "_min_slope": "minimalny slope linii supportu (0.2 = ~96 pips na 5 dni, odrzuca płaskie linie)",
-  "min_slope": 0.3,
+  "min_slope": 0.4,
   
   "_show_volume": "pokaż wolumen na wykresach (true/false)",
   "show_volume": false,
@@ -33,5 +33,14 @@
   "mark_high_low": true,
 
   "_generate_charts": "generuj wykresy PNG dla każdego dnia (true/false, wolniejsze dla długich okresów)",
-  "generate_charts": true
+  "generate_charts": true,
+
+  "_hierarchical_levels_below": "ile linii wsparcia poniżej głównej (S2, S3, S4..., min 3 punkty na linię)",
+  "hierarchical_levels_below": 4,
+
+  "_hierarchical_levels_above": "ile linii oporu powyżej głównej (R2, R3, R4..., min 3 punkty na linię)",
+  "hierarchical_levels_above": 4,
+
+  "_hierarchical_tolerance": "maksymalna odległość punktu od linii hierarchicznej w punktach",
+  "hierarchical_tolerance": 30
 }

@@ -32,7 +32,9 @@ class SupportBreakoutStrategy:
     """
     
     def __init__(self, lookback_days=5, risk_pips=50, reward_ratio=3, 
-                 retest_mode=False, retest_tolerance=30, min_slope=0.1):
+                 retest_mode=False, retest_tolerance=30, min_slope=0.1,
+                 hierarchical_levels_below=4, hierarchical_levels_above=4,
+                 hierarchical_tolerance=30):
         self.lookback_days = lookback_days
         self.lookback_candles = lookback_days * 96  # 5 dni * 96 świeczek M15/dzień
         self.risk_pips = risk_pips
@@ -41,6 +43,11 @@ class SupportBreakoutStrategy:
         self.retest_mode = retest_mode  # False = immediate, True = czeka na retest
         self.retest_tolerance = retest_tolerance  # odległość od linii dla retesту
         self.min_slope = min_slope  # Minimalny slope dla akceptacji linii wsparcia
+        
+        # Parametry hierarchicznych linii równoległych
+        self.hierarchical_levels_below = hierarchical_levels_below  # Ile S2, S3, S4...
+        self.hierarchical_levels_above = hierarchical_levels_above  # Ile R2, R3, R4...
+        self.hierarchical_tolerance = hierarchical_tolerance  # Tolerancja dla punktów
         
         self.support_lines = {}  # Cache dla support lines
         self.daily_support_data = []  # Lista: {date, slope, intercept, lookback_start, lookback_end}
@@ -345,15 +352,15 @@ class SupportBreakoutStrategy:
             })
         impulses_df = pd.DataFrame(impulse_data)
         
-        # Wywołaj funkcję hierarchiczną (2 poziomy poniżej, 2 powyżej)
+        # Wywołaj funkcję hierarchiczną - użyj parametrów z konfiguracji
         hierarchical_supports, hierarchical_resistances = find_hierarchical_parallel_lines(
             lookback_df, 
             base_line, 
             extrema_df, 
             impulses_df,
-            num_levels_below=2,
-            num_levels_above=2,
-            tolerance=30,
+            num_levels_below=self.hierarchical_levels_below,
+            num_levels_above=self.hierarchical_levels_above,
+            tolerance=self.hierarchical_tolerance,
             debug=False  # wyłącz debug logi dla każdego dnia (za dużo outputu)
         )
         
@@ -630,9 +637,9 @@ class SupportBreakoutStrategy:
             mpf.make_addplot(df_plot['Support'], color='red', width=4, linestyle='-', label=f'S1 Main ({self.lookback_days} days)', alpha=1.0)
         ]
         
-        # Dodaj hierarchiczne linie wsparcia PONIŻEJ głównej (S2, S3, ...)
+        # Dodaj hierarchiczne linie wsparcia PONIŻEJ głównej (S2, S3, S4, S5...)
         hierarchical_supports = support_info.get('hierarchical_supports', [])
-        support_colors = ['darkred', 'maroon', 'brown', 'firebrick']
+        support_colors = ['darkred', 'maroon', 'brown', 'firebrick', 'indianred', 'crimson', 'salmon']
         for i, supp_line in enumerate(hierarchical_supports):
             supp_slope = supp_line['slope']
             supp_intercept = supp_line['intercept']
@@ -651,8 +658,8 @@ class SupportBreakoutStrategy:
             df_plot[f'Support_L{supp_level}'] = supp_values
             
             color = support_colors[i % len(support_colors)]
-            linestyle = '--' if i == 0 else ':'
-            linewidth = 3 if i == 0 else 2
+            linestyle = '--' if i == 0 else (':' if i == 1 else '-.')
+            linewidth = 3 if i == 0 else (2 if i == 1 else 1.5)
             
             apds.append(
                 mpf.make_addplot(df_plot[f'Support_L{supp_level}'], 
@@ -663,9 +670,9 @@ class SupportBreakoutStrategy:
                                 alpha=0.8)
             )
         
-        # Dodaj hierarchiczne linie oporu POWYŻEJ głównej (R2, R3, ...)
+        # Dodaj hierarchiczne linie oporu POWYŻEJ głównej (R2, R3, R4, R5...)
         hierarchical_resistances = support_info.get('hierarchical_resistances', [])
-        resistance_colors = ['blue', 'dodgerblue', 'deepskyblue', 'lightskyblue']
+        resistance_colors = ['blue', 'dodgerblue', 'deepskyblue', 'lightskyblue', 'steelblue', 'royalblue', 'cornflowerblue']
         for i, res_line in enumerate(hierarchical_resistances):
             res_slope = res_line['slope']
             res_intercept = res_line['intercept']
@@ -684,8 +691,8 @@ class SupportBreakoutStrategy:
             df_plot[f'Resistance_L{res_level}'] = res_values
             
             color = resistance_colors[i % len(resistance_colors)]
-            linestyle = '--' if i == 0 else ':'
-            linewidth = 3 if i == 0 else 2
+            linestyle = '--' if i == 0 else (':' if i == 1 else '-.')
+            linewidth = 3 if i == 0 else (2 if i == 1 else 1.5)
             
             apds.append(
                 mpf.make_addplot(df_plot[f'Resistance_L{res_level}'], 

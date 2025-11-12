@@ -107,7 +107,10 @@ def main():
         'risk_per_trade_pct': 2.0,
         'min_slope': 0.1,
         'show_volume': True,
-        'generate_charts': True
+        'generate_charts': True,
+        'hierarchical_levels_below': 4,
+        'hierarchical_levels_above': 4,
+        'hierarchical_tolerance': 30
     }
     
     # Parametry z linii komend
@@ -179,7 +182,10 @@ def main():
         lookback_days=options['lookback_days'],
         risk_pips=options['risk_pips'],
         reward_ratio=options['reward_ratio'],
-        retest_mode=options['retest_mode']
+        retest_mode=options['retest_mode'],
+        hierarchical_levels_below=options['hierarchical_levels_below'],
+        hierarchical_levels_above=options['hierarchical_levels_above'],
+        hierarchical_tolerance=options['hierarchical_tolerance']
     )
 
     # Get module-level logger (handler is configured inside BacktestEngine or Strategy)
