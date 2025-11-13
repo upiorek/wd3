@@ -4,3 +4,5 @@ aifx/support_charts/*
 aifx/tests/__pycache__/*
 aifx/tests/test_charts/*
 aifx/tests/support_charts/*
+aifx/tests/test_charts_mixed/*
+aifx/test_charts_legend/*

@@ -2,22 +2,51 @@
 
 ## Przegląd
 
-Support Breakout Strategy to zaawansowany system tradingowy wykrywający breakouty powyżej głównej linii wsparcia wraz z **hierarchicznymi liniami równoległymi** (S2, S3, R2, R3).
+Support Breakout Strategy to zaawansowany system tradingowy wykrywający breakouty wraz z **hierarchicznymi liniami równoległymi** (S2, S3, R2, R3).
 
 Główne cechy:
-- ✅ Wykrywanie głównej linii wsparcia (S1) z poprzednich N dni
-- ✅ **Hierarchiczne linie równoległe** poniżej (S2, S3) i powyżej (R1, R2, R3) głównej
-- ✅ Tylko pozycje LONG (breakout powyżej wsparcia)
+- ✅ Wykrywanie głównej linii wsparcia/oporu z poprzednich N dni
+- ✅ **Hierarchiczne linie równoległe** poniżej (S2, S3) i powyżej (R2, R3) głównej
+- ✅ Pozycje **LONG** (linie wznosząc) i **SHORT** (linie opadające)
 - ✅ Integracja z `impulse_detector` dla wykrywania impulsów
 - ✅ Wizualizacja wszystkich linii z gradientowymi kolorami i opisami
+
+## Linie Wznosząc vs Opadające
+
+System automatycznie wykrywa dwa typy linii:
+
+### 🟢 Linie WZNOSZĄC (slope > 0) → Strategia LONG
+- **S1**: główna linia wsparcia (czerwona, ciągła, grubość 4)
+- **S2, S3, S4...**: linie wsparcia PONIŻEJ głównej (darkred, maroon, brown...)
+- **R2, R3, R4...**: linie oporu POWYŻEJ głównej (blue, dodgerblue, deepskyblue...)
+- **Breakout**: gdy Close > S1 (w górę)
+- **SL**: poniżej entry, **TP**: powyżej entry
+
+### 🔴 Linie OPADAJĄCE (slope < 0) → Strategia SHORT
+- **R1**: główna linia oporu (zielona, ciągła, grubość 4)
+- **S2, S3, S4...**: linie wsparcia PONIŻEJ głównej (darkred, maroon, brown...)
+- **R2, R3, R4...**: linie oporu POWYŻEJ głównej (blue, dodgerblue, deepskyblue...)
+- **Breakout**: gdy Close < R1 (w dół)
+- **SL**: powyżej entry, **TP**: poniżej entry
+
+### Konfiguracja
+
+```json
+{
+  "min_slope": 0.4,             // Minimalny |slope| (bezwzględna wartość)
+  "allow_descending": true,     // Wykrywaj linie opadające (SHORT)
+  "hierarchical_levels_below": 4,
+  "hierarchical_levels_above": 4,
+  "hierarchical_tolerance": 30
+}
+```
 
 ## Hierarchiczne Linie Równoległe
 
 System wykrywa **strukturę równoodległych poziomów** składającą się z:
 
-- **S1**: główna linia wsparcia (czerwona, ciągła, grubość 4)
-- **S2, S3**: linie wsparcia PONIŻEJ głównej (darkred, maroon - przerywane/kropkowane)
-- **R2, R3**: linie oporu POWYŻEJ głównej (blue, dodgerblue - przerywane/kropkowane)
+- **Poziom 1**: główna linia (S1 dla LONG, R1 dla SHORT)
+- **Poziomy 2, 3, 4...**: hierarchiczne linie równoległe
 
 ### Właściwości Hierarchicznych Linii
 
@@ -53,7 +82,10 @@ strategy = SupportBreakoutStrategy(
     lookback_days=3,        # Okno lookback (3 dni)
     risk_pips=50,           # Ryzyko w pipsach
     reward_ratio=3,         # Współczynnik R:R
-    min_slope=0.3           # Minimalny slope (tylko wznoszące linie)
+    min_slope=0.4,          # Minimalny |slope| (bezwzględna wartość)
+    allow_descending=True,  # Wykrywaj linie opadające (SHORT)
+    hierarchical_levels_below=4,  # Ile S2, S3, S4...
+    hierarchical_levels_above=4   # Ile R2, R3, R4...
 )
 
 # Oblicz wskaźniki (wykrywa hierarchiczne linie)

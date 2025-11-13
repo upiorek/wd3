@@ -110,7 +110,8 @@ def main():
         'generate_charts': True,
         'hierarchical_levels_below': 4,
         'hierarchical_levels_above': 4,
-        'hierarchical_tolerance': 30
+        'hierarchical_tolerance': 30,
+        'allow_descending': True
     }
     
     # Parametry z linii komend
@@ -185,7 +186,10 @@ def main():
         retest_mode=options['retest_mode'],
         hierarchical_levels_below=options['hierarchical_levels_below'],
         hierarchical_levels_above=options['hierarchical_levels_above'],
-        hierarchical_tolerance=options['hierarchical_tolerance']
+        hierarchical_tolerance=options['hierarchical_tolerance'],
+        min_slope=options['min_slope'],
+        allow_descending=options['allow_descending'],
+        show_legend=options.get('show_legend', True)
     )
 
     # Get module-level logger (handler is configured inside BacktestEngine or Strategy)

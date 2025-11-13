@@ -3,7 +3,7 @@
   "start_date": "2025-10-01",
 
   "_end_date": "data końcowa",
-  "end_date": "2025-10-20",
+  "end_date": "2025-10-30",
 
   "_lookback_days": "liczba dni do wyznaczenia linii supportu (5 = ostatnie 5 dni handlowych)",
   "lookback_days": 3,
@@ -42,5 +42,11 @@
   "hierarchical_levels_above": 4,
 
   "_hierarchical_tolerance": "maksymalna odległość punktu od linii hierarchicznej w punktach",
-  "hierarchical_tolerance": 30
+  "hierarchical_tolerance": 30,
+
+  "_allow_descending": "wykrywaj linie opadające dla strategii SHORT (true/false)",
+  "allow_descending": true,
+
+  "_show_legend": "rysuj legendę na wykresach (true/false)",
+  "show_legend": false
 }
