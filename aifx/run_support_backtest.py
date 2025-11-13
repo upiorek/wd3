@@ -225,8 +225,13 @@ def main():
         # Pobierz unikalne daty z daily_support_data (dni dla których mamy support)
         support_dates = [info['date'] for info in strategy.daily_support_data]
         
+        # Usuń duplikaty (jeśli są)
+        unique_dates = sorted(set(support_dates))
+        
         print(f"Zakres backtestingu: {start_date} - {end_date}")
-        print(f"Dni z obliczonym support: {len(support_dates)}")
+        print(f"Dni z obliczonym support: {len(support_dates)} (unique: {len(unique_dates)})")
+        
+        support_dates = unique_dates
         
         charts_generated = 0
         
