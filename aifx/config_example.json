@@ -3,7 +3,7 @@
   "start_date": "2025-10-01",
 
   "_end_date": "data końcowa",
-  "end_date": "2025-10-30",
+  "end_date": "2025-10-10",
 
   "_lookback_days": "liczba dni do wyznaczenia linii supportu (5 = ostatnie 5 dni handlowych)",
   "lookback_days": 3,

@@ -678,8 +678,12 @@ class SupportBreakoutStrategy:
         
         return None
     
-    def plot_daily_chart(self, df, date, output_dir='support_charts', show_volume=True, mark_high_low=False):
-        """Plot daily chart with hierarchical parallel lines (może być wiele linii dla jednego dnia)."""
+    def plot_daily_chart(self, df, date, output_dir='support_charts', show_volume=True, mark_high_low=False, trades=None):
+        """Plot daily chart with hierarchical parallel lines (może być wiele linii dla jednego dnia).
+        
+        Args:
+            trades: Lista transakcji do narysowania (opcjonalne)
+        """
         import matplotlib.pyplot as plt
         import mplfinance as mpf
         import matplotlib.dates as mdates
@@ -1056,6 +1060,60 @@ class SupportBreakoutStrategy:
             # Draw impulses (magenta x)
             _scatter_from_array(impulse_markers, 'magenta', 80, marker='x', hollow=False, label='Impulses')
         
+        # Rysuj transakcje na wykresie
+        if trades:
+            for trade in trades:
+                # Sprawdź czy transakcja jest w zakresie tego wykresu
+                entry_time = pd.to_datetime(trade['time'])
+                exit_time = pd.to_datetime(trade['exit_time'])
+                
+                # Pomiń jeśli transakcja nie jest w zakresie wykresu
+                if entry_time not in df_plot.index and exit_time not in df_plot.index:
+                    continue
+                
+                direction = trade['direction']
+                entry_price = trade['entry_price']
+                exit_price = trade['exit_price']
+                sl_price = trade['sl_price']
+                tp_price = trade['tp_price']
+                
+                # Kolory: zielony=LONG, czerwony=SHORT
+                entry_color = 'green' if direction == 'long' else 'red'
+                exit_color = entry_color
+                
+                # Pozycje w wykresie
+                entry_idx = df_plot.index.get_loc(entry_time) if entry_time in df_plot.index else None
+                exit_idx = df_plot.index.get_loc(exit_time) if exit_time in df_plot.index else None
+                
+                # Offset dla strzałek (w jednostkach świeczek) aby nie zasłaniały punktów
+                arrow_offset = 3
+                
+                # Strzałka wejścia (w prawo, przesunięta w prawo)
+                if entry_idx is not None:
+                    ax.scatter(entry_idx - arrow_offset, entry_price, s=30, marker='>', color=entry_color, 
+                              edgecolors='black', linewidths=1, zorder=10, alpha=0.7)
+                
+                # Strzałka wyjścia (w lewo, przesunięta w lewo)
+                if exit_idx is not None:
+                    ax.scatter(exit_idx + arrow_offset, exit_price, s=30, marker='<', color=exit_color, 
+                              edgecolors='black', linewidths=1, zorder=10, alpha=0.7)
+                
+                # Linie SL (czerwona przerywana) i TP (zielona przerywana)
+                if entry_idx is not None and exit_idx is not None:
+                    x_range = [entry_idx, exit_idx]
+                    
+                    # SL
+                    ax.plot(x_range, [sl_price, sl_price], color='red', linestyle='--', 
+                           linewidth=1, zorder=8, alpha=0.7)
+                    
+                    # TP
+                    ax.plot(x_range, [tp_price, tp_price], color='green', linestyle='--', 
+                           linewidth=1, zorder=8, alpha=0.7)
+                    
+                    # Niebieska przerywana między wejściem a wyjściem (ukośna od entry do exit)
+                    ax.plot(x_range, [entry_price, exit_price], color='blue', linestyle='--', 
+                           linewidth=1, zorder=9, alpha=0.7)
+        
         # Ensure legend is present and remembered for tests (działa dla wszystkich elementów)
         handles, labels = ax.get_legend_handles_labels()
         
@@ -1071,7 +1129,8 @@ class SupportBreakoutStrategy:
         
         # Loguj informacje o wygenerowanym obrazku
         file_size = os.path.getsize(filename) / 1024  # rozmiar w KB
-        self._logger.info(f"Wygenerowano wykres: {filename} | DPI: {self.chart_dpi} | Rozmiar: {file_size:.1f} KB | Linie: {len(support_infos)} | Legend: {self.show_legend}")
+        self._logger.info(f"Wygenerowano wykres: {filename} | DPI: {self.chart_dpi} "
+                          "| Rozmiar: {file_size:.1f} KB | Linie: {len(support_infos)} | Legend: {self.show_legend}")
         
         plt.close(fig)
         

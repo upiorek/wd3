@@ -235,13 +235,26 @@ def main():
         
         charts_generated = 0
         
+        # Przygotuj transakcje pogrupowane po dniach dla szybszego lookup
+        trades_by_date = {}
+        if results['trades']:
+            for trade in results['trades']:
+                entry_date = pd.to_datetime(trade['time']).date()
+                if entry_date not in trades_by_date:
+                    trades_by_date[entry_date] = []
+                trades_by_date[entry_date].append(trade)
+        
         for date in support_dates:
+            # Znajdź transakcje dla tego dnia
+            day_trades = trades_by_date.get(date, [])
+            
             filename = strategy.plot_daily_chart(
                 df_full,
                 date,
                 output_dir=charts_dir,
                 show_volume=options['show_volume'],
-                mark_high_low=options.get('mark_high_low', False)
+                mark_high_low=options.get('mark_high_low', False),
+                trades=day_trades
             )
             if filename:
                 charts_generated += 1
