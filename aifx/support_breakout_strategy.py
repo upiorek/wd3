@@ -37,7 +37,7 @@ class SupportBreakoutStrategy:
                  retest_mode=False, retest_tolerance=30, min_slope=0.1,
                  hierarchical_levels_below=4, hierarchical_levels_above=4,
                  hierarchical_tolerance=30, allow_descending=True, show_legend=True,
-                 chart_dpi=150):
+                 chart_dpi=150, close_at_eod=False):
         self.lookback_days = lookback_days
         self.lookback_candles = lookback_days * 96  # 5 dni * 96 świeczek M15/dzień
         self.risk_pips = risk_pips
@@ -49,6 +49,7 @@ class SupportBreakoutStrategy:
         self.allow_descending = allow_descending  # Czy wykrywać linie opadające (SHORT)
         self.show_legend = show_legend  # Czy rysować legendę na wykresach
         self.chart_dpi = chart_dpi  # Rozdzielczość wykresów w DPI
+        self.close_at_eod = close_at_eod  # Czy zamykać pozycje na koniec dnia
         
         # Parametry hierarchicznych linii równoległych
         self.hierarchical_levels_below = hierarchical_levels_below  # Ile S2, S3, S4...
@@ -624,9 +625,13 @@ class SupportBreakoutStrategy:
         
         LONG: TP gdy High >= tp_price, SL gdy Low <= sl_price
         SHORT: TP gdy Low <= tp_price, SL gdy High >= sl_price
+        
+        Dodatkowo: jeśli close_at_eod=True, zamyka pozycję na ostatniej świeczce dnia.
         """
         current = df.iloc[idx]
         direction = trade['direction']
+        
+        # SL/TP sprawdzamy NAJPIERW - mają priorytet nad EOD
         
         if direction == 'long':
             # LONG position
@@ -667,13 +672,44 @@ class SupportBreakoutStrategy:
             
             # Check SL (w górę)
             if current['High'] >= trade['sl_price']:
-                pips = trade['entry_price'] - trade['sl_price']  # Ujemne dla SHORT gdy SL w górę
+                pips = trade['entry_price'] - trade['sl_price']  # Ujemne dla SHORT przy SL
                 return {
                     'exit_price': trade['sl_price'],
                     'exit_time': current['DateTime'],
                     'pips': pips,
                     'result': 'SL',
                     'reason': 'Stop Loss'
+                }
+        
+        # Sprawdź czy to koniec dnia (EOD - End of Day) - tylko gdy SL/TP NIE osiągnięte
+        if self.close_at_eod:
+            current_date = current['DateTime'].date()
+            # Sprawdź czy następna świeczka jest z innego dnia (lub to ostatnia świeczka)
+            is_last_candle_of_day = False
+            
+            if idx < len(df) - 1:
+                next_candle = df.iloc[idx + 1]
+                next_date = next_candle['DateTime'].date()
+                if next_date != current_date:
+                    is_last_candle_of_day = True
+            else:
+                # Ostatnia świeczka w całym DataFrame
+                is_last_candle_of_day = True
+            
+            if is_last_candle_of_day:
+                # Zamknij po cenie Close
+                exit_price = current['Close']
+                if direction == 'long':
+                    pips = exit_price - trade['entry_price']
+                else:  # short
+                    pips = trade['entry_price'] - exit_price
+                
+                return {
+                    'exit_price': exit_price,
+                    'exit_time': current['DateTime'],
+                    'pips': pips,
+                    'result': 'EOD',
+                    'reason': 'End of Day close'
                 }
         
         return None

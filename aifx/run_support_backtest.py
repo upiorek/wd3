@@ -190,7 +190,8 @@ def main():
         min_slope=options['min_slope'],
         allow_descending=options['allow_descending'],
         show_legend=options.get('show_legend', True),
-        chart_dpi=options.get('chart_dpi', 150)
+        chart_dpi=options.get('chart_dpi', 150),
+        close_at_eod=options.get('close_at_eod', False)
     )
 
     # Get module-level logger (handler is configured inside BacktestEngine or Strategy)

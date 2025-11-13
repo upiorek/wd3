@@ -51,5 +51,8 @@
   "show_legend": false,
 
   "_chart_dpi": "rozdzielczość wykresów w DPI (150 = standard, 200 = wyższa jakość, 100 = mniejsze pliki)",
-  "chart_dpi": 200
+  "chart_dpi": 200,
+
+  "_close_at_eod": "zamykaj otwarte pozycje na koniec dnia (true/false)",
+  "close_at_eod": true
 }

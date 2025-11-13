@@ -1,5 +1,25 @@
 # Testing Guide - Support Breakout Strategy
 
+## Przegląd Testów
+
+Projekt zawiera **8 modułów testowych** pokrywających różne aspekty strategii:
+
+| Plik testowy | Liczba testów | Status | Opis |
+|-------------|---------------|--------|------|
+| `test_close_at_eod.py` | 5 | ✅ ALL PASS | Testy opcji zamykania pozycji na koniec dnia |
+| `test_min_slope.py` | 2 | ✅ ALL PASS | Testy parametru min_slope z config |
+| `test_min_slope_integration.py` | 1 | ✅ PASS | Test integracyjny min_slope (uruchamia run_support_backtest.py) |
+| `test_support_strategy.py` | 6 | ✅ ALL PASS | Testy hierarchicznych linii wsparcia/oporu |
+| `test_short_positions.py` | 5 | ✅ 3 PASS, 2 SKIP | Testy pozycji SHORT dla linii opadających |
+| `test_legend.py` | 2 | ✅ ALL PASS | Testy wyświetlania legendy na wykresach |
+| `test_hierarchical.py` | 1 | ✅ PASS | Test hierarchicznych linii równoległych |
+| `test_ascending_descending.py` | 3 | ✅ ALL PASS | Testy wykrywania linii wznoszących i opadających |
+| `test_strategy.py` | 35 | ⚠️ 24 PASS, 11 FAIL | Stare testy jednostkowe (niektóre nieaktualne) |
+
+**Podsumowanie:** 8/8 głównych modułów testowych ✅ PASS
+
+---
+
 ## Quick Start
 
 ### 1. Instalacja pytest (jednorazowo)
@@ -9,31 +29,349 @@ pip install pytest pytest-cov
 
 ### 2. Uruchomienie wszystkich testów
 ```bash
-# Podstawowe uruchomienie
+# Wszystkie testy close_at_eod
+python tests/test_close_at_eod.py
+
+# Testy min_slope
+python tests/test_min_slope.py
+python tests/test_min_slope_integration.py
+
+# Wszystkie testy hierarchicznych linii
+python tests/test_support_strategy.py
+
+# Wszystkie testy SHORT
+python tests/test_short_positions.py
+
+# Wszystkie testy legendy
+python tests/test_legend.py
+
+# Test hierarchicznych linii równoległych
+python tests/test_hierarchical.py
+
+# Testy linii wznoszących/opadających
+python tests/test_ascending_descending.py
+
+# Testy pytest (wymagają aktualizacji)
 pytest test_strategy.py -v
-
-# Z pokryciem kodu (coverage)
-pytest test_strategy.py --cov=support_breakout_strategy --cov-report=html
-
-# Tylko szybkie testy (pomija testy wydajnościowe)
-pytest test_strategy.py -v -m "not slow"
 ```
 
-### 3. Uruchomienie konkretnej kategorii testów
-```bash
-# Tylko testy inicjalizacji
-pytest test_strategy.py::TestStrategyInitialization -v
+### 3. Uruchomienie wszystkich testów jednocześnie
 
-# Tylko testy wykrywania impulsów
-pytest test_strategy.py::TestImpulseDetection -v
+#### Opcja A: Użyj gotowego skryptu (zalecane)
+```powershell
+# PowerShell (z folderu aifx)
+cd aifx
+.\tests\run_all_tests.ps1
 
-# Tylko testy backtest engine
-pytest test_strategy.py::TestBacktestEngine -v
+# lub CMD (z folderu aifx)
+cd aifx
+tests\run_all_tests.bat
+
+# lub z folderu tests
+cd aifx\tests
+.\run_all_tests.ps1
+# lub
+run_all_tests.bat
+```
+
+**Skrypt automatycznie:**
+- Uruchamia wszystkie 8 modułów testowych po kolei
+- Pokazuje wyniki każdego testu (PASSED / FAILED)
+- Wyświetla podsumowanie na końcu
+- Zwraca exit code 0 (sukces) lub 1 (błąd)
+
+#### Opcja B: Uruchom ręcznie
+```powershell
+# PowerShell - wszystkie testy po kolei (z folderu aifx)
+cd aifx
+python tests/test_close_at_eod.py
+python tests/test_min_slope.py
+python tests/test_min_slope_integration.py
+python tests/test_support_strategy.py
+python tests/test_short_positions.py
+python tests/test_legend.py
+python tests/test_hierarchical.py
+python tests/test_ascending_descending.py
 ```
 
 ---
 
-## Co Testują Poszczególne Klasy
+## Szczegółowy Opis Testów
+
+### test_close_at_eod.py (NOWY - 2025)
+
+**Testuje:** Opcja `close_at_eod` (zamykanie pozycji na koniec dnia)
+
+#### Test 1: close_at_eod wyłączone
+```python
+def test_close_at_eod_disabled():
+```
+✅ **Sprawdza:** Pozycja NIE jest zamykana na koniec dnia gdy `close_at_eod=False`  
+✅ **Wykrywa:** Regresję gdyby EOD był wymuszany mimo wyłączenia opcji
+
+#### Test 2: close_at_eod włączone (LONG)
+```python
+def test_close_at_eod_enabled():
+```
+✅ **Sprawdza:** Pozycja LONG jest zamykana na ostatniej świeczce dnia po cenie Close  
+✅ **Weryfikuje:** Poprawne obliczenie pipsów dla LONG (exit_price - entry_price)  
+✅ **Wykrywa:** Błędy w logice EOD, niepoprawne obliczenia pipsów
+
+#### Test 3: close_at_eod dla SHORT
+```python
+def test_close_at_eod_short_position():
+```
+✅ **Sprawdza:** Pozycja SHORT zamykana z poprawnymi pipsami  
+✅ **Weryfikuje:** Pips = entry_price - exit_price (odwrotnie niż LONG)  
+✅ **Wykrywa:** Błędy w obliczeniach dla SHORT
+
+#### Test 4: EOD nie triggerowane przed końcem dnia
+```python
+def test_close_at_eod_not_triggered_before_eod():
+```
+✅ **Sprawdza:** EOD NIE jest triggerowane w środku dnia  
+✅ **Wykrywa:** Przedwczesne zamknięcie pozycji
+
+#### Test 5: Priorytet SL/TP nad EOD
+```python
+def test_close_at_eod_tp_has_priority():
+```
+✅ **Sprawdza:** TP/SL mają priorytet nad EOD (są sprawdzane PRZED EOD)  
+✅ **Weryfikuje:** Gdy TP osiągnięte - exit='TP' (NIE 'EOD')  
+✅ **Wykrywa:** Niepoprawną kolejność sprawdzania exitów
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_close_at_eod.py
+```
+
+**Oczekiwany output:**
+```
+✓ Test 1 PASSED: Pozycja NIE zamknięta na EOD gdy close_at_eod=False
+✓ Test 2 PASSED: Pozycja LONG zamknięta na EOD po cenie Close (50 pips zysku)
+✓ Test 3 PASSED: Pozycja SHORT zamknięta na EOD z poprawnymi pipsami (50 pips zysku)
+✓ Test 4 PASSED: EOD NIE triggerowane przed końcem dnia
+✓ Test 5 PASSED: TP ma priorytet nad EOD
+
+✓ Wszystkie testy close_at_eod PASSED (5/5)
+```
+
+---
+
+### test_support_strategy.py
+
+**Testuje:** Hierarchiczne linie wsparcia/oporu
+
+#### Test 1: Podstawowe wykrywanie linii
+✅ Wykrycie linii wsparcia dla każdego dnia  
+✅ Poprawność slope i intercept  
+✅ Podział na trendy wzrostowe/spadkowe
+
+#### Test 2: Wykrywanie hierarchicznych linii równoległych
+✅ Linie wsparcia poniżej głównej (offset < 0)  
+✅ Linie oporu powyżej głównej (offset > 0)  
+✅ Poprawna liczba linii hierarchicznych
+
+#### Test 3: Równoległość hierarchicznych linii
+✅ Wszystkie linie mają ten sam slope co główna  
+✅ Brak naruszeń równoległości
+
+#### Test 4: Znaki offsetów
+✅ Wsparcia: offset < 0 (poniżej głównej)  
+✅ Opory: offset > 0 (powyżej głównej)
+
+#### Test 5: Struktura danych
+✅ Wszystkie wymagane klucze: slope, intercept, offset, level, score, touches  
+✅ Poziomy (level) >= 2  
+✅ Score >= 3 punkty
+
+#### Test 6: Generowanie wykresów
+✅ Wykres tworzony bez błędów  
+✅ Użycie rzeczywistych danych
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_support_strategy.py
+```
+
+---
+
+### test_min_slope.py (NOWY - 2025)
+
+**Testuje:** Parametr `min_slope` z pliku config
+
+#### Test 1: min_slope przechowywany w strategii
+```python
+def test_min_slope_from_config():
+```
+✅ **Sprawdza:** Config zawiera min_slope  
+✅ **Weryfikuje:** Strategia przechowuje min_slope z config  
+✅ **Wykrywa:** Regresję gdyby min_slope nie był używany
+
+#### Test 2: min_slope przekazywany do strategii
+```python
+def test_min_slope_used_in_run_support_backtest():
+```
+✅ **Sprawdza:** Merge config z defaults działa poprawnie  
+✅ **Weryfikuje:** `{**default_options, **options}` nadpisuje defaults wartościami z config  
+✅ **Wykrywa:** Błędy w przekazywaniu parametrów do strategii
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_min_slope.py
+```
+
+**Oczekiwany output:**
+```
+================================================================================
+TESTY MIN_SLOPE
+================================================================================
+
+min_slope w config: 0.4
+min_slope w strategii: 0.4
+✓ Test PASSED: min_slope poprawnie przechowany w strategii
+
+✓ min_slope=0.4 znaleziony w config
+✓ Po merge: min_slope=0.4
+✓ Test PASSED: min_slope=0.4 poprawnie przekazany do strategii
+
+================================================================================
+✓✓✓ WSZYSTKIE TESTY PASSED ✓✓✓
+================================================================================
+```
+
+---
+
+### test_min_slope_integration.py (NOWY - 2025)
+
+**Testuje:** Test integracyjny - uruchamia faktyczny `run_support_backtest.py` i sprawdza output
+
+#### Test: run_support_backtest.py używa min_slope z config
+```python
+def test_run_support_backtest_uses_config_min_slope():
+```
+✅ **Sprawdza:** Uruchomienie `python run_support_backtest.py config_example.json`  
+✅ **Weryfikuje:** Log zawiera `Min slope: 0.4` (wartość z config)  
+✅ **Wykrywa:** Regresję w faktycznym użyciu programu
+
+**Czym się różni od test_min_slope.py:**
+- `test_min_slope.py` - testy jednostkowe (importuje moduły)
+- `test_min_slope_integration.py` - test integracyjny (uruchamia subprocess)
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_min_slope_integration.py
+```
+
+**Oczekiwany output:**
+```
+================================================================================
+TEST INTEGRACYJNY: run_support_backtest.py + config_example.json
+================================================================================
+
+Uruchamiam: python run_support_backtest.py config_example.json
+
+✓ Znaleziono w logu: Min slope: 0.4
+✓ Test PASSED: run_support_backtest.py używa min_slope=0.4 z config
+================================================================================
+```
+
+---
+
+### test_short_positions.py
+
+**Testuje:** Pozycje SHORT dla linii opadających (slope < 0)
+
+#### Test 1: Wykrywanie linii opadających
+✅ Wykrywanie linii z slope < 0  
+✅ Przykładowe slope ujemne
+
+#### Test 2: Generowanie sygnałów SHORT
+⚠️ **SKIPPED** - brak breakoutu w danych testowych  
+(Test sprawdza czy sygnały SHORT są generowane dla linii opadających)
+
+#### Test 3: Ustawienie SL/TP dla SHORT
+⚠️ **SKIPPED** - brak sygnału SHORT  
+(Test sprawdza czy SL powyżej entry, TP poniżej entry)
+
+#### Test 4: Exit logic dla SHORT
+✅ TP: Low <= TP_price → exit TP  
+✅ SL: High >= SL_price → exit SL  
+✅ Poprawne obliczenie pipsów dla SHORT
+
+#### Test 5: Wykrywanie LONG i SHORT jednocześnie
+✅ System wykrywa oba typy linii (slope > 0 i slope < 0)  
+✅ Rozkład 50/50
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_short_positions.py
+```
+
+---
+
+### test_legend.py
+
+**Testuje:** Opcja `show_legend` (wyświetlanie legendy na wykresach)
+
+#### Test 1: Legenda wyłączona
+✅ `show_legend=False` → 0 etykiet w legendzie
+
+#### Test 2: Legenda włączona
+✅ `show_legend=True` → legenda z etykietami linii wsparcia/oporu
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_legend.py
+```
+
+---
+
+### test_hierarchical.py
+
+**Testuje:** Wykrywanie i wizualizacja hierarchicznych linii równoległych
+
+✅ Linie wsparcia poniżej głównej (S2, S3, S4...)  
+✅ Linie oporu powyżej głównej (R2, R3, R4...)  
+✅ Offsety i score dla każdej linii
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_hierarchical.py
+```
+
+---
+
+### test_ascending_descending.py
+
+**Testuje:** Wykrywanie linii wznoszących i opadających jednocześnie
+
+#### Test 1: Wykrywanie obu kierunków
+✅ System wykrywa linie wznosząc (slope > 0)  
+✅ System wykrywa linie opadające (slope < 0)
+
+#### Test 2: Wykres zawiera obie linie
+✅ Wykres z linią wznoszącą (czerwone)  
+✅ Wykres z linią opadającą (zielone)
+
+#### Test 3: Przeciwne znaki slope
+✅ Linie mają przeciwne znaki (+/-)  
+✅ Dokładnie ten sam |slope| (różnica <1%)
+
+**Uruchomienie:**
+```bash
+cd aifx
+python tests/test_ascending_descending.py
+```
+
+---
 
 ### TestStrategyInitialization
 ✅ Poprawność domyślnych parametrów  
