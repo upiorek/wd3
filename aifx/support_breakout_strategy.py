@@ -36,7 +36,8 @@ class SupportBreakoutStrategy:
     def __init__(self, lookback_days=5, risk_pips=50, reward_ratio=3, 
                  retest_mode=False, retest_tolerance=30, min_slope=0.1,
                  hierarchical_levels_below=4, hierarchical_levels_above=4,
-                 hierarchical_tolerance=30, allow_descending=True, show_legend=True):
+                 hierarchical_tolerance=30, allow_descending=True, show_legend=True,
+                 chart_dpi=150):
         self.lookback_days = lookback_days
         self.lookback_candles = lookback_days * 96  # 5 dni * 96 świeczek M15/dzień
         self.risk_pips = risk_pips
@@ -47,6 +48,7 @@ class SupportBreakoutStrategy:
         self.min_slope = min_slope  # Minimalny slope dla akceptacji linii (bezwzględna wartość)
         self.allow_descending = allow_descending  # Czy wykrywać linie opadające (SHORT)
         self.show_legend = show_legend  # Czy rysować legendę na wykresach
+        self.chart_dpi = chart_dpi  # Rozdzielczość wykresów w DPI
         
         # Parametry hierarchicznych linii równoległych
         self.hierarchical_levels_below = hierarchical_levels_below  # Ile S2, S3, S4...
@@ -772,9 +774,9 @@ class SupportBreakoutStrategy:
             # Dodaj główną linię (solidna) - label tylko gdy show_legend=True
             main_line_kwargs = {
                 'color': main_line_color,
-                'width': 4,
+                'width': 1,
                 'linestyle': '-',
-                'alpha': 1.0
+                'alpha': 0.6
             }
             if self.show_legend:
                 main_line_kwargs['label'] = main_line_label
@@ -803,10 +805,10 @@ class SupportBreakoutStrategy:
                 
                 # Wszystkie hierarchiczne linie są zielone i przerywane
                 supp_kwargs = {
-                    'color': 'green',
-                    'width': 2,
+                    'color': main_line_color,
+                    'width': 1,
                     'linestyle': '--',
-                    'alpha': 0.8
+                    'alpha': 0.6
                 }
                 if self.show_legend:
                     supp_kwargs['label'] = f'S{supp_level} ({supp_offset:+.0f} pts, {supp_score} p)'
@@ -837,10 +839,10 @@ class SupportBreakoutStrategy:
                 
                 # Wszystkie hierarchiczne linie są czerwone i przerywane
                 res_kwargs = {
-                    'color': 'red',
-                    'width': 2,
+                    'color': main_line_color,
+                    'width': 1,
                     'linestyle': '--',
-                    'alpha': 0.8
+                    'alpha': 0.6
                 }
                 if self.show_legend:
                     res_kwargs['label'] = f'R{res_level} ({res_offset:+.0f} pts, {res_score} p)'
@@ -1065,7 +1067,12 @@ class SupportBreakoutStrategy:
                 pass
         self._last_legend_labels = labels if mark_high_low else []
 
-        fig.savefig(filename, dpi=150, bbox_inches='tight')
+        fig.savefig(filename, dpi=self.chart_dpi, bbox_inches='tight')
+        
+        # Loguj informacje o wygenerowanym obrazku
+        file_size = os.path.getsize(filename) / 1024  # rozmiar w KB
+        self._logger.info(f"Wygenerowano wykres: {filename} | DPI: {self.chart_dpi} | Rozmiar: {file_size:.1f} KB | Linie: {len(support_infos)} | Legend: {self.show_legend}")
+        
         plt.close(fig)
         
         return filename

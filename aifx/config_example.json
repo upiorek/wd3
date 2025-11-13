@@ -48,5 +48,8 @@
   "allow_descending": true,
 
   "_show_legend": "rysuj legendę na wykresach (true/false)",
-  "show_legend": false
+  "show_legend": false,
+
+  "_chart_dpi": "rozdzielczość wykresów w DPI (150 = standard, 200 = wyższa jakość, 100 = mniejsze pliki)",
+  "chart_dpi": 200
 }
