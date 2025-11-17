@@ -9,10 +9,16 @@
 
 // Specify subdirectory name (will be created in MT4 Files folder)
 string FolderName = "m15_candles";
-string version = "3.01";
+string version = "3.05";
 
 datetime lastBarTime = 0;
-int    NumberOfCandles    = 10;
+int HistoryBefore = 10;   // Candles before the named candle
+int CandlesAfter = 9;    // Candles after the named candle
+
+// Decision tracking (matching order-maker logic)
+bool decisionMade = false;
+string pendingOrderType = "";
+datetime decisionTime = 0;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -38,7 +44,8 @@ int OnInit()
       Print("Created folder: ", FolderName);
    }
 
-   lastBarTime = iTime(Symbol(), PERIOD_M15, 0);
+   // Initialize lastBarTime to 0 so first OnTick is always treated as new candle
+   lastBarTime = 0;
    Print("SaveM15Candles EA initialized. Monitoring M15 candles...");
    Print("Files will be saved to: MT4\\MQL4\\Files\\", FolderName);
    return(INIT_SUCCEEDED);
@@ -73,24 +80,25 @@ void OnTick()
 }
 
 //+------------------------------------------------------------------+
-//| Save last NumberOfCandles candles to file                                     |
+//| Save candles with filename in the middle of the range            |
 //+------------------------------------------------------------------+
 string SaveCandles()
 {
    int period = PERIOD_M15;
    string symbol = Symbol();
    
-   // Get current time for filename
-   datetime now = TimeCurrent();
+   // Get time for the MIDDLE candle (bar[10])
+   // Current bar is bar[0], we want to name file after bar[10] (10 candles ago)
+   datetime middleTime = iTime(symbol, period, CandlesAfter);
    
    // Format: yy-mm-dd-hh-min
    string filename = StringFormat("%s\\%02d-%02d-%02d-%02d-%02d.csv",
                                    FolderName,
-                                   TimeYear(now) % 100,
-                                   TimeMonth(now),
-                                   TimeDay(now),
-                                   TimeHour(now),
-                                   TimeMinute(now));
+                                   TimeYear(middleTime) % 100,
+                                   TimeMonth(middleTime),
+                                   TimeDay(middleTime),
+                                   TimeHour(middleTime),
+                                   TimeMinute(middleTime));
    
    // Check if file already exists
    if(FileIsExist(filename, 0))
@@ -111,11 +119,12 @@ string SaveCandles()
    // Write header
    FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");
    
-   // Write last N candles (from oldest to newest)
-   int candlesToSave = NumberOfCandles;
-   if(candlesToSave < 1) candlesToSave = NumberOfCandles;  // Default to 10 if invalid
+   // Write candles: HistoryBefore candles before middle + middle candle + CandlesAfter candles after middle
+   // Start from bar[HistoryBefore + CandlesAfter] and go to bar[0]
+   // Example: 10 before + 10 after = start from bar[20] to bar[0] = 21 candles total
+   int startBar = HistoryBefore + CandlesAfter;
    
-   for(int i = candlesToSave - 1; i >= 0; i--)
+   for(int i = startBar; i >= 0; i--)
    {
       datetime time = iTime(symbol, period, i);
       double open = iOpen(symbol, period, i);
@@ -134,6 +143,6 @@ string SaveCandles()
    }
    
    FileClose(fileHandle);
-   Print("Saved ", candlesToSave, " candles to: ", filename);
+   Print("Saved ", startBar + 1, " candles (bar[", startBar, "] to bar[0]) with middle at bar[", CandlesAfter, "] to: ", filename);
    return filename;
 }

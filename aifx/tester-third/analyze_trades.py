@@ -292,25 +292,41 @@ def process_mod_file(file_path):
 def main():
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
     
-    # Check for candles in mt4_test_results first, then fall back to m15_candles
-    test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles"
-    original_dir = Path(__file__).parent / "m15_candles"
+    # Check for folder argument (candles or orders)
+    folder_type = "candles"  # default
+    if len(sys.argv) > 1 and sys.argv[1] in ["orders", "candles"]:
+        folder_type = sys.argv[1]
+    elif len(sys.argv) > 2 and sys.argv[2] in ["orders", "candles"]:
+        folder_type = sys.argv[2]
+    
+    # Determine folder based on type
+    if folder_type == "orders":
+        test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_orders"
+        original_dir = Path(__file__).parent / "m15_orders"
+        file_pattern = "*.csv"  # orders don't have _mod suffix
+    else:
+        test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles"
+        original_dir = Path(__file__).parent / "m15_candles"
+        file_pattern = "*_mod.csv" if not revert else "*_mod.csv"
     
     if test_results_dir.exists():
         candles_dir = test_results_dir
         print(f"Using MT4 test results: {candles_dir}")
     elif original_dir.exists():
         candles_dir = original_dir
-        print(f"Using original candles: {candles_dir}")
+        print(f"Using original {folder_type}: {candles_dir}")
     else:
         print(f"Directory not found: {test_results_dir}")
         print(f"Directory not found: {original_dir}")
         return
     
-    # Get all _mod.csv files
-    mod_files = sorted(candles_dir.glob("*_mod.csv"))
+    # Get all matching files
+    if folder_type == "orders":
+        mod_files = sorted(candles_dir.glob(file_pattern))
+    else:
+        mod_files = sorted(candles_dir.glob(file_pattern))
     
-    print(f"Found {len(mod_files)} _mod files to {'revert' if revert else 'analyze'}\n")
+    print(f"Found {len(mod_files)} {folder_type} files to {'revert' if revert else 'analyze'}\n")
     
     if revert:
         for mod_file in mod_files:

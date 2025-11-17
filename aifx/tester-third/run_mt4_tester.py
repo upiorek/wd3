@@ -1,6 +1,14 @@
+# -*- coding: utf-8 -*-
 """
 MT4 Strategy Tester Runner
 Runs MT4 strategy tester based on configuration and copies results
+
+Usage:
+    python run_mt4_tester.py                    # Uses default mt4_test_config.ini
+    python run_mt4_tester.py order-maker        # Uses mt4_order_config.ini
+    python run_mt4_tester.py custom_config.ini  # Uses specified config file
+    python run_mt4_tester.py --clean            # Clean local results folder only
+    python run_mt4_tester.py order-maker --clean # Run with cleaning local results first
 """
 import os
 import sys
@@ -10,10 +18,71 @@ import subprocess
 from pathlib import Path
 import configparser
 
+# Set UTF-8 encoding for console output
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 # Configuration
 MT4_TERMINAL_PATH = Path(r"C:\Users\prudnick\AppData\Roaming\MetaQuotes\Terminal\E014E927B1217F5A561E0813A1C319F3")
 CURRENT_DIR = Path(__file__).parent
-CONFIG_FILE = CURRENT_DIR / "mt4_test_config.ini"
+
+# Check for --clean flag
+CLEAN_LOCAL_RESULTS = '--clean' in sys.argv
+if CLEAN_LOCAL_RESULTS:
+    sys.argv.remove('--clean')
+
+# Check for --help flag
+if '--help' in sys.argv or '-h' in sys.argv:
+    print("=" * 60)
+    print("MT4 STRATEGY TESTER RUNNER - HELP")
+    print("=" * 60)
+    print("\nUsage:")
+    print("  python run_mt4_tester.py [EA_NAME] [--clean]")
+    print("\nOptions:")
+    print("  EA_NAME            Expert advisor to test (order-maker, candle-maker)")
+    print("                     Or a custom .ini config file name")
+    print("  --clean            Clean local mt4_test_results folder before running")
+    print("  --help, -h         Show this help message")
+    print("\nExamples:")
+    print("  python run_mt4_tester.py")
+    print("    → Run with default mt4_test_config.ini (candle-maker)")
+    print("\n  python run_mt4_tester.py order-maker")
+    print("    → Run order-maker EA using mt4_order_config.ini")
+    print("\n  python run_mt4_tester.py --clean")
+    print("    → Only clean local results, don't run tests")
+    print("\n  python run_mt4_tester.py order-maker --clean")
+    print("    → Clean local results, then run order-maker test")
+    print("\n  python run_mt4_tester.py custom_config.ini")
+    print("    → Run with custom config file")
+    print("\nFolders cleaned:")
+    print("  - MT4 tester folder (always cleaned before each run)")
+    print("  - mt4_test_results folder (only with --clean flag)")
+    print("=" * 60)
+    sys.exit(0)
+
+# Determine config file from command line argument
+if len(sys.argv) > 1:
+    arg = sys.argv[1]
+    # If argument is 'order-maker', use the order config
+    if arg == 'order-maker':
+        CONFIG_FILE = CURRENT_DIR / "mt4_order_config.ini"
+    # If argument is 'candle-maker', use the candle config
+    elif arg == 'candle-maker':
+        CONFIG_FILE = CURRENT_DIR / "mt4_test_config.ini"
+    # Otherwise, treat as a filename
+    elif arg.endswith('.ini'):
+        CONFIG_FILE = CURRENT_DIR / arg
+    else:
+        # Assume it's an EA name, look for matching config
+        CONFIG_FILE = CURRENT_DIR / f"mt4_{arg}_config.ini"
+        if not CONFIG_FILE.exists():
+            print(f"Warning: Config file not found: {CONFIG_FILE}")
+            print(f"Using default: mt4_test_config.ini")
+            CONFIG_FILE = CURRENT_DIR / "mt4_test_config.ini"
+else:
+    CONFIG_FILE = CURRENT_DIR / "mt4_test_config.ini"
 
 def read_config():
     """Read MT4 test configuration"""
@@ -64,16 +133,19 @@ def find_mt4_executable():
 
 def prepare_expert():
     """Copy expert advisor to MT4 Experts folder"""
+    config = read_config()
+    expert_name = config['expert']
+    
     # Try both .ex4 (compiled) and .mq4 (source)
     expert_files = [
-        ("candle-maker.ex4", "compiled"),
-        ("candle-maker.mq4", "source")
+        (f"{expert_name}.ex4", "compiled"),
+        (f"{expert_name}.mq4", "source")
     ]
     
     copied = False
     
-    for expert_name, file_type in expert_files:
-        source = CURRENT_DIR / expert_name
+    for expert_file, file_type in expert_files:
+        source = CURRENT_DIR / expert_file
         
         if source.exists():
             # Copy to MT4 Experts folder
@@ -82,9 +154,9 @@ def prepare_expert():
                 print(f"Creating Experts folder: {experts_folder}")
                 experts_folder.mkdir(parents=True, exist_ok=True)
             
-            dest = experts_folder / expert_name
+            dest = experts_folder / expert_file
             shutil.copy2(source, dest)
-            print(f"Copied {expert_name} ({file_type}) to {experts_folder}")
+            print(f"Copied {expert_file} ({file_type}) to {experts_folder}")
             copied = True
             
             # If source file, MT4 will compile it automatically
@@ -92,7 +164,7 @@ def prepare_expert():
                 print("Note: MT4 will compile the .mq4 file automatically")
     
     if not copied:
-        print("Warning: No candle-maker.ex4 or candle-maker.mq4 found")
+        print(f"Warning: No {expert_name}.ex4 or {expert_name}.mq4 found")
         print("Make sure the EA is available in the current directory")
         return False
     
@@ -101,6 +173,15 @@ def prepare_expert():
 def cleanup_mt4_data():
     """Clean up MT4 data folders from previous tests"""
     print("\nCleaning up previous test data...")
+    
+    config = read_config()
+    expert_name = config['expert']
+    
+    # Determine which folder to clean based on EA
+    if 'order' in expert_name.lower():
+        data_folders = ['m15_orders', 'm15_candles']
+    else:
+        data_folders = ['m15_candles', 'm15_orders']
     
     cleaned_items = 0
     
@@ -127,32 +208,100 @@ def cleanup_mt4_data():
                 except Exception as e:
                     print(f"Warning: Could not delete {file.name}: {e}")
         
-        # Clean m15_candles folder in tester/files (this is where MT4 tester saves files)
-        tester_files = tester_folder / "files" / "m15_candles"
-        if tester_files.exists():
-            for file in tester_files.glob("*.csv"):
-                try:
-                    file.unlink()
-                    cleaned_items += 1
-                except Exception as e:
-                    print(f"Warning: Could not delete {file.name}: {e}")
+        # Clean data folders in tester/files
+        for folder_name in data_folders:
+            tester_files = tester_folder / "files" / folder_name
+            if tester_files.exists():
+                for file in tester_files.glob("*.csv"):
+                    try:
+                        file.unlink()
+                        cleaned_items += 1
+                    except Exception as e:
+                        print(f"Warning: Could not delete {file.name}: {e}")
     
     # Also clean MQL4/Files folder (used during regular EA operation, not testing)
     files_folder = MT4_TERMINAL_PATH / "MQL4" / "Files"
     if files_folder.exists():
-        m15_folder = files_folder / "m15_candles"
-        if m15_folder.exists():
-            for file in m15_folder.glob("*.csv"):
-                try:
-                    file.unlink()
-                    cleaned_items += 1
-                except Exception as e:
-                    print(f"Warning: Could not delete {file.name}: {e}")
+        for folder_name in data_folders:
+            data_folder = files_folder / folder_name
+            if data_folder.exists():
+                for file in data_folder.glob("*.csv"):
+                    try:
+                        file.unlink()
+                        cleaned_items += 1
+                    except Exception as e:
+                        print(f"Warning: Could not delete {file.name}: {e}")
     
     if cleaned_items > 0:
         print(f"✓ Cleaned {cleaned_items} old test files")
     else:
         print("✓ No old test files to clean")
+    
+    return True
+
+def cleanup_local_results():
+    """Clean up local mt4_test_results folder - only the relevant subfolder"""
+    print("\nCleaning up local test results...")
+    
+    results_folder = CURRENT_DIR / "mt4_test_results"
+    
+    if not results_folder.exists():
+        print("✓ No local results folder to clean")
+        return True
+    
+    # Read config to determine which EA is being tested
+    config = read_config()
+    expert_name = config['expert']
+    
+    # Determine which folder to clean based on EA
+    if 'order' in expert_name.lower():
+        target_folder = 'm15_orders'
+    else:
+        target_folder = 'm15_candles'
+    
+    cleaned_items = 0
+    
+    # Clean only the relevant data folder
+    data_folder = results_folder / target_folder
+    if data_folder.exists():
+        for file in data_folder.glob("*.csv"):
+            try:
+                file.unlink()
+                cleaned_items += 1
+            except Exception as e:
+                print(f"Warning: Could not delete {file.name}: {e}")
+        print(f"✓ Cleaned {target_folder} folder")
+    
+    # Clean logs folder
+    logs_folder = results_folder / "logs"
+    if logs_folder.exists():
+        for file in logs_folder.glob("*.log"):
+            try:
+                file.unlink()
+                cleaned_items += 1
+            except Exception as e:
+                print(f"Warning: Could not delete {file.name}: {e}")
+    
+    # Clean HTML reports
+    for file in results_folder.glob("*.htm"):
+        try:
+            file.unlink()
+            cleaned_items += 1
+        except Exception as e:
+            print(f"Warning: Could not delete {file.name}: {e}")
+    
+    # Clean GIF files
+    for file in results_folder.glob("*.gif"):
+        try:
+            file.unlink()
+            cleaned_items += 1
+        except Exception as e:
+            print(f"Warning: Could not delete {file.name}: {e}")
+    
+    if cleaned_items > 0:
+        print(f"✓ Cleaned {cleaned_items} local result files from {target_folder}")
+    else:
+        print(f"✓ No local result files to clean in {target_folder}")
     
     return True
 
@@ -247,6 +396,15 @@ def copy_results():
     """Copy test results to current folder"""
     print("\nCopying test results...")
     
+    config = read_config()
+    expert_name = config['expert']
+    
+    # Determine which folder to copy based on EA
+    if 'order' in expert_name.lower():
+        data_folders = ['m15_orders', 'm15_candles']
+    else:
+        data_folders = ['m15_candles', 'm15_orders']
+    
     # Find tester folder
     tester_folder = MT4_TERMINAL_PATH / "tester"
     
@@ -287,33 +445,35 @@ def copy_results():
             print(f"Copied log: {log_file.name}")
             files_copied += 1
     
-    # Copy CSV files from tester/files/m15_candles (this is where MT4 tester saves files)
-    tester_files = tester_folder / "files" / "m15_candles"
-    if tester_files.exists():
-        m15_dest = results_folder / "m15_candles"
-        m15_dest.mkdir(exist_ok=True)
-        csv_files = list(tester_files.glob("*.csv"))
-        for csv_file in csv_files:
-            dest = m15_dest / csv_file.name
-            shutil.copy2(csv_file, dest)
-        if csv_files:
-            print(f"Copied m15_candles folder with {len(csv_files)} CSV files")
-            files_copied += len(csv_files)
+    # Copy CSV files from tester/files (for each data folder type)
+    for folder_name in data_folders:
+        tester_files = tester_folder / "files" / folder_name
+        if tester_files.exists():
+            dest_folder = results_folder / folder_name
+            dest_folder.mkdir(exist_ok=True)
+            csv_files = list(tester_files.glob("*.csv"))
+            for csv_file in csv_files:
+                dest = dest_folder / csv_file.name
+                shutil.copy2(csv_file, dest)
+            if csv_files:
+                print(f"Copied {folder_name} folder with {len(csv_files)} CSV files")
+                files_copied += len(csv_files)
     
     # Also copy from MQL4/Files if it exists (for regular EA operation)
     files_folder = MT4_TERMINAL_PATH / "MQL4" / "Files"
     if files_folder.exists():
-        m15_source = files_folder / "m15_candles"
-        if m15_source.exists() and list(m15_source.glob("*.csv")):
-            m15_dest_alt = results_folder / "m15_candles_mql4"
-            m15_dest_alt.mkdir(exist_ok=True)
-            csv_files = list(m15_source.glob("*.csv"))
-            for csv_file in csv_files:
-                dest = m15_dest_alt / csv_file.name
-                shutil.copy2(csv_file, dest)
-            if csv_files:
-                print(f"Copied MQL4 m15_candles folder with {len(csv_files)} CSV files")
-                files_copied += len(csv_files)
+        for folder_name in data_folders:
+            source_folder = files_folder / folder_name
+            if source_folder.exists() and list(source_folder.glob("*.csv")):
+                dest_folder_alt = results_folder / f"{folder_name}_mql4"
+                dest_folder_alt.mkdir(exist_ok=True)
+                csv_files = list(source_folder.glob("*.csv"))
+                for csv_file in csv_files:
+                    dest = dest_folder_alt / csv_file.name
+                    shutil.copy2(csv_file, dest)
+                if csv_files:
+                    print(f"Copied MQL4 {folder_name} folder with {len(csv_files)} CSV files")
+                    files_copied += len(csv_files)
     
     if files_copied > 0:
         print(f"\nTotal files copied: {files_copied}")
@@ -326,6 +486,17 @@ def main():
     print("MT4 STRATEGY TESTER RUNNER")
     print("=" * 60)
     
+    # Display which config file is being used
+    print(f"Config file: {CONFIG_FILE.name}")
+    
+    # If only --clean flag was provided, just clean and exit
+    if CLEAN_LOCAL_RESULTS and len(sys.argv) == 1:
+        cleanup_local_results()
+        print("\n" + "=" * 60)
+        print("LOCAL CLEANUP COMPLETE!")
+        print("=" * 60)
+        return 0
+    
     # Check if MT4 terminal path exists
     if not MT4_TERMINAL_PATH.exists():
         print(f"Error: MT4 terminal path not found: {MT4_TERMINAL_PATH}")
@@ -337,11 +508,23 @@ def main():
     # Read configuration
     if not CONFIG_FILE.exists():
         print(f"Error: Configuration file not found: {CONFIG_FILE}")
+        print("\nAvailable config files:")
+        for ini_file in CURRENT_DIR.glob("mt4_*.ini"):
+            print(f"  - {ini_file.name}")
+        print("\nUsage:")
+        print("  python run_mt4_tester.py                    # Uses mt4_test_config.ini")
+        print("  python run_mt4_tester.py order-maker        # Uses mt4_order_config.ini")
+        print("  python run_mt4_tester.py candle-maker       # Uses mt4_test_config.ini")
+        print("  python run_mt4_tester.py custom_config.ini  # Uses specified file")
+        print("  python run_mt4_tester.py --clean            # Clean local results only")
+        print("  python run_mt4_tester.py order-maker --clean # Run with local cleanup")
         return 1
     
-    print(f"Config file: {CONFIG_FILE}")
-    
     config = read_config()
+    
+    # Clean local results if flag is set
+    if CLEAN_LOCAL_RESULTS:
+        cleanup_local_results()
     
     # Clean up previous test data
     cleanup_mt4_data()
