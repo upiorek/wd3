@@ -576,7 +576,70 @@ pytest test_strategy.py::TestBacktestEngine -v
 # Dodaj nowy test który wykrywa ten bug (regression test)
 ```
 
-### Scenario 4: Release - pełna weryfikacja
+### Scenario 4: Refactoring - Golden Tests
+
+**Cel:** Bezpieczna refaktoryzacja kodu z weryfikacją, że zachowanie systemu nie uległo zmianie.
+
+**Workflow:**
+```powershell
+# KROK 1: Wygeneruj wzorcowe wyniki (przed refactoringiem)
+cd c:\Users\rrudnick\OneDrive - Intel Corporation\Desktop\fx\wd3\aifx
+.\tests\generate_golden.ps1
+
+# KROK 2: Wykonaj refactoring (zmiany w kodzie)
+# ... modyfikacja kodu ...
+
+# KROK 3: Przetestuj po refactoringu
+.\tests\test_golden.ps1
+
+# KROK 4: Sprawdź wyniki
+# - Exit code 0: refactoring OK (identyczne wyniki)
+# - Exit code 1: wykryto różnice (sprawdź logi)
+```
+
+**Kiedy używać:**
+- Przed dużym refactoringiem (zmiana struktury kodu)
+- Optymalizacja algorytmów (sprawdź czy wyniki się nie zmieniły)
+- Aktualizacja zależności (pandas, numpy)
+- Migracja do nowej wersji Pythona
+
+**Co jest porównywane:**
+1. **Logi backtestingu** - znormalizowane (bez timestampów/ścieżek)
+2. **CSV wyniki** - wszystkie transakcje (entry_price, exit_price, pips, result)
+3. **Wykresy** - liczba plików, nazwy, rozmiary (±5% tolerancja)
+
+**Ograniczenia:**
+- Losowe elementy (seed trzeba ustawić)
+- Zmiany w formacie outputu (np. nowe kolumny w CSV) wywołają failure
+- Floating point errors mogą wymagać tolerancji
+- Nie wykrywa problemów z wydajnością (tylko poprawność)
+
+**Przykład - sukces:**
+```
+Running backtest with current code...
+Backtest completed successfully.
+Comparing logs...
+Logs are identical (after normalization).
+Comparing CSV results...
+CSV results are identical.
+Comparing charts...
+Charts are identical (20 files).
+✓ Golden test PASSED - refactoring safe!
+Exit: 0
+```
+
+**Przykład - failure:**
+```
+Running backtest with current code...
+Backtest completed successfully.
+Comparing logs...
+✗ DIFFERENCE detected in logs! See: golden_test/log_diff.txt
+Comparing CSV results...
+✗ DIFFERENCE: Transaction count mismatch (golden: 45, test: 43)
+Exit: 1
+```
+
+### Scenario 5: Release - pełna weryfikacja
 ```bash
 # Uruchom WSZYSTKIE testy (włącznie z wydajnościowymi)
 pytest test_strategy.py -v
