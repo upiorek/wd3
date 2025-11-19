@@ -46,7 +46,32 @@ function Run-Test {
     $script:totalTests++
 }
 
+function Run-Pytest {
+    param($TestFile, $TestName)
+    
+    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Yellow
+    Write-Host "TEST: $TestName" -ForegroundColor Yellow
+    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Yellow
+    
+    $testPath = Join-Path $testsDir $TestFile
+    $result = python -m pytest $testPath -v --tb=short 2>&1
+    $exitCode = $LASTEXITCODE
+    
+    if ($exitCode -eq 0) {
+        Write-Host "PASSED" -ForegroundColor Green
+        $script:passedTests++
+    } else {
+        Write-Host "FAILED (some tests may have failed)" -ForegroundColor Red
+        Write-Host $result
+        $script:failedTests++
+    }
+    
+    Write-Host ""
+    $script:totalTests++
+}
+
 # Lista testow do uruchomienia
+Run-Pytest "test_strategy.py" "Strategy Suite - pytest (35 test cases)"
 Run-Test "test_close_at_eod.py" "Close At EOD (5 testow)"
 Run-Test "test_min_slope.py" "Min Slope (2 testy)"
 Run-Test "test_min_slope_integration.py" "Min Slope Integration (1 test)"

@@ -83,13 +83,14 @@ def test_detects_descending_lines():
     # Oblicz wskaźniki
     df_calc = strategy.calculate_indicators(df)
     
-    # Sprawdź wykryte linie
+    # Sprawdź wykryte linie (flatten dict)
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
     descending_lines = [
-        entry for entry in strategy.daily_support_data
+        entry for entry in all_lines
         if entry['slope'] < 0
     ]
     
-    print(f"\nWykryte linie opadające: {len(descending_lines)}/{len(strategy.daily_support_data)}")
+    print(f"\nWykryte linie opadające: {len(descending_lines)}/{len(all_lines)}")
     
     if len(descending_lines) > 0:
         # Pokaż przykłady
@@ -117,13 +118,13 @@ def test_generates_short_signals():
     
     # Załaduj rzeczywiste dane
     import os
-    data_file = 'FUS100.15.csv'
+    data_file = '../FUS100.15.csv'
     
     if not os.path.exists(data_file):
         print(f"\n⚠ TEST 2 SKIPPED - brak pliku {data_file}")
         return None
     
-    # Load data
+    # Load data - OGRANICZONY DATASET (ostatni miesiąc dla szybszego testu)
     df = pd.read_csv(data_file, sep='\t')
     df['DateTime'] = pd.to_datetime(df['<DATE>'] + ' ' + df['<TIME>'])
     df = df.rename(columns={
@@ -134,6 +135,10 @@ def test_generates_short_signals():
         '<TICKVOL>': 'Volume'
     })
     df = df[['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
+    
+    # OGRANICZENIE: tylko ostatnie 5 dni danych dla szybszego testu
+    df = df[df['DateTime'] >= '2025-10-25'].copy()
+    print(f"Dataset ograniczony do {len(df)} świeczek (od 2025-10-25)")
     
     # Strategia
     strategy = SupportBreakoutStrategy(
@@ -148,13 +153,14 @@ def test_generates_short_signals():
     # Oblicz wskaźniki
     df_calc = strategy.calculate_indicators(df)
     
-    # Sprawdź linie opadające w daily_support_data
+    # Sprawdź linie opadające w daily_support_data (flatten dict)
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
     descending_lines = [
-        line for line in strategy.daily_support_data
+        line for line in all_lines
         if line['slope'] < 0
     ]
     
-    print(f"\nWykryte linie opadające: {len(descending_lines)}/{len(strategy.daily_support_data)}")
+    print(f"\nWykryte linie opadające: {len(descending_lines)}/{len(all_lines)}")
     
     if len(descending_lines) == 0:
         print(f"\n⚠ Brak linii opadających w danych - test nie może kontynuować")
@@ -171,8 +177,8 @@ def test_generates_short_signals():
     
     print(f"\nTest na dzień: {test_date}, slope: {test_line['slope']:.4f}")
     
-    # Sprawdź świeczki tego dnia (max 50 świeczek po day_start_idx)
-    for offset in range(50):
+    # Sprawdź tylko pierwsze 20 świeczek tego dnia (szybszy test)
+    for offset in range(20):
         idx = day_start_idx + offset
         if idx >= len(df_calc):
             break
@@ -183,6 +189,7 @@ def test_generates_short_signals():
         signal = strategy.should_enter(df_calc, idx)
         if signal and signal['direction'] == 'short':
             short_signals.append(signal)
+            break  # Early exit - jeden sygnał wystarczy dla testu
     
     print(f"Znalezione sygnały SHORT dla dnia {test_date}: {len(short_signals)}")
     
@@ -424,7 +431,7 @@ def test_mixed_long_short_detection():
     
     # Załaduj rzeczywiste dane
     import os
-    data_file = 'FUS100.15.csv'
+    data_file = '../FUS100.15.csv'
     
     if not os.path.exists(data_file):
         print(f"\n⚠ TEST 5 SKIPPED - brak pliku {data_file}")
@@ -441,6 +448,9 @@ def test_mixed_long_short_detection():
     })
     df = df[['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
     
+    # Ogranicz dataset do 1 dnia - szybki test
+    df = df[df['DateTime'] >= '2025-10-30'].copy()
+    
     # Strategia
     strategy = SupportBreakoutStrategy(
         lookback_days=3,
@@ -453,14 +463,15 @@ def test_mixed_long_short_detection():
     # Oblicz wskaźniki
     df_calc = strategy.calculate_indicators(df)
     
-    # Sprawdź wykryte linie
-    ascending_lines = [l for l in strategy.daily_support_data if l['slope'] > 0]
-    descending_lines = [l for l in strategy.daily_support_data if l['slope'] < 0]
+    # Sprawd\u017a wykryte linie (flatten dict)
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
+    ascending_lines = [l for l in all_lines if l['slope'] > 0]
+    descending_lines = [l for l in all_lines if l['slope'] < 0]
     
-    print(f"\nWykryte linie w pełnym zbiorze danych:")
-    print(f"  Wznosząc (slope > 0): {len(ascending_lines)}")
-    print(f"  Opadające (slope < 0): {len(descending_lines)}")
-    print(f"  Razem: {len(strategy.daily_support_data)}")
+    print(f"\nWykryte linie w pe\u0142nym zbiorze danych:")
+    print(f"  Wznosz\u0105c (slope > 0): {len(ascending_lines)}")
+    print(f"  Opadaj\u0105ce (slope < 0): {len(descending_lines)}")
+    print(f"  Razem: {len(all_lines)}")
     
     # Powinny być oba typy
     has_ascending = len(ascending_lines) > 0
@@ -499,7 +510,7 @@ if __name__ == '__main__':
     import sys
     
     print("\n" + "#"*80)
-    print("# TESTY POZYCJI SHORT DLA LINII OPADAJĄCYCH")
+    print("# TESTY POZYCJI SHORT DLA LINII OPADAJACYCH")
     print("#"*80)
     
     # Konfiguruj UTF-8

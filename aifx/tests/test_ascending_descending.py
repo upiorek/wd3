@@ -80,11 +80,12 @@ def test_detects_both_ascending_and_descending():
     # Oblicz wskaźniki
     df_calc = strategy.calculate_indicators(df)
     
-    # Sprawdź wykryte linie
+    # Sprawd\u017a wykryte linie (flatten dict)
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
     ascending_count = 0
     descending_count = 0
     
-    for entry in strategy.daily_support_data:
+    for entry in all_lines:
         slope = entry['slope']
         if slope > 0:
             ascending_count += 1
@@ -92,9 +93,9 @@ def test_detects_both_ascending_and_descending():
             descending_count += 1
     
     print(f"\nWykryte linie:")
-    print(f"  Wznosząc (slope > 0): {ascending_count}")
-    print(f"  Opadające (slope < 0): {descending_count}")
-    print(f"  Razem: {len(strategy.daily_support_data)}")
+    print(f"  Wznosz\u0105c (slope > 0): {ascending_count}")
+    print(f"  Opadaj\u0105ce (slope < 0): {descending_count}")
+    print(f"  Razem: {len(all_lines)}")
     
     # PROBLEM: System wykrywa tylko jedną linię na dzień!
     # Powinien wykrywać OBIE (wznosząca dla resistance, opadająca dla support)
@@ -142,10 +143,7 @@ def test_chart_contains_both_lines():
     
     # Znajdź dzień który ma obie linie (ascending i descending)
     test_date = None
-    for entry in strategy.daily_support_data:
-        date = entry['date']
-        # Sprawdź czy ten dzień ma obie linie
-        lines_for_date = [e for e in strategy.daily_support_data if e['date'] == date]
+    for date, lines_for_date in strategy.daily_support_data.items():
         has_ascending = any(e['slope'] > 0 for e in lines_for_date)
         has_descending = any(e['slope'] < 0 for e in lines_for_date)
         
@@ -179,10 +177,10 @@ def test_chart_contains_both_lines():
         print(f"PROBLEM: Wykres nie został utworzony: {chart_path}")
         return False
     
-    print(f"\n✓ Wykres utworzony: {chart_path}")
+    print(f"\n\u2713 Wykres utworzony: {chart_path}")
     
-    # Sprawdź linie dla tego dnia
-    lines_for_date = [e for e in strategy.daily_support_data if e['date'] == test_date]
+    # Sprawd\u017a linie dla tego dnia (z dict)
+    lines_for_date = strategy.daily_support_data.get(test_date, [])
     ascending_lines = [e for e in lines_for_date if e['slope'] > 0]
     descending_lines = [e for e in lines_for_date if e['slope'] < 0]
     
@@ -265,17 +263,18 @@ def test_opposite_slopes():
     # Znajdź dni które mają OBE linie
     dates_with_both = {}
     
-    for entry in strategy.daily_support_data:
-        date = entry['date']
-        slope = entry['slope']
-        
-        if date not in dates_with_both:
-            dates_with_both[date] = {'ascending': None, 'descending': None}
-        
-        if slope > 0:
-            dates_with_both[date]['ascending'] = slope
-        elif slope < 0:
-            dates_with_both[date]['descending'] = slope
+    # Iteruj po wszystkich liniach (flatten dict)
+    for date, lines_for_date in strategy.daily_support_data.items():
+        for entry in lines_for_date:
+            slope = entry['slope']
+            
+            if date not in dates_with_both:
+                dates_with_both[date] = {'ascending': None, 'descending': None}
+            
+            if slope > 0:
+                dates_with_both[date]['ascending'] = slope
+            elif slope < 0:
+                dates_with_both[date]['descending'] = slope
     
     # Filtruj tylko dni z obiema liniami
     complete_days = {
@@ -372,15 +371,15 @@ def test_opposite_slopes():
 if __name__ == '__main__':
     import sys
     
-    print("\n" + "#"*80)
-    print("# TESTY WYKRYWANIA LINII WZNOSZĄCYCH I OPADAJĄCYCH JEDNOCZEŚNIE")
-    print("#"*80)
-    
-    # Konfiguruj UTF-8
+    # Konfiguruj UTF-8 NAJPIERW
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except:
         pass
+    
+    print("\n" + "#"*80)
+    print("# TESTY WYKRYWANIA LINII WZNOSZĄCYCH I OPADAJĄCYCH JEDNOCZEŚNIE")
+    print("#"*80)
     
     results = []
     

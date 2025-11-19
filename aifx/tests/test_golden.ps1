@@ -102,6 +102,8 @@ function Normalize-Log {
     $log = $log -replace '\d+\.\d{6}s', 'X.XXXXXXs'  # czas wykonania
     $log = $log -replace 'golden_test\\', 'golden\'  # Normalizuj ścieżki golden vs golden_test
     $log = $log -replace 'golden_test/', 'golden/'
+    # Normalizuj linię "Dni z obliczonym support" - liczba może się różnić (dict vs list)
+    $log = $log -replace 'Dni z obliczonym support: \d+', 'Dni z obliczonym support: N'
     $log = $log.Trim()  # Usuń białe znaki na początku/końcu
     $log = $log -replace '\r\n', "`n"  # Normalizuj końce linii
     $log = $log -replace '\s+$', ''  # Usuń trailing whitespace

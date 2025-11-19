@@ -2,6 +2,11 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except:
+    pass
+
 import pandas as pd
 import numpy as np
 from support_breakout_strategy import SupportBreakoutStrategy
@@ -25,7 +30,9 @@ df_calc = strategy.calculate_indicators(df_subset)
 
 print(f'Support data entries: {len(strategy.daily_support_data)}')
 print('\nPrzykłady z hierarchicznymi liniami:')
-for entry in strategy.daily_support_data[:10]:
+# Flatten dict and take first 10 lines
+all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
+for entry in all_lines[:10]:
     h_supp = entry.get('hierarchical_supports', [])
     h_res = entry.get('hierarchical_resistances', [])
     print(f"  {entry['date']}: {len(h_supp)} wsparć poniżej, {len(h_res)} oporów powyżej")

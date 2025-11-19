@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import matplotlib
 # Use non-interactive backend for headless environments/tests
 matplotlib.use('Agg')
@@ -8,7 +8,11 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 import os
 import logging
+from typing import List, Optional, Dict, Tuple
 from impulse_detector import find_hierarchical_parallel_lines
+from strategy_types import (
+    StrategyConfig, Point, HierarchicalLine, SupportLine, TradeSignal
+)
 
 class SupportBreakoutStrategy:
     """
@@ -33,31 +37,52 @@ class SupportBreakoutStrategy:
     - Linie OPADAJĄCE (slope < 0): strategia SHORT (breakout w dół)
     """
     
-    def __init__(self, lookback_days=5, risk_pips=50, reward_ratio=3, 
+    def __init__(self, config: Optional[StrategyConfig] = None, 
+                 lookback_days=5, risk_pips=50, reward_ratio=3, 
                  retest_mode=False, retest_tolerance=30, min_slope=0.1,
                  hierarchical_levels_below=4, hierarchical_levels_above=4,
                  hierarchical_tolerance=30, allow_descending=True, show_legend=True,
                  chart_dpi=150, close_at_eod=False):
-        self.lookback_days = lookback_days
-        self.lookback_candles = lookback_days * 96  # 5 dni * 96 świeczek M15/dzień
-        self.risk_pips = risk_pips
-        self.reward_pips = risk_pips * reward_ratio
-        self.reward_ratio = reward_ratio
-        self.retest_mode = retest_mode  # False = immediate, True = czeka na retest
-        self.retest_tolerance = retest_tolerance  # odległość od linii dla retesту
-        self.min_slope = min_slope  # Minimalny slope dla akceptacji linii (bezwzględna wartość)
-        self.allow_descending = allow_descending  # Czy wykrywać linie opadające (SHORT)
-        self.show_legend = show_legend  # Czy rysować legendę na wykresach
-        self.chart_dpi = chart_dpi  # Rozdzielczość wykresów w DPI
-        self.close_at_eod = close_at_eod  # Czy zamykać pozycje na koniec dnia
+        # Backward compatibility: jeśli config nie podany, użyj starych parametrów
+        if config is None:
+            config = StrategyConfig(
+                lookback_days=lookback_days,
+                risk_pips=risk_pips,
+                reward_ratio=reward_ratio,
+                retest_mode=retest_mode,
+                retest_tolerance=retest_tolerance,
+                min_slope=min_slope,
+                hierarchical_levels_below=hierarchical_levels_below,
+                hierarchical_levels_above=hierarchical_levels_above,
+                hierarchical_tolerance=hierarchical_tolerance,
+                allow_descending=allow_descending,
+                show_legend=show_legend,
+                chart_dpi=chart_dpi,
+                close_at_eod=close_at_eod
+            )
         
-        # Parametry hierarchicznych linii równoległych
-        self.hierarchical_levels_below = hierarchical_levels_below  # Ile S2, S3, S4...
-        self.hierarchical_levels_above = hierarchical_levels_above  # Ile R2, R3, R4...
-        self.hierarchical_tolerance = hierarchical_tolerance  # Tolerancja dla punktów
+        self.config = config
         
+        # Convenience properties (backward compatibility)
+        self.lookback_days = config.lookback_days
+        self.lookback_candles = config.lookback_candles
+        self.risk_pips = config.risk_pips
+        self.reward_pips = config.reward_pips
+        self.reward_ratio = config.reward_ratio
+        self.retest_mode = config.retest_mode
+        self.retest_tolerance = config.retest_tolerance
+        self.min_slope = config.min_slope
+        self.allow_descending = config.allow_descending
+        self.show_legend = config.show_legend
+        self.chart_dpi = config.chart_dpi
+        self.close_at_eod = config.close_at_eod
+        self.hierarchical_levels_below = config.hierarchical_levels_below
+        self.hierarchical_levels_above = config.hierarchical_levels_above
+        self.hierarchical_tolerance = config.hierarchical_tolerance
+        
+        # Caching: zmienione na dict dla O(1) lookup
         self.support_lines = {}  # Cache dla support lines
-        self.daily_support_data = []  # Lista: {date, slope, intercept, lookback_start, lookback_end}
+        self.daily_support_data: Dict[date, List[SupportLine]] = {}  # Dict zamiast listy
         # Setup logger (file-based) - write debug logs to support_charts/debug.txt
         # Use the directory of the invoking script (sys.argv[0]) so logs land in the same folder
         # as generated charts even when scripts are executed from another cwd.
@@ -115,13 +140,17 @@ class SupportBreakoutStrategy:
                     # Oblicz support line (zwraca LISTĘ linii - może być 0, 1 lub 2)
                     detected_lines = self._find_support_line(lookback_df_indexed)
                     
-                    # Jeśli wykryto linie, zapisz KAŻDĄ z nich do daily_support_data
+                    # Jeśli wykryto linie, zapisz KAŻDĄ z nich do daily_support_data (dict)
                     if detected_lines:
                         lookback_start_dt = df.iloc[idx - self.lookback_candles]['DateTime']
                         lookback_end_dt = df.iloc[idx - 1]['DateTime']
                         
+                        # Inicjalizuj listę dla tej daty jeśli nie istnieje
+                        if current_date not in self.daily_support_data:
+                            self.daily_support_data[current_date] = []
+                        
                         for line_info in detected_lines:
-                            self.daily_support_data.append({
+                            self.daily_support_data[current_date].append({
                                 'date': current_date,
                                 'type': line_info['type'],  # 'ascending' lub 'descending'
                                 'slope': line_info['slope'],
@@ -166,16 +195,14 @@ class SupportBreakoutStrategy:
                 row_date = df.iloc[idx]['Date']
                 row_datetime = df.iloc[idx]['DateTime']
                 
-                # Znajdź lookback_start_dt dla tego dnia z daily_support_data
-                lookback_start_dt = None
-                for info in self.daily_support_data:
-                    if info['date'] == row_date:
-                        lookback_start_dt = info['lookback_start_dt']
-                        break
-                
-                if lookback_start_dt is None:
+                # O(1) lookup w dict zamiast O(n) iteracji po liście
+                lines_for_date = self.daily_support_data.get(row_date, [])
+                if not lines_for_date:
                     support_prices.append(np.nan)
                     continue
+                
+                # Użyj pierwszej linii (backward compatibility)
+                lookback_start_dt = lines_for_date[0]['lookback_start_dt']
                 
                 # Offset = ile świeczek od lookback_start_dt do tej świeczki
                 offset = len(df[(df['DateTime'] >= lookback_start_dt) & (df['DateTime'] < row_datetime)])
@@ -551,11 +578,8 @@ class SupportBreakoutStrategy:
         current_dt = current['DateTime']
         current_date = current_dt.date()
         
-        # Znajdź WSZYSTKIE linie dla tego dnia
-        lines_for_today = [
-            line for line in self.daily_support_data
-            if line['date'] == current_date
-        ]
+        # O(1) lookup w dict
+        lines_for_today = self.daily_support_data.get(current_date, [])
         
         if not lines_for_today:
             return None
@@ -725,11 +749,8 @@ class SupportBreakoutStrategy:
         import matplotlib.dates as mdates
         from matplotlib.ticker import NullLocator
         
-        # Znajdź WSZYSTKIE support data dla tego dnia (może być wiele - wznosząca i opadająca)
-        support_infos = []
-        for info in self.daily_support_data:
-            if info['date'] == date:
-                support_infos.append(info)
+        # O(1) lookup w dict - WSZYSTKIE support data dla tego dnia (może być wiele - wznosząca i opadająca)
+        support_infos = self.daily_support_data.get(date, [])
         
         if not support_infos:
             return

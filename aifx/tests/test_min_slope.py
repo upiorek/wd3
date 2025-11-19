@@ -95,6 +95,12 @@ def test_min_slope_used_in_run_support_backtest():
 
 
 if __name__ == '__main__':
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except:
+        pass
+    
     print("=" * 80)
     print("TESTY MIN_SLOPE")
     print("=" * 80)

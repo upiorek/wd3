@@ -3,9 +3,9 @@ aifx/.coverage
 aifx/support_charts/*
 aifx/golden/*
 aifx/golden_test/*
+aifx/test_*
 aifx/tests/__pycache__/*
 aifx/tests/test_charts/*
 aifx/tests/support_charts/*
 aifx/tests/test_charts_mixed/*
 aifx/tests/test_charts_legend/*
-

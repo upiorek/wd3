@@ -51,6 +51,12 @@ def test_run_support_backtest_uses_config_min_slope():
 
 
 if __name__ == '__main__':
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except:
+        pass
+    
     try:
         test_run_support_backtest_uses_config_min_slope()
     except AssertionError as e:

@@ -241,6 +241,12 @@ def test_close_at_eod_tp_has_priority():
 
 
 if __name__ == '__main__':
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except:
+        pass
+    
     print("Uruchamiam testy close_at_eod...\n")
     
     test_close_at_eod_disabled()

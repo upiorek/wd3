@@ -78,20 +78,23 @@ def test_basic_support_detection():
     # Oblicz wskaźniki
     df_calc = strategy.calculate_indicators(df)
     
-    # Weryfikacje
+    # Weryfikacje (dict zamiast list)
     assert len(strategy.daily_support_data) > 0, "Brak danych o liniach wsparcia"
+    
+    # Flatten dict to list of all lines
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
     
     print(f"✓ Wykryto {len(strategy.daily_support_data)} dni z liniami wsparcia")
     
     # Sprawdź pierwszą linię
-    first_entry = strategy.daily_support_data[0]
+    first_entry = all_lines[0]
     assert 'slope' in first_entry, "Brak slope w danych"
     assert 'intercept' in first_entry, "Brak intercept w danych"
     
     print(f"✓ Pierwsza linia: slope={first_entry['slope']:.4f}, intercept={first_entry['intercept']:.2f}")
     
     # Sprawdź trend wzrostowy (slope > 0)
-    positive_slopes = sum(1 for entry in strategy.daily_support_data if entry['slope'] > 0)
+    positive_slopes = sum(1 for entry in all_lines if entry['slope'] > 0)
     print(f"✓ {positive_slopes}/{len(strategy.daily_support_data)} linii ma slope > 0 (trend wzrostowy)")
     
     print("\n✓✓✓ TEST 1 PASSED ✓✓✓\n")
@@ -115,7 +118,10 @@ def test_hierarchical_lines_detection():
     total_support_lines = 0
     total_resistance_lines = 0
     
-    for entry in strategy.daily_support_data:
+    # Flatten dict to iterate over all lines
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
+    
+    for entry in all_lines:
         h_supp = entry.get('hierarchical_supports', [])
         h_res = entry.get('hierarchical_resistances', [])
         
@@ -153,7 +159,10 @@ def test_parallel_lines():
     parallel_violations = 0
     checked_lines = 0
     
-    for entry in strategy.daily_support_data:
+    # Flatten dict to iterate over all lines
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
+    
+    for entry in all_lines:
         base_slope = entry['slope']
         
         # Sprawdź wsparcia
@@ -200,7 +209,10 @@ def test_offset_signs():
     total_supports = 0
     total_resistances = 0
     
-    for entry in strategy.daily_support_data:
+    # Flatten dict
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
+    
+    for entry in all_lines:
         # Wsparcia: offset powinien być UJEMNY (poniżej głównej)
         for supp in entry.get('hierarchical_supports', []):
             total_supports += 1
@@ -239,7 +251,10 @@ def test_data_structure():
     
     required_keys = {'slope', 'intercept', 'touches', 'offset', 'score', 'level'}
     
-    for entry in strategy.daily_support_data:
+    # Flatten dict
+    all_lines = [line for lines in strategy.daily_support_data.values() for line in lines]
+    
+    for entry in all_lines:
         # Sprawdź wsparcia
         for supp in entry.get('hierarchical_supports', []):
             assert isinstance(supp, dict), "Linia wsparcia nie jest dict"
@@ -361,5 +376,10 @@ def run_all_tests():
 
 if __name__ == '__main__':
     import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except:
+        pass
+    
     success = run_all_tests()
     sys.exit(0 if success else 1)

@@ -7,6 +7,12 @@ import logging
 from support_breakout_strategy import SupportBreakoutStrategy
 from backtest_engine import BacktestEngine
 
+# Configure UTF-8 encoding for stdout
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except:
+    pass
+
 def load_data(filepath):
     """Wczytuje dane z pliku CSV/TSV"""
     df = pd.read_csv(filepath, sep='\t')
@@ -215,24 +221,22 @@ def main():
     # Generuj wykresy dla każdego dnia w zakresie (opcjonalnie)
     if options['generate_charts']:
         print(f"\n📊 Generuję wykresy...")
-        print(f"Daily support data entries: {len(strategy.daily_support_data)}")
+        # dict ma len() jako liczba kluczy
+        total_lines = sum(len(lines) for lines in strategy.daily_support_data.values())
+        print(f"Daily support data entries: {total_lines}")
         if strategy.daily_support_data:
             # Write dates list to debug log instead of printing to console
-            logger.debug(f"Daty z support data: {[str(d['date']) for d in strategy.daily_support_data]}")
+            all_dates = [str(date) for date in strategy.daily_support_data.keys()]
+            logger.debug(f"Daty z support data: {all_dates}")
         
         # Użyj PEŁNEGO df (nie filtrowanego) dla poprawnego obliczenia dni handlowych
         df_full = load_data(data_file)
         
         # Pobierz unikalne daty z daily_support_data (dni dla których mamy support)
-        support_dates = [info['date'] for info in strategy.daily_support_data]
-        
-        # Usuń duplikaty (jeśli są)
-        unique_dates = sorted(set(support_dates))
+        support_dates = sorted(strategy.daily_support_data.keys())
         
         print(f"Zakres backtestingu: {start_date} - {end_date}")
-        print(f"Dni z obliczonym support: {len(support_dates)} (unique: {len(unique_dates)})")
-        
-        support_dates = unique_dates
+        print(f"Dni z obliczonym support: {len(support_dates)} (unique: {len(support_dates)})")
         
         charts_generated = 0
         
