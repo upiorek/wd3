@@ -1,0 +1,6 @@
+; EA Settings File
+; This file will be read by the EA to override default parameters
+;
+NumberOfCandles=20
+StopLossPoints=10
+TakeProfitPoints=30

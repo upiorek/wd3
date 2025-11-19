@@ -1,0 +1,30 @@
+========================================
+     TRADING RESULTS SUMMARY
+========================================
+
+Test Completed
+Date: 2025.11.10
+Time: 22:59
+Symbol: US100.f
+Timeframe: M15
+Last M15 Candle: 2025.11.10 22:45
+
+========================================
+     TRADING STATISTICS
+========================================
+Total Trades: 1
+Winning Trades: 0
+Losing Trades: 1
+Buy Trades: 0
+Sell Trades: 1
+
+Win Rate: 0.00%
+
+Gross Profit: 0.00
+Gross Loss: -88.26
+Net Profit: -88.26
+Profit Factor: 0.00
+
+Initial Balance: 10000.00
+Final Balance: 9911.74
+========================================
