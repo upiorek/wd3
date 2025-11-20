@@ -9,3 +9,7 @@ aifx/tests/test_charts/*
 aifx/tests/support_charts/*
 aifx/tests/test_charts_mixed/*
 aifx/tests/test_charts_legend/*
+aifx/tester-third/__pycache__/*
+aifx/tester-third/mt4_test_results/logs/*
+aifx/tester-third/*.ex4
+aifx/tester-third/mt4_test_results/*
