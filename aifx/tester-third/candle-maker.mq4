@@ -9,11 +9,11 @@
 
 // Specify subdirectory name (will be created in MT4 Files folder)
 string FolderName = "m15_candles";
-string version = "3.05";
+string version = "3.06";
 
 datetime lastBarTime = 0;
-int HistoryBefore = 10;   // Candles before the named candle
-int CandlesAfter = 9;    // Candles after the named candle
+int HistoryBefore = 100;   // Candles before the named candle
+int CandlesAfter = 19;    // Candles after the named candle
 
 // Decision tracking (matching order-maker logic)
 bool decisionMade = false;
@@ -117,7 +117,7 @@ string SaveCandles()
    }
    
    // Write header
-   FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");
+   FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close");
    
    // Write candles: HistoryBefore candles before middle + middle candle + CandlesAfter candles after middle
    // Start from bar[HistoryBefore + CandlesAfter] and go to bar[0]
@@ -131,15 +131,13 @@ string SaveCandles()
       double high = iHigh(symbol, period, i);
       double low = iLow(symbol, period, i);
       double close = iClose(symbol, period, i);
-      long volume = iVolume(symbol, period, i);
       
       FileWrite(fileHandle, 
                 TimeToString(time, TIME_DATE|TIME_MINUTES),
                 DoubleToString(open, Digits),
                 DoubleToString(high, Digits),
                 DoubleToString(low, Digits),
-                DoubleToString(close, Digits),
-                IntegerToString(volume));
+                DoubleToString(close, Digits));
    }
    
    FileClose(fileHandle);

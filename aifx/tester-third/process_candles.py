@@ -35,19 +35,14 @@ def process_file(file_path, revert=False):
         os.remove(file_path)
     else:
         # Only add decision BUY/SELL marker:
-        # Line 10 (index 9): Decision candle - mark BUY/SELL based on odd/even logic
-        
         processed_lines = []
-        decision_index = 10  # Line 10 in file (0=header, 1-9=history, 10=decision)
+        
+        # Line 100 (index 100): Decision candle - mark BUY/SELL based on odd/even logic
+        decision_index = 100  # Line 100 in file (0=header, 1-99=history, 100=decision)
         
         for i, line in enumerate(lines):
             parts = line.strip().split(';')
-            
-            if i == 0:
-                # Header: remove Volume column
-                processed_lines.append(';'.join(parts[:5]) + '\n')
-                continue
-            
+
             # Remove volume column (6th element)
             ohlc_line = ';'.join(parts[:5])
             
