@@ -98,11 +98,11 @@ def print_sample_trades(results, n=5):
     print("-" * 100)
 
 def main():
-    data_file = 'FUS100.15.csv'
     charts_dir = 'support_charts'
     
     # Domyślne opcje
     default_options = {
+        'data_file': 'FUS100.15.csv',
         'start_date': None,
         'end_date': None,
         'lookback_days': 5,
@@ -163,7 +163,11 @@ def main():
         start_date = '2025-10-28'  # 10 dni wstecz
         options = default_options
     
+    # Ustaw data_file
+    data_file = options.get('data_file', 'FUS100.15.csv')
+    
     print(f"Support Breakout Backtest: {start_date} do {end_date}")
+    print(f"Data file: {data_file}")
     print(f"Lookback: {options['lookback_days']} dni, R:R {options['reward_ratio']}, Risk: {options['risk_pips']} pips, Min slope: {options['min_slope']}")
     
     # Wyczyść folder z wykresami

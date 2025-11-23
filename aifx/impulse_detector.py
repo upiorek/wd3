@@ -1067,18 +1067,28 @@ if __name__ == "__main__":
     
     # Parametry z linii poleceń lub domyślne
     if len(sys.argv) >= 3:
-        start_date = sys.argv[1]
-        end_date = sys.argv[2]
+        # Format: python impulse_detector.py <start_date> <end_date> [data_file]
+        # lub: python impulse_detector.py <data_file> <start_date> <end_date>
+        if sys.argv[1].endswith('.csv'):
+            data_file = sys.argv[1]
+            start_date = sys.argv[2]
+            end_date = sys.argv[3] if len(sys.argv) > 3 else sys.argv[2]
+        else:
+            data_file = sys.argv[3] if len(sys.argv) > 3 else 'FUS100.15.csv'
+            start_date = sys.argv[1]
+            end_date = sys.argv[2]
         output_file = f'impulse_analysis_{start_date}_to_{end_date}.png'
     else:
         # Domyślnie: poprzednie 5 dni przed 3.10 (28.09 - 2.10)
+        data_file = 'FUS100.15.csv'
         start_date = '2025-09-28'
         end_date = '2025-10-02'
         output_file = 'impulse_analysis_sep_28-oct_2.png'
     
     print(f"Analiza dla: {start_date} do {end_date}")
+    print(f"Data file: {data_file}")
     
-    plot_with_impulses('FUS100.15.csv', 
+    plot_with_impulses(data_file, 
                       start_date=start_date, 
                       end_date=end_date,
                       output_file=output_file,

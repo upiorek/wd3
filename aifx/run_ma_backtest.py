@@ -93,13 +93,15 @@ def print_trades(results, show_all=False):
 
 def main():
     # Parametry
-    data_file = 'FUS100.15.csv'
+    default_data_file = 'FUS100.15.csv'
     
     # Parsing argumentów (opcjonalnie)
     start_date = sys.argv[1] if len(sys.argv) > 1 else '2025-10-01'
     end_date = sys.argv[2] if len(sys.argv) > 2 else '2025-10-31'
+    data_file = sys.argv[3] if len(sys.argv) > 3 else default_data_file
     
     print(f"Backtest: {start_date} do {end_date}")
+    print(f"Data file: {data_file}")
     print("Strategia: MA Crossing (20/50) | R:R 2:5 | Risk: 20 pips")
     
     # Load data

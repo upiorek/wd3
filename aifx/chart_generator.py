@@ -75,8 +75,21 @@ def generate_chart(csv_file, start_date, end_date, output_file='chart.png'):
 
 
 if __name__ == "__main__":
-    # Wygeneruj wykres dla 3-7 października 2025 (pełny tydzień z kontekstem)
-    generate_chart('FUS100.15.csv', 
-                   start_date='2025-10-03', 
-                   end_date='2025-10-07',
-                   output_file='nasdaq_oct_3-7_2025.png')
+    import sys
+    
+    # Parametry z linii komend
+    if len(sys.argv) > 1:
+        data_file = sys.argv[1]
+        start_date = sys.argv[2] if len(sys.argv) > 2 else '2025-10-03'
+        end_date = sys.argv[3] if len(sys.argv) > 3 else '2025-10-07'
+    else:
+        data_file = 'FUS100.15.csv'
+        start_date = '2025-10-03'
+        end_date = '2025-10-07'
+    
+    # Wygeneruj wykres
+    output_file = f'nasdaq_{start_date}_to_{end_date}.png'
+    generate_chart(data_file, 
+                   start_date=start_date, 
+                   end_date=end_date,
+                   output_file=output_file)

@@ -1,4 +1,7 @@
 {
+  "_data_file": "ścieżka do pliku CSV z danymi (domyślnie FUS100.15.csv)",
+  "data_file": "FUS100.15.csv",
+
   "_start_date": "data początkowa",
   "start_date": "2025-10-01",
 
