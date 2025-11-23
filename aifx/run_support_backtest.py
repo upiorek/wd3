@@ -13,18 +13,40 @@ try:
 except:
     pass
 
-def load_data(filepath):
-    """Wczytuje dane z pliku CSV/TSV"""
-    df = pd.read_csv(filepath, sep='\t')
-    df['DateTime'] = pd.to_datetime(df['<DATE>'] + ' ' + df['<TIME>'])
-    df = df.rename(columns={
-        '<OPEN>': 'Open',
-        '<HIGH>': 'High',
-        '<LOW>': 'Low',
-        '<CLOSE>': 'Close',
-        '<TICKVOL>': 'Volume'
-    })
-    return df[['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
+def load_data(filepath, data_format='bossa'):
+    """
+    Wczytuje dane z pliku CSV/TSV.
+    
+    Args:
+        filepath: ścieżka do pliku
+        data_format: 'bossa' (tab-separated, kolumny <DATE>, <TIME>) 
+                     lub 'mbank' (semicolon-separated, kolumna Time)
+    """
+    if data_format == 'mbank':
+        # Format mBank: Time;Open;High;Low;Close
+        df = pd.read_csv(filepath, sep=';')
+        df['DateTime'] = pd.to_datetime(df['Time'], format='%Y.%m.%d %H:%M')
+        df = df.rename(columns={
+            'Open': 'Open',
+            'High': 'High',
+            'Low': 'Low',
+            'Close': 'Close'
+        })
+        # Dodaj Volume = 0 dla kompatybilności
+        df['Volume'] = 0
+        return df[['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
+    else:
+        # Format Bossa (domyślny): <DATE>\t<TIME>\t<OPEN>...
+        df = pd.read_csv(filepath, sep='\t')
+        df['DateTime'] = pd.to_datetime(df['<DATE>'] + ' ' + df['<TIME>'])
+        df = df.rename(columns={
+            '<OPEN>': 'Open',
+            '<HIGH>': 'High',
+            '<LOW>': 'Low',
+            '<CLOSE>': 'Close',
+            '<TICKVOL>': 'Volume'
+        })
+        return df[['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
 
 def print_stats(results, mode_name):
     """Wyświetla statystyki"""
@@ -103,6 +125,7 @@ def main():
     # Domyślne opcje
     default_options = {
         'data_file': 'FUS100.15.csv',
+        'data_format': 'bossa',
         'start_date': None,
         'end_date': None,
         'lookback_days': 5,
@@ -163,11 +186,12 @@ def main():
         start_date = '2025-10-28'  # 10 dni wstecz
         options = default_options
     
-    # Ustaw data_file
+    # Ustaw data_file i data_format
     data_file = options.get('data_file', 'FUS100.15.csv')
+    data_format = options.get('data_format', 'bossa')
     
     print(f"Support Breakout Backtest: {start_date} do {end_date}")
-    print(f"Data file: {data_file}")
+    print(f"Data file: {data_file} (format: {data_format})")
     print(f"Lookback: {options['lookback_days']} dni, R:R {options['reward_ratio']}, Risk: {options['risk_pips']} pips, Min slope: {options['min_slope']}")
     
     # Wyczyść folder z wykresami
@@ -185,7 +209,7 @@ def main():
     
     # Load data
     print(f"\nWczytuję dane...")
-    df = load_data(data_file)
+    df = load_data(data_file, data_format)
     print(f"Załadowano {len(df)} świeczek")
     
     # Strategia - immediate breakout
@@ -234,7 +258,7 @@ def main():
             logger.debug(f"Daty z support data: {all_dates}")
         
         # Użyj PEŁNEGO df (nie filtrowanego) dla poprawnego obliczenia dni handlowych
-        df_full = load_data(data_file)
+        df_full = load_data(data_file, data_format)
         
         # Pobierz unikalne daty z daily_support_data (dni dla których mamy support)
         support_dates = sorted(strategy.daily_support_data.keys())

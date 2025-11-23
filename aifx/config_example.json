@@ -2,6 +2,9 @@
   "_data_file": "ścieżka do pliku CSV z danymi (domyślnie FUS100.15.csv)",
   "data_file": "FUS100.15.csv",
 
+  "_data_format": "format danych: 'bossa' (tab-separated z <DATE>, <TIME>) lub 'mbank' (semicolon-separated z Time)",
+  "data_format": "bossa",
+
   "_start_date": "data początkowa",
   "start_date": "2025-10-01",
 
