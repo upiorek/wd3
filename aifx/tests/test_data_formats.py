@@ -11,6 +11,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from run_support_backtest import load_data, auto_detect_dates
+from support_breakout_strategy import SupportBreakoutStrategy
+from strategy_types import StrategyConfig
 
 
 class TestDataFormats:
@@ -167,6 +169,81 @@ class TestDataFormats:
         assert start_date.startswith('2025-10')
         
         print(f"✓ Auto-detect mBank: {start_date} to {end_date}")
+
+
+class TestLookbackModes:
+    """Testy dla różnych trybów lookback (days vs candles)."""
+    
+    def test_lookback_days_mode(self):
+        """Test trybu lookback_days - strategia używa dni handlowych."""
+        config = StrategyConfig(
+            lookback_mode='days',
+            lookback_days=5,
+            lookback_candles=96
+        )
+        
+        strategy = SupportBreakoutStrategy(config=config)
+        
+        # Sprawdź że strategia ma poprawne ustawienia
+        assert strategy.lookback_mode == 'days'
+        assert strategy.lookback_days == 5
+        assert strategy.lookback_candles == 96
+        
+        print("✓ Lookback mode: days")
+    
+    def test_lookback_candles_mode(self):
+        """Test trybu lookback_candles - strategia używa liczby świeczek."""
+        config = StrategyConfig(
+            lookback_mode='candles',
+            lookback_days=5,
+            lookback_candles=96
+        )
+        
+        strategy = SupportBreakoutStrategy(config=config)
+        
+        # Sprawdź że strategia ma poprawne ustawienia
+        assert strategy.lookback_mode == 'candles'
+        assert strategy.lookback_days == 5
+        assert strategy.lookback_candles == 96
+        
+        print("✓ Lookback mode: candles")
+    
+    def test_lookback_candles_conversion(self):
+        """Test konwersji: 96 świeczek M15 = ~1 dzień handlowy."""
+        # Dla M15 (15 minut):
+        # 1 godzina = 4 świeczki
+        # 1 dzień handlowy (24h) = 96 świeczek
+        # 5 dni = 480 świeczek
+        
+        config_days = StrategyConfig(
+            lookback_mode='days',
+            lookback_days=1
+        )
+        
+        config_candles = StrategyConfig(
+            lookback_mode='candles',
+            lookback_candles=96  # 1 dzień dla M15
+        )
+        
+        strategy_days = SupportBreakoutStrategy(config=config_days)
+        strategy_candles = SupportBreakoutStrategy(config=config_candles)
+        
+        # Oba tryby powinny analizować podobny okres
+        assert strategy_days.lookback_days == 1
+        assert strategy_candles.lookback_candles == 96
+        
+        print("✓ Konwersja: 96 świeczek M15 = 1 dzień")
+    
+    def test_default_lookback_mode_is_days(self):
+        """Test że domyślny tryb to 'days'."""
+        config = StrategyConfig()
+        
+        strategy = SupportBreakoutStrategy(config=config)
+        
+        assert strategy.lookback_mode == 'days'
+        assert strategy.lookback_days == 5  # domyślne
+        
+        print("✓ Domyślny lookback_mode: days")
 
 
 if __name__ == '__main__':

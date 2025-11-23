@@ -321,12 +321,14 @@ def test_chart_generation():
     
     # Wygeneruj wykres dla pierwszego dnia z danymi
     if strategy.daily_support_data:
-        test_date = strategy.daily_support_data[0]['date']
+        # daily_support_data jest dict[date, List[dict]]
+        # Weź pierwszą datę (klucz)
+        first_date = next(iter(strategy.daily_support_data.keys()))
         
         output_dir = 'test_charts'
         os.makedirs(output_dir, exist_ok=True)
         
-        filename = strategy.plot_daily_chart(df, test_date, output_dir=output_dir, show_volume=False)
+        filename = strategy.plot_daily_chart(df, first_date, output_dir=output_dir, show_volume=False)
         
         assert filename is not None, "Wykres nie został wygenerowany"
         assert os.path.exists(filename), f"Plik wykresu nie istnieje: {filename}"
@@ -334,12 +336,14 @@ def test_chart_generation():
         print(f"✓ Wygenerowano wykres: {filename}")
         
         # Sprawdź czy dane zawierają hierarchiczne linie
-        entry = strategy.daily_support_data[0]
-        num_supports = len(entry.get('hierarchical_supports', []))
-        num_resistances = len(entry.get('hierarchical_resistances', []))
-        
-        print(f"✓ Wykres zawiera {num_supports} linii wsparcia i {num_resistances} linii oporu")
-        print(f"  (oprócz głównej linii S1)")
+        # Teraz daily_support_data[date] zwraca List[dict]
+        support_lines = strategy.daily_support_data[first_date]
+        if support_lines:
+            num_supports = len(support_lines[0].get('hierarchical_supports', []))
+            num_resistances = len(support_lines[0].get('hierarchical_resistances', []))
+            
+            print(f"✓ Wykres zawiera {num_supports} linii wsparcia i {num_resistances} linii oporu")
+            print(f"  (oprócz głównej linii S1)")
     
     print("\n✓✓✓ TEST 6 PASSED ✓✓✓\n")
 

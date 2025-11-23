@@ -29,6 +29,8 @@ class StrategyConfig:
     """
     # Lookback window
     lookback_days: int = 5
+    lookback_mode: Literal['days', 'candles'] = 'days'
+    lookback_candles: int = 96  # 96 świeczek M15 = ~1 dzień
     
     # Risk management
     risk_pips: int = 50
@@ -58,11 +60,6 @@ class StrategyConfig:
     CANDLES_PER_DAY_M15: int = 96
     EXTREMA_ORDER: int = 5
     DEFAULT_TOLERANCE_PIPS: int = 30
-    
-    @property
-    def lookback_candles(self) -> int:
-        """Liczba świeczek w oknie lookback."""
-        return self.lookback_days * self.CANDLES_PER_DAY_M15
     
     @property
     def reward_pips(self) -> int:

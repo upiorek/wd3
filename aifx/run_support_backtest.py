@@ -145,7 +145,9 @@ def main():
         'data_format': 'bossa',
         'start_date': None,
         'end_date': None,
+        'lookback_mode': 'days',
         'lookback_days': 5,
+        'lookback_candles': 480,
         'risk_pips': 20,
         'reward_ratio': 2.5,
         'retest_mode': False,
@@ -249,7 +251,14 @@ def main():
     
     print(f"Support Breakout Backtest: {start_date} do {end_date}")
     print(f"Data file: {data_file} (format: {data_format})")
-    print(f"Lookback: {options['lookback_days']} dni, R:R {options['reward_ratio']}, Risk: {options['risk_pips']} pips, Min slope: {options['min_slope']}")
+    
+    lookback_mode = options.get('lookback_mode', 'days')
+    if lookback_mode == 'candles':
+        lookback_info = f"{options.get('lookback_candles', 480)} świeczek"
+    else:
+        lookback_info = f"{options['lookback_days']} dni"
+    
+    print(f"Lookback: {lookback_info} (mode: {lookback_mode}), R:R {options['reward_ratio']}, Risk: {options['risk_pips']} pips, Min slope: {options['min_slope']}")
     
     # Wyczyść folder z wykresami
     if os.path.exists(charts_dir):
@@ -270,8 +279,21 @@ def main():
     print(f"Załadowano {len(df)} świeczek")
     
     # Strategia - immediate breakout
+    # Oblicz lookback_days lub lookback_candles w zależności od trybu
+    lookback_mode = options.get('lookback_mode', 'days')
+    if lookback_mode == 'candles':
+        # Tryb świeczek - użyj bezpośrednio lookback_candles
+        lookback_days = options.get('lookback_days', 5)  # zachowaj dla backward compatibility
+        lookback_candles = options.get('lookback_candles', 96)
+    else:
+        # Tryb dni (domyślny)
+        lookback_days = options['lookback_days']
+        lookback_candles = options.get('lookback_candles', 96)
+    
     strategy = SupportBreakoutStrategy(
-        lookback_days=options['lookback_days'],
+        lookback_days=lookback_days,
+        lookback_mode=lookback_mode,
+        lookback_candles=lookback_candles,
         risk_pips=options['risk_pips'],
         reward_ratio=options['reward_ratio'],
         retest_mode=options['retest_mode'],

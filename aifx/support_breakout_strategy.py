@@ -38,7 +38,8 @@ class SupportBreakoutStrategy:
     """
     
     def __init__(self, config: Optional[StrategyConfig] = None, 
-                 lookback_days=5, risk_pips=50, reward_ratio=3, 
+                 lookback_days=5, lookback_mode='days', lookback_candles=96,
+                 risk_pips=50, reward_ratio=3, 
                  retest_mode=False, retest_tolerance=30, min_slope=0.1,
                  hierarchical_levels_below=4, hierarchical_levels_above=4,
                  hierarchical_tolerance=30, allow_descending=True, show_legend=True,
@@ -47,6 +48,8 @@ class SupportBreakoutStrategy:
         if config is None:
             config = StrategyConfig(
                 lookback_days=lookback_days,
+                lookback_mode=lookback_mode,
+                lookback_candles=lookback_candles,
                 risk_pips=risk_pips,
                 reward_ratio=reward_ratio,
                 retest_mode=retest_mode,
@@ -65,6 +68,7 @@ class SupportBreakoutStrategy:
         
         # Convenience properties (backward compatibility)
         self.lookback_days = config.lookback_days
+        self.lookback_mode = config.lookback_mode
         self.lookback_candles = config.lookback_candles
         self.risk_pips = config.risk_pips
         self.reward_pips = config.reward_pips
@@ -755,37 +759,55 @@ class SupportBreakoutStrategy:
         if not support_infos:
             return
         
-        # Znajdź 5 pełnych dni handlowych przed datą analizowaną
+        # Znajdź lookback window przed datą analizowaną
         df['Date'] = df['DateTime'].dt.date
         
-        # Wszystkie unikalne dni handlowe przed/włącznie z date
-        trading_days = sorted(df[df['Date'] <= date]['Date'].unique())
-        
-        # Weź wymaganą liczbę dni (lookback + 1 analizowany)
-        days_needed = self.lookback_days + 1
-        if len(trading_days) >= days_needed:
-            days_to_show = trading_days[-days_needed:]
+        if self.lookback_mode == 'candles':
+            # Tryb świeczek: weź ostatnie N świeczek przed/włącznie z date
+            df_before = df[df['Date'] <= date].copy()
+            candles_needed = self.lookback_candles
+            
+            if len(df_before) >= candles_needed:
+                df_plot_data = df_before.iloc[-candles_needed:].copy()
+                start_date_plot = df_plot_data['Date'].min()
+                end_date_plot = date
+            else:
+                df_plot_data = df_before.copy()
+                start_date_plot = df_plot_data['Date'].min() if len(df_plot_data) > 0 else date
+                end_date_plot = date
         else:
-            days_to_show = trading_days
+            # Tryb dni (domyślny): weź lookback_days pełnych dni handlowych
+            trading_days = sorted(df[df['Date'] <= date]['Date'].unique())
+            
+            # Weź wymaganą liczbę dni (lookback + 1 analizowany)
+            days_needed = self.lookback_days + 1
+            if len(trading_days) >= days_needed:
+                days_to_show = trading_days[-days_needed:]
+            else:
+                days_to_show = trading_days
+            
+            start_date_plot = days_to_show[0] if len(days_to_show) > 0 else date
+            end_date_plot = date
+            df_plot_data = df[(df['Date'] >= start_date_plot) & (df['Date'] <= end_date_plot)].copy()
         
         # debug
         #print(f"    Trading days dla {date}: {trading_days[-10:] if len(trading_days) > 10 else trading_days}", flush=True)
         #print(f"    Days to show: {days_to_show}", flush=True)
         
-        start_date_plot = days_to_show[0]
-        end_date_plot = date
-        
         # Filtruj dane
-        df_plot = df[(df['Date'] >= start_date_plot) & (df['Date'] <= end_date_plot)].copy()
-        df_plot = df_plot.set_index('DateTime')
+        df_plot = df_plot_data.set_index('DateTime')
         
         if len(df_plot) == 0:
             return
 
-        # Debug: ile dni na wykresie
+        # Debug: ile dni/świeczek na wykresie
         unique_dates = df_plot.index.date
         num_days = len(set(unique_dates))
-        self._logger.debug(f"Wykres {date}: {num_days} dni (od {start_date_plot} do {end_date_plot}), {len(df_plot)} świeczek")
+        if self.lookback_mode == 'candles':
+            self._logger.debug(f"Wykres {date}: {len(df_plot)} świeczek (mode: candles, lookback: {self.lookback_candles})")
+        else:
+            self._logger.debug(f"Wykres {date}: {num_days} dni (od {start_date_plot} do {end_date_plot}), {len(df_plot)} świeczek (mode: days)")
+        
         
         # Przygotuj dane dla mplfinance
         df_plot = df_plot.rename(columns={
@@ -830,7 +852,14 @@ class SupportBreakoutStrategy:
             # Określ kolor głównej linii na podstawie slope
             # WZNOSZĄC (slope > 0) → ZIELONA, OPADAJĄCE (slope < 0) → CZERWONA
             main_line_color = 'red' if slope < 0 else 'green'
-            main_line_label = f'R1 Main ({self.lookback_days} days)' if slope < 0 else f'S1 Main ({self.lookback_days} days)'
+            
+            # Label zależy od lookback_mode
+            if self.lookback_mode == 'candles':
+                lookback_info = f'{self.lookback_candles} candles'
+            else:
+                lookback_info = f'{self.lookback_days} days'
+            
+            main_line_label = f'R1 Main ({lookback_info})' if slope < 0 else f'S1 Main ({lookback_info})'
             
             # Dodaj główną linię (solidna) - label tylko gdy show_legend=True
             main_line_kwargs = {
