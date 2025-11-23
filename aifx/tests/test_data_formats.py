@@ -10,7 +10,7 @@ import os
 # Dodaj parent directory do path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from run_support_backtest import load_data
+from run_support_backtest import load_data, auto_detect_dates
 
 
 class TestDataFormats:
@@ -128,6 +128,45 @@ class TestDataFormats:
         assert list(df1.columns) == list(df2.columns)
         
         print("✓ Domyślny format: bossa")
+    
+    def test_auto_detect_dates_bossa(self):
+        """Test automatycznego wykrywania dat dla formatu Bossa."""
+        if not os.path.exists('FUS100.15.csv'):
+            pytest.skip("Brak pliku FUS100.15.csv")
+        
+        start_date, end_date = auto_detect_dates('FUS100.15.csv', data_format='bossa')
+        
+        # Sprawdź format dat (YYYY-MM-DD)
+        assert len(start_date) == 10
+        assert len(end_date) == 10
+        assert start_date[4] == '-' and start_date[7] == '-'
+        assert end_date[4] == '-' and end_date[7] == '-'
+        
+        # start_date <= end_date
+        assert start_date <= end_date
+        
+        print(f"✓ Auto-detect Bossa: {start_date} to {end_date}")
+    
+    def test_auto_detect_dates_mbank(self):
+        """Test automatycznego wykrywania dat dla formatu mBank."""
+        if not os.path.exists('FUS100.15_single.csv'):
+            pytest.skip("Brak pliku FUS100.15_single.csv")
+        
+        start_date, end_date = auto_detect_dates('FUS100.15_single.csv', data_format='mbank')
+        
+        # Sprawdź format dat (YYYY-MM-DD)
+        assert len(start_date) == 10
+        assert len(end_date) == 10
+        assert start_date[4] == '-' and start_date[7] == '-'
+        assert end_date[4] == '-' and end_date[7] == '-'
+        
+        # start_date <= end_date
+        assert start_date <= end_date
+        
+        # Powinny być z października 2025
+        assert start_date.startswith('2025-10')
+        
+        print(f"✓ Auto-detect mBank: {start_date} to {end_date}")
 
 
 if __name__ == '__main__':

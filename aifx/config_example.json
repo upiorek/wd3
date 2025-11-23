@@ -5,10 +5,10 @@
   "_data_format": "format danych: 'bossa' (tab-separated z <DATE>, <TIME>) lub 'mbank' (semicolon-separated z Time)",
   "data_format": "bossa",
 
-  "_start_date": "data początkowa",
+  "_start_date": "data początkowa (YYYY-MM-DD lub 'auto' dla pierwszej świeczki z pliku)",
   "start_date": "2025-10-01",
 
-  "_end_date": "data końcowa",
+  "_end_date": "data końcowa (YYYY-MM-DD lub 'auto' dla ostatniej świeczki z pliku)",
   "end_date": "2025-10-10",
 
   "_lookback_days": "liczba dni do wyznaczenia linii supportu (5 = ostatnie 5 dni handlowych)",

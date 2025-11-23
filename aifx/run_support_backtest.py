@@ -13,6 +13,23 @@ try:
 except:
     pass
 
+def auto_detect_dates(filepath, data_format='bossa'):
+    """
+    Automatycznie wykrywa zakres dat w pliku.
+    
+    Returns:
+        Tuple[str, str]: (start_date, end_date) w formacie YYYY-MM-DD
+    """
+    df = load_data(filepath, data_format)
+    
+    if len(df) == 0:
+        raise ValueError(f"Plik {filepath} jest pusty")
+    
+    first_date = df['DateTime'].min().strftime('%Y-%m-%d')
+    last_date = df['DateTime'].max().strftime('%Y-%m-%d')
+    
+    return first_date, last_date
+
 def load_data(filepath, data_format='bossa'):
     """
     Wczytuje dane z pliku CSV/TSV.
@@ -157,6 +174,19 @@ def main():
         start_date = options['start_date']
         end_date = options['end_date']
         
+        # Auto-detect dates jeśli ustawiono "auto"
+        if start_date == 'auto' or end_date == 'auto':
+            data_file = options.get('data_file', 'FUS100.15.csv')
+            data_format = options.get('data_format', 'bossa')
+            auto_start, auto_end = auto_detect_dates(data_file, data_format)
+            
+            if start_date == 'auto':
+                start_date = auto_start
+                print(f"Auto-detected start_date: {start_date}")
+            if end_date == 'auto':
+                end_date = auto_end
+                print(f"Auto-detected end_date: {end_date}")
+        
         if not start_date or not end_date:
             print("Błąd: start_date i end_date muszą być w pliku JSON")
             return
@@ -172,6 +202,20 @@ def main():
             options = json.load(f)
         # Merge z defaults (daty z linii komend mają priorytet)
         options = {**default_options, **options}
+        
+        # Auto-detect dates jeśli ustawiono "auto"
+        if start_date == 'auto' or end_date == 'auto':
+            data_file = options.get('data_file', 'FUS100.15.csv')
+            data_format = options.get('data_format', 'bossa')
+            auto_start, auto_end = auto_detect_dates(data_file, data_format)
+            
+            if start_date == 'auto':
+                start_date = auto_start
+                print(f"Auto-detected start_date: {start_date}")
+            if end_date == 'auto':
+                end_date = auto_end
+                print(f"Auto-detected end_date: {end_date}")
+        
         options['start_date'] = start_date
         options['end_date'] = end_date
         
@@ -180,6 +224,19 @@ def main():
         start_date = sys.argv[1]
         end_date = sys.argv[2]
         options = default_options
+        
+        # Auto-detect dates jeśli ustawiono "auto"
+        if start_date == 'auto' or end_date == 'auto':
+            data_file = options.get('data_file', 'FUS100.15.csv')
+            data_format = options.get('data_format', 'bossa')
+            auto_start, auto_end = auto_detect_dates(data_file, data_format)
+            
+            if start_date == 'auto':
+                start_date = auto_start
+                print(f"Auto-detected start_date: {start_date}")
+            if end_date == 'auto':
+                end_date = auto_end
+                print(f"Auto-detected end_date: {end_date}")
     else:
         # Domyślnie ostatnie 10 dni
         end_date = '2025-11-07'  # ostatni dzień w danych

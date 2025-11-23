@@ -72,6 +72,7 @@ function Run-Pytest {
 
 # Lista testow do uruchomienia
 Run-Pytest "test_strategy.py" "Strategy Suite - pytest (35 test cases)"
+Run-Pytest "test_data_formats.py" "Data Formats (Bossa/mBank + Auto-detect dates)"
 Run-Test "test_close_at_eod.py" "Close At EOD (5 testow)"
 Run-Test "test_min_slope.py" "Min Slope (2 testy)"
 Run-Test "test_min_slope_integration.py" "Min Slope Integration (1 test)"
