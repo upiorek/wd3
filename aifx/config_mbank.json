@@ -3,10 +3,12 @@
   
   "data_file": "FUS100.15_single.csv",
   "data_format": "mbank",
-  "start_date": "2025-10-23",
-  "end_date": "2025-10-29",
+  "start_date": "auto",
+  "end_date": "auto",
   
-  "lookback_days": 3,
+  "lookback_mode": "candles",
+  "lookback_candles": 100,
+
   "risk_pips": 50,
   "reward_ratio": 3,
   "retest_mode": false,

@@ -11,8 +11,14 @@
   "_end_date": "data końcowa (YYYY-MM-DD lub 'auto' dla ostatniej świeczki z pliku)",
   "end_date": "2025-10-10",
 
-  "_lookback_days": "liczba dni do wyznaczenia linii supportu (5 = ostatnie 5 dni handlowych)",
+  "_lookback_mode": "tryb lookback: 'days' (dni handlowe) lub 'candles' (liczba świeczek)",
+  "lookback_mode": "days",
+
+  "_lookback_days": "liczba dni do wyznaczenia linii supportu (używane gdy lookback_mode='days')",
   "lookback_days": 3,
+
+  "_lookback_candles": "liczba świeczek do wyznaczenia linii supportu (używane gdy lookback_mode='candles', np. 96 = ~1 dzień dla M15)",
+  "lookback_candles": 96,
   
   "_risk_pips": "Stop Loss w pipsach (50 = 50 punktów)",
   "risk_pips": 50,

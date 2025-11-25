@@ -1,0 +1,36 @@
+{
+  "_comment": "Przykład konfiguracji z trybem lookback_mode='candles'",
+  "_comment2": "Używa liczby świeczek zamiast dni handlowych dla lookback window",
+  
+  "data_file": "FUS100.15.csv",
+  "data_format": "bossa",
+  
+  "start_date": "2025-10-01",
+  "end_date": "2025-10-10",
+  
+  "_lookback_mode": "tryb lookback: 'candles' - używa liczby świeczek",
+  "lookback_mode": "candles",
+  
+  "_lookback_days": "nieużywane w trybie candles (zachowane dla backward compatibility)",
+  "lookback_days": 3,
+  
+  "_lookback_candles": "liczba świeczek do wyznaczenia linii supportu (96 = ~1 dzień dla M15, 480 = ~5 dni)",
+  "lookback_candles": 96,
+  
+  "risk_pips": 50,
+  "reward_ratio": 3,
+  "retest_mode": false,
+  "initial_capital": 10000,
+  "risk_per_trade_pct": 2.0,
+  "min_slope": 0.4,
+  "show_volume": false,
+  "mark_high_low": true,
+  "generate_charts": true,
+  "hierarchical_levels_below": 4,
+  "hierarchical_levels_above": 4,
+  "hierarchical_tolerance": 30,
+  "allow_descending": true,
+  "show_legend": false,
+  "chart_dpi": 150,
+  "close_at_eod": true
+}

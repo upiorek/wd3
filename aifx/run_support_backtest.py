@@ -356,7 +356,17 @@ def main():
                     trades_by_date[entry_date] = []
                 trades_by_date[entry_date].append(trade)
         
-        for date in support_dates:
+        # W trybie candles: generuj tylko JEDEN wykres dla ostatniej daty
+        # W trybie days: generuj wykres dla każdego dnia
+        if lookback_mode == 'candles' and support_dates:
+            # Tylko ostatnia data
+            dates_to_plot = [support_dates[-1]]
+            print(f"Tryb candles: generuję wykres tylko dla ostatniej daty ({dates_to_plot[0]})")
+        else:
+            # Wszystkie daty
+            dates_to_plot = support_dates
+        
+        for date in dates_to_plot:
             # Znajdź transakcje dla tego dnia
             day_trades = trades_by_date.get(date, [])
             

@@ -759,22 +759,23 @@ class SupportBreakoutStrategy:
         if not support_infos:
             return
         
-        # Znajdź lookback window przed datą analizowaną
+        # Znajdź lookback window - MUSI BYĆ IDENTYCZNE jak w calculate_indicators!
         df['Date'] = df['DateTime'].dt.date
         
         if self.lookback_mode == 'candles':
-            # Tryb świeczek: weź ostatnie N świeczek przed/włącznie z date
-            df_before = df[df['Date'] <= date].copy()
-            candles_needed = self.lookback_candles
+            # Tryb świeczek: weź ostatnie N świeczek PRZED datą (nie włącznie!)
+            # Znajdujemy pierwszy index dla tego dnia
+            first_idx_of_day = df[df['Date'] == date].index[0] if len(df[df['Date'] == date]) > 0 else len(df)
             
-            if len(df_before) >= candles_needed:
-                df_plot_data = df_before.iloc[-candles_needed:].copy()
-                start_date_plot = df_plot_data['Date'].min()
-                end_date_plot = date
+            # WAŻNE: używamy tych samych świeczek co w calculate_indicators
+            # czyli idx - lookback_candles : idx (PRZED pierwszą świeczką tego dnia)
+            if first_idx_of_day >= self.lookback_candles:
+                df_plot_data = df.iloc[first_idx_of_day - self.lookback_candles:first_idx_of_day].copy()
             else:
-                df_plot_data = df_before.copy()
-                start_date_plot = df_plot_data['Date'].min() if len(df_plot_data) > 0 else date
-                end_date_plot = date
+                df_plot_data = df.iloc[:first_idx_of_day].copy()
+            
+            start_date_plot = df_plot_data['Date'].min() if len(df_plot_data) > 0 else date
+            end_date_plot = df_plot_data['Date'].max() if len(df_plot_data) > 0 else date
         else:
             # Tryb dni (domyślny): weź lookback_days pełnych dni handlowych
             trading_days = sorted(df[df['Date'] <= date]['Date'].unique())
@@ -1075,17 +1076,25 @@ class SupportBreakoutStrategy:
                 day_candles = df_plot[df_plot.index >= vline_date]
                 self._logger.debug(f"{vline_date.strftime('%Y-%m-%d')}: {len(day_candles)} świeczek (ostatni dzień)")
         
+        # Przygotuj parametry dla mpf.plot
+        plot_kwargs = {
+            'type': 'candle',
+            'style': 'charles',
+            'addplot': apds,
+            'volume': show_volume,
+            'title': f'Support Breakout - {date}',
+            'figsize': (14, 8),
+            'returnfig': True,
+            'show_nontrading': False
+        }
+        
+        # Dodaj vlines tylko jeśli są jakieś daty
+        if vlines_dates:
+            plot_kwargs['vlines'] = dict(vlines=vlines_dates, linewidths=0.5, colors='gray', alpha=0.5)
+        
         fig, axes = mpf.plot(
             df_plot[['Open', 'High', 'Low', 'Close', 'Volume']],
-            type='candle',
-            style='charles',
-            addplot=apds,
-            volume=show_volume,
-            title=f'Support Breakout - {date}',
-            figsize=(14, 8),
-            returnfig=True,
-            vlines=dict(vlines=vlines_dates, linewidths=0.5, colors='gray', alpha=0.5) if vlines_dates else None,
-            show_nontrading=False
+            **plot_kwargs
         )
         
         # Wyłącz siatkę
