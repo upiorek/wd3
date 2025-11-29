@@ -12,7 +12,7 @@ string FolderName = "m15_candles";
 string version = "3.06";
 
 datetime lastBarTime = 0;
-int HistoryBefore = 100;   // Candles before the named candle
+int HistoryBefore = 280;
 int CandlesAfter = 19;    // Candles after the named candle
 
 // Decision tracking (matching order-maker logic)
@@ -120,11 +120,11 @@ string SaveCandles()
    FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close");
    
    // Write candles: HistoryBefore candles before middle + middle candle + CandlesAfter candles after middle
-   // Start from bar[HistoryBefore + CandlesAfter] and go to bar[0]
-   // Example: 10 before + 10 after = start from bar[20] to bar[0] = 21 candles total
+   // Start from bar[HistoryBefore + CandlesAfter] and go to bar[1] (skip bar[0] which is current forming candle)
+   // Example: 10 before + 10 after = start from bar[20] to bar[1] = 20 candles total
    int startBar = HistoryBefore + CandlesAfter;
    
-   for(int i = startBar; i >= 0; i--)
+   for(int i = startBar; i >= 1; i--)  // Changed from i >= 0 to i >= 1 to skip forming candle
    {
       datetime time = iTime(symbol, period, i);
       double open = iOpen(symbol, period, i);
@@ -141,6 +141,6 @@ string SaveCandles()
    }
    
    FileClose(fileHandle);
-   Print("Saved ", startBar + 1, " candles (bar[", startBar, "] to bar[0]) with middle at bar[", CandlesAfter, "] to: ", filename);
+   Print("Saved ", startBar, " candles (bar[", startBar, "] to bar[1]) with middle at bar[", CandlesAfter, "] to: ", filename);
    return filename;
 }

@@ -36,8 +36,46 @@ strategy = SupportBreakoutStrategy(
     show_legend=False
 )
 
-# Oblicz wskaźniki (wykrywa linie support)
-df_calc = strategy.calculate_indicators(df)
+# Zamiast calculate_indicators, obliczmy linie bezpośrednio dla ostatnich N świeczek
+# WAŻNE: Linie obliczamy na podstawie N-1 świeczek, a N-tą testujemy czy przecina
+total_candles = len(df)
+start_idx = max(0, total_candles - lookback_candles)
+lookback_df_full = df.iloc[start_idx:].copy()
+
+# Oblicz linie na podstawie pierwszych 299 świeczek (pomijamy ostatnią)
+lookback_df_for_lines = lookback_df_full.iloc[:-1].copy()
+lookback_df_for_lines['index'] = range(len(lookback_df_for_lines))
+
+# Wykryj linie support dla tych danych (bez ostatniej świeczki)
+detected_lines = strategy._find_support_line(lookback_df_for_lines)
+
+# Zapisz wyniki do daily_support_data
+if detected_lines:
+    last_date = df.iloc[-1]['DateTime'].date()
+    lookback_start_dt = df.iloc[start_idx]['DateTime']
+    lookback_end_dt = df.iloc[-1]['DateTime']
+    
+    strategy.daily_support_data[last_date] = []
+    for line_info in detected_lines:
+        strategy.daily_support_data[last_date].append({
+            'date': last_date,
+            'type': line_info['type'],
+            'slope': line_info['slope'],
+            'intercept': line_info['intercept'],
+            'support_points': line_info['used_minima'],
+            'local_maxima': line_info['local_maxima'],
+            'all_minima': line_info['all_minima'],
+            'impulses': line_info['impulses'],
+            'hierarchical_supports': line_info['hierarchical_supports'],
+            'hierarchical_resistances': line_info['hierarchical_resistances'],
+            'lookback_start_dt': lookback_start_dt,
+            'lookback_end_dt': lookback_end_dt,
+            'day_start_idx': start_idx
+        })
+
+# Przygotuj DataFrame z oknem lookback dla wykresu (pełne 300 świeczek)
+df_for_chart = lookback_df_full.copy()
+df_for_chart['Date'] = df_for_chart['DateTime'].dt.date
 
 # Wygeneruj wykres
 if strategy.daily_support_data:
@@ -47,9 +85,9 @@ if strategy.daily_support_data:
     last_candle_dt = df.iloc[-1]['DateTime']
     hour_min = last_candle_dt.strftime('%H-%M')
     
-    # Wygeneruj wykres
+    # Wygeneruj wykres dla wszystkich świeczek w lookback
     filename = strategy.plot_daily_chart(
-        df,
+        df_for_chart,
         last_date,
         output_dir='support_charts',
         show_volume=False,
@@ -71,8 +109,10 @@ if not strategy.daily_support_data:
     print("NONE")
     sys.exit(0)
 
-last_candle = df.iloc[-1]
-last_candle_idx = len(df) - 1
+last_candle = lookback_df_full.iloc[-1]  # Ostatnia (300-ta) świeczka
+# WAŻNE: slope i intercept są obliczone dla indeksów 0-298 (299 świeczek)
+# więc dla 300-tej świeczki używamy indeksu 299
+last_candle_idx_in_lookback = len(lookback_df_for_lines)  # = 299
 last_candle_low = last_candle['Low']
 last_candle_high = last_candle['High']
 
@@ -86,7 +126,8 @@ for date_key, lines_list in sorted(strategy.daily_support_data.items()):
         line_type = line_info['type']
         
         # Oblicz wartość linii głównej dla ostatniej świeczki
-        line_value = slope * last_candle_idx + intercept
+        # Używamy indeksu z lookback_df (0-299), nie z pełnego df
+        line_value = slope * last_candle_idx_in_lookback + intercept
         
         # Typ linii (LONG/SHORT)
         line_prefix = "LONG" if line_type == 'ascending' else "SHORT"

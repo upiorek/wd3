@@ -763,17 +763,9 @@ class SupportBreakoutStrategy:
         df['Date'] = df['DateTime'].dt.date
         
         if self.lookback_mode == 'candles':
-            # Tryb świeczek: weź ostatnie N świeczek PRZED datą (nie włącznie!)
-            # Znajdujemy pierwszy index dla tego dnia
-            first_idx_of_day = df[df['Date'] == date].index[0] if len(df[df['Date'] == date]) > 0 else len(df)
-            
-            # WAŻNE: używamy tych samych świeczek co w calculate_indicators
-            # czyli idx - lookback_candles : idx (PRZED pierwszą świeczką tego dnia)
-            if first_idx_of_day >= self.lookback_candles:
-                df_plot_data = df.iloc[first_idx_of_day - self.lookback_candles:first_idx_of_day].copy()
-            else:
-                df_plot_data = df.iloc[:first_idx_of_day].copy()
-            
+            # Tryb świeczek: użyj WSZYSTKICH przekazanych świeczek
+            # W tym trybie zakładamy, że df już zawiera dokładnie te świeczki które chcemy pokazać
+            df_plot_data = df.copy()
             start_date_plot = df_plot_data['Date'].min() if len(df_plot_data) > 0 else date
             end_date_plot = df_plot_data['Date'].max() if len(df_plot_data) > 0 else date
         else:
