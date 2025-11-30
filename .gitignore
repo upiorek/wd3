@@ -18,3 +18,7 @@ aifx/tester-third/mt4_test_results/*
 test_charts_mixed/*
 test_charts_legend/*
 test_charts/*
+
+aifx/strategy/__pycache__/*
+aifx/strategy/support_charts/*
+aifx/strategy/tests/golden_test_output/*
