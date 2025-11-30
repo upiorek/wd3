@@ -26,12 +26,13 @@ import mplfinance as mpf
 
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
-MIN_SLOPE = 0.1  # Minimalny slope linii
+MIN_SLOPE = 0.4  # Minimalny slope linii
 HIERARCHICAL_LEVELS_BELOW = 4  # Liczba linii wsparcia poniżej głównej
 HIERARCHICAL_LEVELS_ABOVE = 4  # Liczba linii oporu powyżej głównej
-HIERARCHICAL_TOLERANCE = 20  # Tolerancja dla linii hierarchicznych (punkty)
-LINE_TOLERANCE = 10  # Tolerancja dla dopasowania punktów do linii głównej
+HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
+LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy / local min / local max na wykresie
+DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
 
 # ===== FUNKCJE POMOCNICZE =====
 
@@ -658,14 +659,17 @@ def plot_chart(df_plot, detected_lines, output_filepath, lookback_start_dt, look
     ax.set_xticks(midnight_indices)
     ax.set_xticklabels(midnight_labels, rotation=0, ha='center')
     
-    fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1)
+    if DUMP_IMAGES:
+        fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1)
     plt.close(fig)
 
 
 def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
     """
     Sprawdza czy ostatnia świeczka przecina któreś linie.
-    Zwraca listę przeciętych linii (np. ["LONG", "SHORT R3"]).
+    Zwraca listę przeciętych linii według konwencji:
+    - Ascending: AS1 (main), AS2-AS5 (supports below), AR2-AR5 (resistances above)
+    - Descending: DR1 (main), DS2-DS5 (supports above), DR2-DR5 (resistances below)
     """
     last_candle_low = last_candle['Low']
     last_candle_high = last_candle['High']
@@ -679,23 +683,38 @@ def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
         line_type = line_info['type']
         
         line_value = slope * last_candle_idx + intercept
-        line_prefix = "A" if line_type == 'ascending' else "D"
         
-        # Sprawdź linię główną
+        # Prefix kierunku: A=ascending, D=descending
+        direction_prefix = "A" if line_type == 'ascending' else "D"
+        
+        # Sprawdź linię główną - dla ascending AS1, dla descending DR1
         if last_candle_low <= line_value <= last_candle_high:
-            crossed_lines.append(line_prefix + "1")
+            if line_type == 'ascending':
+                crossed_lines.append("AS1")
+            else:
+                crossed_lines.append("DR1")
         
         # Sprawdź linie hierarchiczne wsparcia
+        # Ascending: wsparcia poniżej (AS2-AS5), offset < 0
+        # Descending: wsparcia powyżej (DS2-DS5), offset > 0
         for supp in line_info.get('hierarchical_supports', []):
             supp_value = line_value + supp['offset']
             if last_candle_low <= supp_value <= last_candle_high:
-                crossed_lines.append(f"{line_prefix}{supp['level']}")
+                if line_type == 'ascending':
+                    crossed_lines.append(f"AS{supp['level']}")
+                else:
+                    crossed_lines.append(f"DS{supp['level']}")
         
         # Sprawdź linie hierarchiczne oporu
+        # Ascending: opory powyżej (AR2-AR5), offset > 0
+        # Descending: opory poniżej (DR2-DR5), offset < 0
         for res in line_info.get('hierarchical_resistances', []):
             res_value = line_value + res['offset']
             if last_candle_low <= res_value <= last_candle_high:
-                crossed_lines.append(f"{line_prefix}{res['level']}")
+                if line_type == 'ascending':
+                    crossed_lines.append(f"AR{res['level']}")
+                else:
+                    crossed_lines.append(f"DR{res['level']}")
     
     return crossed_lines
 
@@ -727,23 +746,24 @@ def process_single_file(csv_filepath, output_dir='support_charts'):
     if not detected_lines:
         return "NONE"
     
-    # Wygeneruj wykres
-    last_candle_dt = df.iloc[-1]['DateTime']
-    hour_min = last_candle_dt.strftime('%H-%M')
-    date_str = last_candle_dt.strftime('%Y-%m-%d')
-    
-    chart_filename = f"support_{date_str}_{hour_min}.png"
-    chart_filepath = os.path.join(output_dir, chart_filename)
-    
-    lookback_start_dt = df.iloc[start_idx]['DateTime']
-    lookback_end_dt = df.iloc[-1]['DateTime']
-    
-    plot_chart(lookback_df_full.copy(), detected_lines, chart_filepath, 
-               lookback_start_dt, lookback_end_dt)
-    
     # Sprawdź przecięcia ostatniej świeczki
     last_candle = lookback_df_full.iloc[-1]
     crossed_lines = check_crossings(last_candle, detected_lines, lookback_df_for_lines)
+    
+    # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
+    if DUMP_IMAGES:
+        last_candle_dt = df.iloc[-1]['DateTime']
+        hour_min = last_candle_dt.strftime('%H-%M')
+        date_str = last_candle_dt.strftime('%Y-%m-%d')
+        
+        chart_filename = f"support_{date_str}_{hour_min}.png"
+        chart_filepath = os.path.join(output_dir, chart_filename)
+        
+        lookback_start_dt = df.iloc[start_idx]['DateTime']
+        lookback_end_dt = df.iloc[-1]['DateTime']
+        
+        plot_chart(lookback_df_full.copy(), detected_lines, chart_filepath, 
+                   lookback_start_dt, lookback_end_dt)
     
     if crossed_lines:
         return " | ".join(crossed_lines)
