@@ -140,7 +140,6 @@ def main():
                 # Normal mode: process all files
                 process_file(csv_file, revert)
                 processed_count += 1
-            time.sleep(0.01)
         
         # Remove skipped files (only in compare mode)
         if compare_mode and files_to_remove:
@@ -158,7 +157,6 @@ def main():
     else:
         for csv_file in csv_files:
             process_file(csv_file, revert)
-            time.sleep(0.01)
     
     print("\nComplete!")
 

@@ -102,19 +102,22 @@ def process_mod_file(file_path):
     be_hit_idx = None
     result = None
     result_idx = None
+    result_at_open = False  # Track if result hit at open price
     final_dist_sl = 0
     final_dist_tp = 0
     last_close_price = 0
     bad_luck = False  # Flag for when multiple outcomes could happen in same candle
     signal_idx = signal_line_idx + 1  # Index of the entry candle
     
-    # Process all candles after entry and add distance information
+    # Process all candles starting from entry candle
+    # Entry happens at open of signal_idx, and TP/SL could be hit during that same candle
     for i in range(signal_line_idx + 1, len(lines)):
         parts = lines[i].strip().split(';')
         if len(parts) < 4:
             continue
         
         try:
+            open_price = float(parts[1])
             high = float(parts[2])
             low = float(parts[3])
             close = float(parts[4].split()[0]) if len(parts) > 4 else float(parts[3])
@@ -127,6 +130,9 @@ def process_mod_file(file_path):
                 dist_tp = high - entry_price
                 dist_sl = low - entry_price                
                 
+                # Store sl_target at start of candle for at_open checks
+                sl_target_at_open = sl_target
+                
                 # Check if we should move SL to BE
                 if not sl_moved_to_be and dist_tp >= be_trigger:
                     sl_moved_to_be = True
@@ -138,19 +144,27 @@ def process_mod_file(file_path):
                     tp_hit = dist_tp >= tp_target
                     sl_hit = dist_sl <= sl_target
                     
+                    # Check if TP/SL hit at open price (use original sl_target before any BE move this candle)
+                    tp_at_open = (open_price >= entry_price + tp_target)
+                    sl_at_open = (open_price <= entry_price + sl_target_at_open)
+                    
                     # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
                     if tp_hit and sl_hit:
                         bad_luck = True
                         # Prefer worst scenario - SL is always worse than BE
                         result = 'SL'
                         result_idx = i
+                        result_at_open = sl_at_open
                         # Use SL target value instead of actual low if low is worse
                         final_dist_sl = max(dist_sl, sl_target)
-                        final_dist_tp = dist_tp
+                        # Cap TP at target since trade would close at TP level
+                        final_dist_tp = min(dist_tp, tp_target)
                     elif tp_hit:
                         result = 'TP'
                         result_idx = i
-                        final_dist_tp = dist_tp
+                        result_at_open = tp_at_open
+                        # Cap TP at target since trade would close at TP level
+                        final_dist_tp = min(dist_tp, tp_target)
                         final_dist_sl = dist_sl
                     elif sl_hit:
                         if sl_moved_to_be and not be_hit:
@@ -158,23 +172,31 @@ def process_mod_file(file_path):
                             be_hit = True
                             result = 'BE'
                             result_idx = i
+                            # Only mark "(at open)" if BE was set on a previous candle
+                            result_at_open = sl_at_open and (sl_be_moved_idx < i)
                             be_hit_idx = i
                             # Use SL target value instead of actual low if low is worse
                             final_dist_sl = max(dist_sl, sl_target)
-                            final_dist_tp = dist_tp
+                            # Cap TP at target (though trade closed at BE, record actual TP potential)
+                            final_dist_tp = min(dist_tp, tp_target)
                         else:
                             # Original SL was hit
                             result = 'SL'
                             result_idx = i
+                            result_at_open = sl_at_open
                             # Use SL target value instead of actual low if low is worse
                             final_dist_sl = max(dist_sl, sl_target)
-                            final_dist_tp = dist_tp
+                            # Cap TP at target (though trade closed at SL, record actual TP potential)
+                            final_dist_tp = min(dist_tp, tp_target)
             
             elif signal == 'SELL':
                 # For SELL: TP is below entry, SL is above
                 dist_tp = entry_price - low
                 dist_sl = entry_price - high
                                 
+                # Store sl_target at start of candle for at_open checks
+                sl_target_at_open = sl_target
+                
                 # Check if we should move SL to BE
                 if not sl_moved_to_be and dist_tp >= be_trigger:
                     sl_moved_to_be = True
@@ -186,19 +208,32 @@ def process_mod_file(file_path):
                     tp_hit = dist_tp >= tp_target
                     sl_hit = dist_sl <= sl_target
                     
+                    # Check if TP/SL hit at open price (use original sl_target before any BE move this candle)
+                    tp_at_open = (open_price <= entry_price - tp_target)
+                    sl_at_open = (open_price >= entry_price - sl_target_at_open)
+                    
+                    if False:  # Debug - set to True to enable
+                        print(f"SELL i={i}, open={open_price}, entry={entry_price}")
+                        print(f"  sl_target={sl_target}, entry-sl_target={entry_price - sl_target}")
+                        print(f"  sl_at_open: {open_price} >= {entry_price - sl_target} = {sl_at_open}")
+                    
                     # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
                     if tp_hit and sl_hit:
                         bad_luck = True
                         # Prefer worst scenario - SL is always worse than BE
                         result = 'SL'
                         result_idx = i
+                        result_at_open = sl_at_open
                         # Use SL target value instead of actual high if high is worse
                         final_dist_sl = max(dist_sl, sl_target)
-                        final_dist_tp = dist_tp
+                        # Cap TP at target since trade would close at TP level
+                        final_dist_tp = min(dist_tp, tp_target)
                     elif tp_hit:
                         result = 'TP'
                         result_idx = i
-                        final_dist_tp = dist_tp
+                        result_at_open = tp_at_open
+                        # Cap TP at target since trade would close at TP level
+                        final_dist_tp = min(dist_tp, tp_target)
                         final_dist_sl = dist_sl
                     elif sl_hit:
                         if sl_moved_to_be and not be_hit:
@@ -206,17 +241,22 @@ def process_mod_file(file_path):
                             be_hit = True
                             result = 'BE'
                             result_idx = i
+                            # Only mark "(at open)" if BE was set on a previous candle
+                            result_at_open = sl_at_open and (sl_be_moved_idx < i)
                             be_hit_idx = i
                             # Use SL target value instead of actual high if high is worse
                             final_dist_sl = max(dist_sl, sl_target)
-                            final_dist_tp = dist_tp
+                            # Cap TP at target (though trade closed at BE, record actual TP potential)
+                            final_dist_tp = min(dist_tp, tp_target)
                         else:
                             # Original SL was hit
                             result = 'SL'
                             result_idx = i
+                            result_at_open = sl_at_open
                             # Use SL target value instead of actual high if high is worse
                             final_dist_sl = max(dist_sl, sl_target)
-                            final_dist_tp = dist_tp
+                            # Cap TP at target (though trade closed at SL, record actual TP potential)
+                            final_dist_tp = min(dist_tp, tp_target)
             
             # Add distance info to the line
             line_content = lines[i].rstrip()
@@ -228,18 +268,48 @@ def process_mod_file(file_path):
                 base_line = line_content
             
             # Calculate current gain/loss for this candle
-            current_gain_loss = dist_tp if dist_tp > 0 else dist_sl
+            if i == result_idx:
+                # For result candle, show the actual final result distance
+                if result == 'TP':
+                    current_gain_loss = final_dist_tp
+                elif result == 'SL':
+                    current_gain_loss = final_dist_sl
+                elif result == 'BE':
+                    current_gain_loss = 0.0
+                else:
+                    # Fallback to close-based calculation
+                    if signal == 'BUY':
+                        current_gain_loss = close - entry_price
+                    else:  # SELL
+                        current_gain_loss = entry_price - close
+            else:
+                # For non-result candles, show close-based gain/loss
+                if signal == 'BUY':
+                    current_gain_loss = close - entry_price
+                else:  # SELL
+                    current_gain_loss = entry_price - close
+            
             gain_loss_label = "gain" if current_gain_loss > 0 else "loss"
+            
+            # Add "(at open)" suffix if result hit at open price
+            open_suffix = " (at open)" if (i == result_idx and result_at_open) else ""
+            
+            # Add "(bad luck)" suffix if bad luck scenario
+            bad_luck_suffix = " (bad luck)" if (i == result_idx and bad_luck) else ""
             
             if i == result_idx:
                 # Add final result marker with gain/loss
-                lines[i] = f"{base_line} {gain_loss_label} {(current_gain_loss):.2f} {result}\n"
+                # If BE was hit in the same candle where SL->BE happened, show both
+                if result == 'BE' and sl_be_moved_idx == i:
+                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} SL->BE {result}{open_suffix}{bad_luck_suffix}\n"
+                else:
+                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} {result}{open_suffix}{bad_luck_suffix}\n"
             elif result is None:
                 # Check if this is the candle where SL moved to BE
                 if sl_be_moved_idx is not None and i == sl_be_moved_idx:
-                    lines[i] = f"{base_line} {gain_loss_label} {(current_gain_loss):.2f} SL->BE\n"
+                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} SL->BE\n"
                 else:
-                    lines[i] = f"{base_line} {gain_loss_label} {(current_gain_loss):.2f}\n"
+                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f}\n"
             # After final result, don't add anything
         
         except (ValueError, IndexError):
@@ -325,16 +395,10 @@ def main():
         mod_files = sorted(candles_dir.glob(file_pattern))
     
     print(f"Found {len(mod_files)} {folder_type} files to {'revert' if revert else 'analyze'}\n")
-    
-    # Redirect all print statements to a string buffer
-    output_buffer = StringIO()
-    original_stdout = sys.stdout
-    sys.stdout = output_buffer
 
     if revert:
         for mod_file in mod_files:
             revert_mod_file(mod_file)
-            time.sleep(0.01)
     else:
         # Track statistics
         results = {'TP': 0, 'SL': 0, 'BE': 0, 'Profiting': 0, 'Losing': 0, 'None': 0}
@@ -357,8 +421,6 @@ def main():
             
             if is_bad_luck:
                 bad_luck_count += 1
-            
-            time.sleep(0.01)
         
         print(f"Processed {processed_count}/{len(mod_files)} files... Done!")
         
@@ -406,27 +468,17 @@ def main():
         if total_closed > 0:
             wins = results['TP'] + results['Profiting']
             losses = results['SL'] + results['Losing']
+            be_count = results['BE']
             win_rate = (wins / total_trades) * 100
             loss_rate = (losses / total_trades) * 100
+            be_rate = (be_count / total_trades) * 100
             print(f"Win Rate: {win_rate:.1f}% ({wins}/{total_trades}) [TP + Profiting]")
             print(f"Loss Rate: {loss_rate:.1f}% ({losses}/{total_trades}) [SL + Losing]")
+            print(f"BE Rate: {be_rate:.1f}% ({be_count}/{total_trades}) [Break Even]")
         print(f"Total P/L: {total_gain_loss:+.2f} points")
         print(f"{'='*50}")
     
     print(f"\n{'Revert' if revert else 'Analysis'} complete!")
-    
-    # Restore stdout and write to log file
-    sys.stdout = original_stdout
-    log_content = output_buffer.getvalue()
-    output_buffer.close()
-    
-    # Write to analyze.log
-    log_file = Path(__file__).parent / "analyze.log"
-    with open(log_file, 'w', encoding='utf-8') as f:
-        f.write(log_content)
-    
-    # Print the log file to screen
-    print(log_content, end='')
 
 if __name__ == "__main__":
     main()
