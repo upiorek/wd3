@@ -22,3 +22,4 @@ test_charts/*
 aifx/strategy/__pycache__/*
 aifx/strategy/support_charts/*
 aifx/strategy/tests/golden_test_output/*
+aifx/strategy/support_lines_results.txt

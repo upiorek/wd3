@@ -800,13 +800,16 @@ def process_all_files(input_dir, output_file='support_lines_results.txt', output
     Przetwarza wszystkie pliki CSV w katalogu.
     Zapisuje wyniki do pliku support_lines_results.txt.
     """
-    csv_files = sorted(Path(input_dir).glob('*.csv'))
+    all_csv_files = sorted(Path(input_dir).glob('*.csv'))
+    
+    # Filtruj pliki - pomijaj te z '_mod' przed rozszerzeniem
+    csv_files = [f for f in all_csv_files if not f.stem.endswith('_mod')]
     
     if not csv_files:
         print(f"Nie znaleziono plików CSV w: {input_dir}")
         return
     
-    print(f"Znaleziono {len(csv_files)} plików CSV")
+    print(f"Znaleziono {len(csv_files)} plików CSV (pominięto {len(all_csv_files) - len(csv_files)} plików *_mod.csv)")
     print("Rozpoczynam przetwarzanie...")
     
     results = []
