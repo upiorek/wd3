@@ -34,11 +34,11 @@ def process_file(file_path, revert=False):
             f.writelines(cleaned_lines)
         os.remove(file_path)
     else:
+        # Decision candle - mark BUY/SELL based on odd/even logic
+        decision_index = 300 + 1 # 1 for header
+
         # Only add decision BUY/SELL marker:
         processed_lines = []
-        
-        # Line 100 (index 100): Decision candle - mark BUY/SELL based on odd/even logic
-        decision_index = 100  # Line 100 in file (0=header, 1-99=history, 100=decision)
         
         for i, line in enumerate(lines):
             parts = line.strip().split(';')
