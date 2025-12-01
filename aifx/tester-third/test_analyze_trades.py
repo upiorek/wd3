@@ -849,6 +849,224 @@ def test_sell_sl_at_open_slippage_real_case():
     print("OK SELL SL at open with real slippage handled correctly")
     print("PASSED")
 
+def test_buy_sl_then_be_trigger_later():
+    """Test BUY where SL hits early, then BE condition is met later (should not corrupt sl_target).
+    
+    This tests the bug fix where BE trigger check was outside 'if result is None',
+    causing sl_target to be reset to 0 after SL was already set.
+    """
+    print("\n=== TEST: BUY SL hit, then BE trigger later (no corruption) ===")
+    
+    # Entry at 10010, SL at 9960
+    # Entry candle: low=9950 hits SL (result='SL', final_dist_sl=-60, should be capped to -50)
+    # Later candle: low=9900 would trigger BE (dist_tp=110 >= 100)
+    # Bug: BE trigger would set sl_target=0, causing max(-60, 0) = 0 instead of max(-60, -50) = -50
+    # Fix: BE trigger only runs if result is None, so sl_target stays at -50
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10010.00;10020.00;9950.00;9955.00
+2025.10.31 10:45;9955.00;9960.00;9900.00;9950.00
+2025.10.31 11:00;9950.00;9960.00;9935.00;9945.00
+"""
+    
+    filepath = create_test_file("test_buy_sl_be_later_no_corrupt_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'SL', f"Expected SL, got {result}"
+    assert gain_loss == -50.0, f"Expected gain_loss=-50.0 (capped, not corrupted to 0), got {gain_loss}"
+    assert 'loss 50.00 SL' in ''.join(lines), f"Expected 'loss 50.00 SL' in file"
+    # Should NOT have BE marker because result was already set
+    assert 'BE' not in ''.join(lines), f"Should NOT have BE marker - SL already hit"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK SL correctly preserved at -50, not corrupted to 0 by later BE trigger")
+    print("PASSED")
+
+def test_sell_sl_then_be_trigger_later():
+    """Test SELL where SL hits early, then BE condition is met later (should not corrupt sl_target).
+    
+    This tests the bug fix for SELL scenarios where BE trigger check was outside 'if result is None'.
+    """
+    print("\n=== TEST: SELL SL hit, then BE trigger later (no corruption) ===")
+    
+    # Entry at 10005, SL at 10055
+    # Entry candle: high=10070 hits SL (result='SL', final_dist_sl=-65, should be capped to -50)
+    # Later candle: low=9895 would trigger BE (dist_tp=110 >= 100)
+    # Bug: BE trigger would set sl_target=0, causing max(-65, 0) = 0 instead of max(-65, -50) = -50
+    # Fix: BE trigger only runs if result is None, so sl_target stays at -50
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 SELL
+2025.10.31 10:30;10005.00;10070.00;10000.00;10065.00
+2025.10.31 10:45;10065.00;10080.00;9895.00;9900.00
+2025.10.31 11:00;9900.00;9920.00;9890.00;9910.00
+"""
+    
+    filepath = create_test_file("test_sell_sl_be_later_no_corrupt_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'SL', f"Expected SL, got {result}"
+    assert gain_loss == -50.0, f"Expected gain_loss=-50.0 (capped, not corrupted to 0), got {gain_loss}"
+    assert 'loss 50.00 SL' in ''.join(lines), f"Expected 'loss 50.00 SL' in file"
+    # Should NOT have BE marker because result was already set
+    assert 'BE' not in ''.join(lines), f"Should NOT have BE marker - SL already hit"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK SELL SL correctly preserved at -50, not corrupted to 0 by later BE trigger")
+    print("PASSED")
+
+def test_buy_tp_then_be_trigger_later():
+    """Test BUY where TP hits early, then BE condition is met later (should not affect result).
+    
+    Ensures BE trigger doesn't interfere with already-finalized TP results.
+    """
+    print("\n=== TEST: BUY TP hit, then BE trigger later (no interference) ===")
+    
+    # Entry at 10020, TP at 10220
+    # Candle 1: high=10230 hits TP (result='TP', gain_loss=200)
+    # Candle 2: low=9900 would trigger BE (dist_tp=120 >= 100)
+    # BE trigger should not run because result is already set
+    # Low stays high enough to avoid TP+SL bad luck on candle 1
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10020.00;10025.00;10021.00;10022.00
+2025.10.31 10:45;10022.00;10230.00;10025.00;10225.00
+2025.10.31 11:00;10225.00;10240.00;9900.00;9910.00
+"""
+    
+    filepath = create_test_file("test_buy_tp_be_later_no_affect_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'TP', f"Expected TP, got {result}"
+    assert gain_loss == 200.0, f"Expected gain_loss=200.0, got {gain_loss}"
+    assert 'gain 200.00 TP' in ''.join(lines), f"Expected 'gain 200.00 TP' in file"
+    # Should NOT have additional BE marker on later candle
+    assert lines[5].count('BE') == 0, f"Later candle should NOT have BE marker: {lines[5]}"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK TP correctly preserved, not affected by later BE trigger condition")
+    print("PASSED")
+
+def test_buy_slippage_at_open_triggers_be():
+    """Test BUY where open gaps up +100 or more, directly triggering BE at open.
+    
+    Tests scenario where favorable slippage at open immediately triggers BE condition.
+    """
+    print("\n=== TEST: BUY slippage at open triggers BE ===")
+    
+    # Entry at 10010, BE trigger at 10110 (+100)
+    # Next candle opens at 10125 (+115 slippage), directly triggering BE
+    # SL moves to entry (10010), then open at 10125 > entry so no BE hit yet
+    # Later candle: low=10010 hits BE at open
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10010.00;10015.00;10005.00;10012.00
+2025.10.31 10:45;10125.00;10130.00;10120.00;10128.00
+2025.10.31 11:00;10010.00;10020.00;10005.00;10015.00
+"""
+    
+    filepath = create_test_file("test_buy_slippage_triggers_be_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'BE', f"Expected BE, got {result}"
+    assert gain_loss == 0.0, f"Expected gain_loss=0.0, got {gain_loss}"
+    assert 'SL->BE' in ''.join(lines), f"Expected SL->BE marker when BE triggered"
+    assert 'BE (at open)' in ''.join(lines), f"Expected 'BE (at open)' marker when BE hit"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK Favorable slippage at open correctly triggers BE, then BE hit later")
+    print("PASSED")
+
+def test_sell_slippage_at_open_triggers_be():
+    """Test SELL where open gaps down -100 or more, directly triggering BE at open.
+    
+    Tests scenario where favorable slippage at open immediately triggers BE condition.
+    """
+    print("\n=== TEST: SELL slippage at open triggers BE ===")
+    
+    # Entry at 10005, BE trigger at 9905 (-100)
+    # Next candle opens at 9890 (-115 slippage), directly triggering BE
+    # SL moves to entry (10005), then open at 9890 < entry so no BE hit yet
+    # Later candle: high=10005 hits BE at open
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 SELL
+2025.10.31 10:30;10005.00;10004.00;10000.00;10003.00
+2025.10.31 10:45;9890.00;9895.00;9885.00;9892.00
+2025.10.31 11:00;10005.00;10010.00;10000.00;10007.00
+"""
+    
+    filepath = create_test_file("test_sell_slippage_triggers_be_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'BE', f"Expected BE, got {result}"
+    assert gain_loss == 0.0, f"Expected gain_loss=0.0, got {gain_loss}"
+    assert 'SL->BE' in ''.join(lines), f"Expected SL->BE marker when BE triggered"
+    assert 'BE (at open)' in ''.join(lines), f"Expected 'BE (at open)' marker when BE hit"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK SELL favorable slippage at open correctly triggers BE, then BE hit later")
+    print("PASSED")
+
+def test_buy_slippage_triggers_and_hits_be_at_same_open():
+    """Test BUY where open slippage both triggers BE and immediately hits it.
+    
+    Edge case: open gaps exactly to entry price after BE trigger distance is met.
+    """
+    print("\n=== TEST: BUY slippage triggers and hits BE at same open ===")
+    
+    # Entry at 10010, BE trigger at 10110 (+100)
+    # Next candle opens at 10120 (+110), triggering BE (SL->10010)
+    # Then price drops: low=10010 hits BE (at entry)
+    # Should show "SL->BE BE" markers, but BE should NOT show "(at open)" because it wasn't hit at open
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10010.00;10015.00;10005.00;10012.00
+2025.10.31 10:45;10120.00;10130.00;10010.00;10115.00
+2025.10.31 11:00;10115.00;10125.00;10110.00;10120.00
+"""
+    
+    filepath = create_test_file("test_buy_slip_be_trigger_hit_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'BE', f"Expected BE, got {result}"
+    assert gain_loss == 0.0, f"Expected gain_loss=0.0, got {gain_loss}"
+    assert 'SL->BE BE' in ''.join(lines), f"Expected both SL->BE and BE markers"
+    # BE should NOT be "(at open)" because it was hit later in the candle (low=10010), not at open (10120)
+    assert '(at open)' not in ''.join(lines), f"Should NOT have '(at open)' - BE hit during candle, not at open"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK Slippage triggers BE, then BE hit in same candle (not at open)")
+    print("PASSED")
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -883,6 +1101,12 @@ def run_all_tests():
         test_sell_tp_at_open_with_slippage,
         test_bad_luck_both_at_open,
         test_sell_sl_at_open_slippage_real_case,
+        test_buy_sl_then_be_trigger_later,
+        test_sell_sl_then_be_trigger_later,
+        test_buy_tp_then_be_trigger_later,
+        test_buy_slippage_at_open_triggers_be,
+        test_sell_slippage_at_open_triggers_be,
+        test_buy_slippage_triggers_and_hits_be_at_same_open,
     ]
     
     passed = 0
