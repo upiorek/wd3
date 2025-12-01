@@ -122,6 +122,9 @@ def process_mod_file(file_path):
             low = float(parts[3])
             close = float(parts[4].split()[0]) if len(parts) > 4 else float(parts[3])
             
+            if False and signal == 'SELL' and i == 302:  # Debug first SELL candle
+                print(f"DEBUG Parsing i={i}: parts[3]={parts[3]}, low={low}")
+            
             # Track last close price
             last_close_price = close
             
@@ -135,14 +138,14 @@ def process_mod_file(file_path):
                 # Store sl_target at start of candle for at_open checks
                 sl_target_at_open = sl_target
                 
-                # Check if we should move SL to BE
-                if not sl_moved_to_be and dist_tp >= be_trigger:
-                    sl_moved_to_be = True
-                    sl_be_moved_idx = i  # Track which candle this happened on
-                    sl_target = 0  # Move SL to break-even
-                
                 # Check if TP or SL/BE hit on this candle
                 if result is None:
+                    # Check if we should move SL to BE
+                    if not sl_moved_to_be and dist_tp >= be_trigger:
+                        sl_moved_to_be = True
+                        sl_be_moved_idx = i  # Track which candle this happened on
+                        sl_target = 0  # Move SL to break-even
+
                     tp_hit = dist_tp >= tp_target
                     sl_hit = dist_sl <= sl_target
                     
@@ -201,14 +204,16 @@ def process_mod_file(file_path):
                 # Store sl_target at start of candle for at_open checks
                 sl_target_at_open = sl_target
                 
-                # Check if we should move SL to BE
-                if not sl_moved_to_be and dist_tp >= be_trigger:
-                    sl_moved_to_be = True
-                    sl_be_moved_idx = i  # Track which candle this happened on
-                    sl_target = 0  # Move SL to break-even
-                
                 # Check if TP or SL/BE hit on this candle
                 if result is None:
+                    # Check if we should move SL to BE
+                    if not sl_moved_to_be and dist_tp >= be_trigger:
+                        sl_moved_to_be = True
+                        sl_be_moved_idx = i  # Track which candle this happened on
+                        sl_target = 0  # Move SL to break-even
+                        if False:  # Debug
+                            print(f"  BE TRIGGERED at i={i}: dist_tp={dist_tp}, be_trigger={be_trigger}, low={low}")
+
                     tp_hit = dist_tp >= tp_target
                     sl_hit = dist_sl <= sl_target
                     
@@ -218,6 +223,8 @@ def process_mod_file(file_path):
                     
                     if False:  # Debug - set to True to enable
                         print(f"SELL i={i}, open={open_price}, entry={entry_price}")
+                        print(f"  dist_tp={dist_tp}, dist_sl={dist_sl}, tp_hit={tp_hit}, sl_hit={sl_hit}")
+                        print(f"  sl_target={sl_target}, sl_moved_to_be={sl_moved_to_be}")
                         print(f"  sl_target={sl_target}, entry-sl_target={entry_price - sl_target}")
                         print(f"  sl_at_open: {open_price} >= {entry_price - sl_target} = {sl_at_open}")
                     
@@ -267,7 +274,13 @@ def process_mod_file(file_path):
             # Remove any previously added data (in case of re-running)
             if ' gain' in line_content or ' loss' in line_content:
                 # Get base line without any added data
-                base_line = ';'.join(line_content.split(';')[:5])
+                parts = line_content.split(';')
+                if len(parts) >= 5:
+                    # Clean the close price field (5th field) by removing any markers
+                    close_field = parts[4].split()[0]  # Take only the price part
+                    base_line = ';'.join(parts[:4] + [close_field])
+                else:
+                    base_line = ';'.join(parts)
             else:
                 base_line = line_content
             
@@ -329,6 +342,8 @@ def process_mod_file(file_path):
     elif result == 'SL':
         final_result = 'SL'
         gain_loss = final_dist_sl if result_at_open else max(final_dist_sl, sl_target)
+        if False:  # Debug
+            print(f"DEBUG SL: final_dist_sl={final_dist_sl}, result_at_open={result_at_open}, sl_target={sl_target}, gain_loss={gain_loss}")
     elif result == 'BE':
         final_result = 'BE'
         gain_loss = 0.0  # Break-even is always 0

@@ -817,6 +817,38 @@ def test_bad_luck_both_at_open():
     print("OK Bad luck with both extremes hit handled correctly")
     print("PASSED")
 
+def test_sell_sl_at_open_slippage_real_case():
+    """Test SELL with SL hit at open with significant slippage."""
+    print("\n=== TEST: SELL SL at open - real case ===")
+    
+    # Entry at 10005 (SELL), SL at 10055 (entry + 50)
+    # Next candle opens at 10087.29 (slippage of 32.29 beyond SL)
+    # Total loss = 82.29 from entry
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 SELL
+2025.10.31 10:30;10005.00;10004.00;10000.00;10003.00
+2025.10.31 10:45;10087.29;10100.00;10080.00;10090.00
+2025.10.31 11:00;10090.00;10100.00;10085.00;10095.00
+"""
+    
+    filepath = create_test_file("test_sell_sl_real_case_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    print(f"Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    
+    assert result == 'SL', f"Expected SL, got {result}"
+    # Entry at 10005, open at 10087.29 = 82.29 slippage
+    assert abs(gain_loss - (-82.29)) < 0.01, f"Expected gain_loss=-82.29 (actual slippage at open), got {gain_loss}"
+    assert 'loss 82.29 SL (at open)' in ''.join(lines), f"Expected 'loss 82.29 SL (at open)' showing slippage"
+    
+    print("OK SELL SL at open with real slippage handled correctly")
+    print("PASSED")
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -850,6 +882,7 @@ def run_all_tests():
         test_buy_be_triggered_tp_hit_during_candle,
         test_sell_tp_at_open_with_slippage,
         test_bad_luck_both_at_open,
+        test_sell_sl_at_open_slippage_real_case,
     ]
     
     passed = 0
