@@ -276,7 +276,7 @@ def test_buy_tp_at_open():
 2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
 2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
 2025.10.31 10:30;10020.00;10025.00;10021.00;10022.00
-2025.10.31 10:45;10220.00;10230.00;10215.00;10225.00
+2025.10.31 10:45;10221.00;10230.00;10215.00;10225.00
 2025.10.31 11:00;10225.00;10240.00;10220.00;10235.00
 """
     
@@ -668,6 +668,155 @@ def test_bad_luck_tp_exceeds_target():
     print("OK Bad luck scenario with TP exceeding target handled correctly")
     print("PASSED")
 
+def test_buy_tp_at_open_with_slippage():
+    """Test BUY TP hit at open with slippage beyond target."""
+    print("\n=== TEST: BUY TP at open with slippage ===")
+    
+    # Entry at 10020, open at 10240 (220 slippage, 20 beyond TP target)
+    # Should show gain 220.00 (actual slippage), not capped
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10020.00;10025.00;10021.00;10022.00
+2025.10.31 10:45;10240.00;10250.00;10235.00;10245.00
+2025.10.31 11:00;10245.00;10260.00;10240.00;10255.00
+"""
+    
+    filepath = create_test_file("test_buy_tp_slippage_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'TP', f"Expected TP, got {result}"
+    assert gain_loss == 220.0, f"Expected gain_loss=220.0 (actual slippage), got {gain_loss}"
+    # Display should show 220 (slippage)
+    assert 'gain 220.00 TP (at open)' in ''.join(lines), f"Expected 'gain 220.00 TP (at open)' showing slippage"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK TP at open with slippage shown correctly (220 in both display and stats)")
+    print("PASSED")
+
+def test_sell_sl_at_open_with_slippage():
+    """Test SELL SL hit at open with slippage beyond target."""
+    print("\n=== TEST: SELL SL at open with slippage ===")
+    
+    # Entry at 10005, open at 10075 (70 slippage, 20 beyond SL target)
+    # Should show loss 70.00 (actual slippage), not capped
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 SELL
+2025.10.31 10:30;10005.00;10004.00;10000.00;10003.00
+2025.10.31 10:45;10075.00;10080.00;10070.00;10075.00
+2025.10.31 11:00;10075.00;10085.00;10070.00;10080.00
+"""
+    
+    filepath = create_test_file("test_sell_sl_slippage_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'SL', f"Expected SL, got {result}"
+    assert gain_loss == -70.0, f"Expected gain_loss=-70.0 (actual slippage), got {gain_loss}"
+    # Display should show 70 (slippage)
+    assert 'loss 70.00 SL (at open)' in ''.join(lines), f"Expected 'loss 70.00 SL (at open)' showing slippage"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK SL at open with slippage shown correctly (70 in both display and stats)")
+    print("PASSED")
+
+def test_buy_be_triggered_tp_hit_during_candle():
+    """Test BUY where BE is triggered and TP is hit in same candle."""
+    print("\n=== TEST: BUY BE triggered, TP hit during candle ===")
+    
+    # Entry at 10005, high=10250 (triggers BE at +100 and hits TP at +200)
+    # Should show TP result with capped 200, BE marker only if result not finalized
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10005.00;10015.00;10000.00;10010.00
+2025.10.31 10:45;10020.00;10250.00;10025.00;10240.00
+2025.10.31 11:00;10240.00;10260.00;10235.00;10250.00
+"""
+    
+    filepath = create_test_file("test_buy_be_tp_same_candle_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'TP', f"Expected TP, got {result}"
+    assert gain_loss == 200.0, f"Expected gain_loss=200.0 (capped), got {gain_loss}"
+    # TP is hit same candle as BE trigger, so result is finalized immediately - no separate SL->BE marker
+    assert 'TP' in ''.join(lines), f"Expected TP marker"
+    assert 'gain 200.00 TP' in ''.join(lines), f"Expected TP capped at 200"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK BE triggered and TP hit on same candle, TP shown correctly")
+    print("PASSED")
+
+def test_sell_tp_at_open_with_slippage():
+    """Test SELL TP hit at open with slippage beyond target."""
+    print("\n=== TEST: SELL TP at open with slippage ===")
+    
+    # Entry at 10005, open at 9775 (230 slippage, 30 beyond TP target)
+    # Should show gain 230.00 (actual slippage), not capped
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 SELL
+2025.10.31 10:30;10005.00;10004.00;9950.00;9955.00
+2025.10.31 10:45;9775.00;9780.00;9770.00;9775.00
+2025.10.31 11:00;9775.00;9785.00;9770.00;9780.00
+"""
+    
+    filepath = create_test_file("test_sell_tp_slippage_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert result == 'TP', f"Expected TP, got {result}"
+    assert gain_loss == 230.0, f"Expected gain_loss=230.0 (actual slippage), got {gain_loss}"
+    # Display should show 230 (slippage)
+    assert 'gain 230.00 TP (at open)' in ''.join(lines), f"Expected 'gain 230.00 TP (at open)' showing slippage"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}")
+    print("OK SELL TP at open with slippage shown correctly (230 in both display and stats)")
+    print("PASSED")
+
+def test_bad_luck_both_at_open():
+    """Test bad luck where both TP and SL could hit at open (gap scenario)."""
+    print("\n=== TEST: Bad luck with both TP and SL at open ===")
+    
+    # Entry at 10005, open gaps to exactly entry (10005) which hits BE after TP triggered
+    # This is an edge case where open = entry after large move
+    content = """Time;Open;High;Low;Close
+2025.10.31 10:00;10000.00;10010.00;9990.00;10005.00
+2025.10.31 10:15;10005.00;10015.00;10000.00;10010.00 BUY
+2025.10.31 10:30;10005.00;10015.00;10000.00;10010.00
+2025.10.31 10:45;10010.00;10230.00;9940.00;10100.00
+"""
+    
+    filepath = create_test_file("test_bad_luck_both_at_open_mod.csv", content)
+    
+    from analyze_trades import process_mod_file
+    result, bad_luck, gain_loss = process_mod_file(filepath)
+    
+    lines = read_file_lines(filepath)
+    
+    assert bad_luck == True, f"Expected bad_luck=True, got {bad_luck}"
+    assert result == 'BE', f"Expected BE (worst case with BE triggered), got {result}"
+    assert '(bad luck)' in ''.join(lines), f"Expected '(bad luck)' marker"
+    
+    print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}, Bad Luck: {bad_luck}")
+    print("OK Bad luck with both extremes hit handled correctly")
+    print("PASSED")
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -696,6 +845,11 @@ def run_all_tests():
         test_sell_tp_exceeds_target_capped_at_200,
         test_sl_exceeds_target_capped_at_50,
         test_bad_luck_tp_exceeds_target,
+        test_buy_tp_at_open_with_slippage,
+        test_sell_sl_at_open_with_slippage,
+        test_buy_be_triggered_tp_hit_during_candle,
+        test_sell_tp_at_open_with_slippage,
+        test_bad_luck_both_at_open,
     ]
     
     passed = 0

@@ -128,7 +128,9 @@ def process_mod_file(file_path):
             if signal == 'BUY':
                 # For BUY: TP is above entry, SL is below
                 dist_tp = high - entry_price
-                dist_sl = low - entry_price                
+                dist_sl = low - entry_price
+                dist_tp_open = open_price - entry_price  # Distance at open (for slippage display)
+                dist_sl_open = open_price - entry_price  # Distance at open (for slippage display)
                 
                 # Store sl_target at start of candle for at_open checks
                 sl_target_at_open = sl_target
@@ -158,16 +160,15 @@ def process_mod_file(file_path):
                             result = 'SL'  # Original SL was hit (loss outcome)
                         result_idx = i
                         result_at_open = sl_at_open
-                        # Use SL target value instead of actual low if low is worse
-                        final_dist_sl = max(dist_sl, sl_target)
-                        # Cap TP at target since trade would close at TP level
-                        final_dist_tp = min(dist_tp, tp_target)
+                        # Store actual distances (may include slippage)
+                        final_dist_sl = dist_sl
+                        final_dist_tp = dist_tp
                     elif tp_hit:
                         result = 'TP'
                         result_idx = i
                         result_at_open = tp_at_open
-                        # Cap TP at target since trade would close at TP level
-                        final_dist_tp = min(dist_tp, tp_target)
+                        # Store actual distance: if at open, use open distance (slippage); else use high distance
+                        final_dist_tp = dist_tp_open if tp_at_open else dist_tp
                         final_dist_sl = dist_sl
                     elif sl_hit:
                         if sl_moved_to_be and not be_hit:
@@ -178,24 +179,24 @@ def process_mod_file(file_path):
                             # Only mark "(at open)" if BE was set on a previous candle
                             result_at_open = sl_at_open and (sl_be_moved_idx < i)
                             be_hit_idx = i
-                            # Use SL target value instead of actual low if low is worse
-                            final_dist_sl = max(dist_sl, sl_target)
-                            # Cap TP at target (though trade closed at BE, record actual TP potential)
-                            final_dist_tp = min(dist_tp, tp_target)
+                            # Store actual distances (may include slippage)
+                            final_dist_sl = dist_sl
+                            final_dist_tp = dist_tp
                         else:
                             # Original SL was hit
                             result = 'SL'
                             result_idx = i
                             result_at_open = sl_at_open
-                            # Use SL target value instead of actual low if low is worse
-                            final_dist_sl = max(dist_sl, sl_target)
-                            # Cap TP at target (though trade closed at SL, record actual TP potential)
-                            final_dist_tp = min(dist_tp, tp_target)
+                            # Store actual distance: if at open, use open distance (slippage); else use low distance
+                            final_dist_sl = dist_sl_open if sl_at_open else dist_sl
+                            final_dist_tp = dist_tp
             
             elif signal == 'SELL':
                 # For SELL: TP is below entry, SL is above
                 dist_tp = entry_price - low
                 dist_sl = entry_price - high
+                dist_tp_open = entry_price - open_price  # Distance at open (for slippage display)
+                dist_sl_open = entry_price - open_price  # Distance at open (for slippage display)
                                 
                 # Store sl_target at start of candle for at_open checks
                 sl_target_at_open = sl_target
@@ -230,16 +231,15 @@ def process_mod_file(file_path):
                             result = 'SL'  # Original SL was hit (loss outcome)
                         result_idx = i
                         result_at_open = sl_at_open
-                        # Use SL target value instead of actual high if high is worse
-                        final_dist_sl = max(dist_sl, sl_target)
-                        # Cap TP at target since trade would close at TP level
-                        final_dist_tp = min(dist_tp, tp_target)
+                        # Store actual distances (may include slippage)
+                        final_dist_sl = dist_sl
+                        final_dist_tp = dist_tp
                     elif tp_hit:
                         result = 'TP'
                         result_idx = i
                         result_at_open = tp_at_open
-                        # Cap TP at target since trade would close at TP level
-                        final_dist_tp = min(dist_tp, tp_target)
+                        # Store actual distance: if at open, use open distance (slippage); else use low distance
+                        final_dist_tp = dist_tp_open if tp_at_open else dist_tp
                         final_dist_sl = dist_sl
                     elif sl_hit:
                         if sl_moved_to_be and not be_hit:
@@ -250,19 +250,17 @@ def process_mod_file(file_path):
                             # Only mark "(at open)" if BE was set on a previous candle
                             result_at_open = sl_at_open and (sl_be_moved_idx < i)
                             be_hit_idx = i
-                            # Use SL target value instead of actual high if high is worse
-                            final_dist_sl = max(dist_sl, sl_target)
-                            # Cap TP at target (though trade closed at BE, record actual TP potential)
-                            final_dist_tp = min(dist_tp, tp_target)
+                            # Store actual distances (may include slippage)
+                            final_dist_sl = dist_sl
+                            final_dist_tp = dist_tp
                         else:
                             # Original SL was hit
                             result = 'SL'
                             result_idx = i
                             result_at_open = sl_at_open
-                            # Use SL target value instead of actual high if high is worse
-                            final_dist_sl = max(dist_sl, sl_target)
-                            # Cap TP at target (though trade closed at SL, record actual TP potential)
-                            final_dist_tp = min(dist_tp, tp_target)
+                            # Store actual distance: if at open, use open distance (slippage); else use high distance
+                            final_dist_sl = dist_sl_open if sl_at_open else dist_sl
+                            final_dist_tp = dist_tp
             
             # Add distance info to the line
             line_content = lines[i].rstrip()
@@ -277,9 +275,11 @@ def process_mod_file(file_path):
             if i == result_idx:
                 # For result candle, show the actual final result distance
                 if result == 'TP':
-                    current_gain_loss = final_dist_tp
+                    # If hit at open (slippage/gap), show actual distance; otherwise cap at target
+                    current_gain_loss = final_dist_tp if result_at_open else min(final_dist_tp, tp_target)
                 elif result == 'SL':
-                    current_gain_loss = final_dist_sl
+                    # If hit at open (slippage/gap), show actual distance; otherwise cap at target
+                    current_gain_loss = final_dist_sl if result_at_open else max(final_dist_sl, sl_target)
                 elif result == 'BE':
                     current_gain_loss = 0.0
                 else:
@@ -322,18 +322,19 @@ def process_mod_file(file_path):
             continue
     
     # Determine final result and calculate actual gain/loss
+    # If result hit at open (slippage), use actual distance; otherwise cap at target
     if result == 'TP':
         final_result = 'TP'
-        gain_loss = final_dist_tp  # Actual distance to TP when hit
+        gain_loss = final_dist_tp if result_at_open else min(final_dist_tp, tp_target)
     elif result == 'SL':
         final_result = 'SL'
-        gain_loss = final_dist_sl  # Actual distance to SL when hit (negative)
+        gain_loss = final_dist_sl if result_at_open else max(final_dist_sl, sl_target)
     elif result == 'BE':
         final_result = 'BE'
-        gain_loss = final_dist_sl  # Actual distance when BE was hit (should be ~0)
+        gain_loss = 0.0  # Break-even is always 0
     elif be_hit:
         final_result = 'BE'
-        gain_loss = final_dist_sl  # Actual distance when BE was hit (should be ~0)
+        gain_loss = 0.0  # Break-even is always 0
     else:
         # Calculate result based on last close price for trades that didn't hit TP/SL/BE
         if signal == 'BUY':
