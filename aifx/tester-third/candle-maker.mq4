@@ -9,11 +9,11 @@
 
 // Specify subdirectory name (will be created in MT4 Files folder)
 string FolderName = "m15_candles";
-string version = "3.06";
+string version = "3.1";
 
 datetime lastBarTime = 0;
-int HistoryBefore = 280;
-int CandlesAfter = 19;    // Candles after the named candle
+int HistoryBefore = 300;
+int CandlesAfter = 20; // Candles after the named candle
 
 // Decision tracking (matching order-maker logic)
 bool decisionMade = false;
@@ -87,8 +87,7 @@ string SaveCandles()
    int period = PERIOD_M15;
    string symbol = Symbol();
    
-   // Get time for the MIDDLE candle (bar[10])
-   // Current bar is bar[0], we want to name file after bar[10] (10 candles ago)
+   // Get time for the MIDDLE candle (after HistoryBefore)
    datetime middleTime = iTime(symbol, period, CandlesAfter);
    
    // Format: yy-mm-dd-hh-min
@@ -132,7 +131,16 @@ string SaveCandles()
       double low = iLow(symbol, period, i);
       double close = iClose(symbol, period, i);
       
-      FileWrite(fileHandle, 
+      if (i == CandlesAfter)
+          FileWrite(fileHandle, 
+                TimeToString(time, TIME_DATE|TIME_MINUTES),
+                DoubleToString(open, Digits),
+                DoubleToString(high, Digits),
+                DoubleToString(low, Digits),
+                DoubleToString(close, Digits),
+                "decision-here");
+      else 
+          FileWrite(fileHandle, 
                 TimeToString(time, TIME_DATE|TIME_MINUTES),
                 DoubleToString(open, Digits),
                 DoubleToString(high, Digits),

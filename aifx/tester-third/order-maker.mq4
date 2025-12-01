@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //|                                              order-maker.mq4     |
 //|                                                                  |
-//|  Opens real orders based on odd/even logic and logs to CSV      |
+//|  Opens real orders based on odd/even logic and logs to CSV       |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025"
 #property link      ""
