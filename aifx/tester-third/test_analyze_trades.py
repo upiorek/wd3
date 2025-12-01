@@ -226,8 +226,8 @@ def test_buy_tp_and_sl_same_candle():
     lines = read_file_lines(filepath)
     
     assert bad_luck == True, f"Expected bad_luck=True, got {bad_luck}"
-    assert result == 'SL', f"Expected worst case SL, got {result}"
-    assert 'SL' in ''.join(lines), f"Expected SL marker somewhere in file"
+    assert result == 'BE', f"Expected BE (break-even result), got {result}"
+    assert 'BE' in ''.join(lines), f"Expected BE marker somewhere in file"
     assert '(bad luck)' in ''.join(lines), f"Expected '(bad luck)' marker in file"
     
     print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}, Bad Luck: {bad_luck}")
@@ -256,7 +256,7 @@ def test_sell_tp_and_sl_same_candle():
     lines = read_file_lines(filepath)
     
     assert bad_luck == True, f"Expected bad_luck=True, got {bad_luck}"
-    assert result == 'SL', f"Expected worst case SL, got {result}"
+    assert result == 'BE', f"Expected BE (break-even result), got {result}"
     assert '(bad luck)' in ''.join(lines), f"Expected '(bad luck)' marker in file"
     
     # SL should NOT be marked "(at open)" because open=10010 is below SL threshold of 10055
@@ -496,7 +496,7 @@ def test_bad_luck_with_be_triggered_same_candle():
     
     lines = read_file_lines(filepath)
     
-    assert result == 'SL', f"Expected SL (worst case), got {result}"
+    assert result == 'BE', f"Expected BE (break-even), got {result}"
     assert bad_luck == True, f"Expected bad_luck=True, got {bad_luck}"
     assert '(bad luck)' in ''.join(lines), f"Expected '(bad luck)' marker"
     # Should NOT have "(at open)" because neither TP nor SL existed at open with their hit values
@@ -659,9 +659,9 @@ def test_bad_luck_tp_exceeds_target():
     
     lines = read_file_lines(filepath)
     
-    assert result == 'SL', f"Expected SL, got {result}"
+    assert result == 'BE', f"Expected BE (break-even), got {result}"
     assert bad_luck == True, f"Expected bad_luck=True, got {bad_luck}"
-    # The gain_loss is for SL (worst case), but TP should still be capped internally
+    # The gain_loss is for BE (worst case when TP also hit), but TP should still be capped internally
     assert '(bad luck)' in ''.join(lines), f"Expected '(bad luck)' marker"
     
     print(f"OK Result: {result}, Gain/Loss: {gain_loss:.2f}, Bad Luck: {bad_luck}")

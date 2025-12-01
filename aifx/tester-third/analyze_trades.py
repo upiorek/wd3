@@ -151,8 +151,11 @@ def process_mod_file(file_path):
                     # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
                     if tp_hit and sl_hit:
                         bad_luck = True
-                        # Prefer worst scenario - SL is always worse than BE
-                        result = 'SL'
+                        # Prefer worst scenario - if BE was triggered, it's BE, otherwise it's SL
+                        if sl_moved_to_be:
+                            result = 'BE'  # Break-even was hit (neutral outcome)
+                        else:
+                            result = 'SL'  # Original SL was hit (loss outcome)
                         result_idx = i
                         result_at_open = sl_at_open
                         # Use SL target value instead of actual low if low is worse
@@ -220,8 +223,11 @@ def process_mod_file(file_path):
                     # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
                     if tp_hit and sl_hit:
                         bad_luck = True
-                        # Prefer worst scenario - SL is always worse than BE
-                        result = 'SL'
+                        # Prefer worst scenario - if BE was triggered, it's BE, otherwise it's SL
+                        if sl_moved_to_be:
+                            result = 'BE'  # Break-even was hit (neutral outcome)
+                        else:
+                            result = 'SL'  # Original SL was hit (loss outcome)
                         result_idx = i
                         result_at_open = sl_at_open
                         # Use SL target value instead of actual high if high is worse
@@ -404,6 +410,7 @@ def main():
         results = {'TP': 0, 'SL': 0, 'BE': 0, 'Profiting': 0, 'Losing': 0, 'None': 0}
         files_by_category = {'TP': [], 'SL': [], 'BE': [], 'Profiting': [], 'Losing': [], 'None': []}
         bad_luck_count = 0
+        bad_luck_files = []  # Track files with bad luck
         total_gain_loss = 0
         
         processed_count = 0
@@ -421,6 +428,7 @@ def main():
             
             if is_bad_luck:
                 bad_luck_count += 1
+                bad_luck_files.append((str(mod_file), result, gain_loss))
         
         print(f"Processed {processed_count}/{len(mod_files)} files... Done!")
         
@@ -463,6 +471,9 @@ def main():
                 
         print(f"{'-'*50}")
         print(f"Bad Luck Trades:   {bad_luck_count:3d} trades")
+        if bad_luck_files:
+            for filepath, result, gain_loss in sorted(bad_luck_files, key=lambda x: x[0]):
+                print(f"  - {filepath}: {result} {gain_loss:+.2f}")
         print(f"{'='*50}")
         total_closed = results['TP'] + results['BE'] + results['SL']
         if total_closed > 0:
