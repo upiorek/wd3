@@ -15,14 +15,22 @@ def process_file(file_path, revert=False):
         # Remove BUY/SELL and distSL markers, restore original filename
         cleaned_lines = []
         for line in lines:
+            stripped = line.rstrip()
             # Remove everything after the OHLC data
-            parts = line.split(';')
+            parts = stripped.split(';')
             if len(parts) >= 5:
-                # Keep Time;Open;High;Low;Close, remove any trailing data
-                clean_line = ';'.join(parts[:5])
-                # Remove any trailing markers (BUY/SELL, distSL, etc)
-                clean_line = clean_line.split(' ')[0]
-                cleaned_lines.append(clean_line + '\n')
+                # Keep Time;Open;High;Low;Close
+                base_parts = parts[:5]
+                # Clean the Close field if it has any trailing data (BUY/SELL/gain/loss markers)
+                # But preserve "decision-here" marker
+                close_parts = base_parts[4].split()
+                close_field = close_parts[0]  # Take only the number
+                # Check if "decision-here" is present
+                if "decision-here" in base_parts[4]:
+                    base_parts[4] = f"{close_field};decision-here"
+                else:
+                    base_parts[4] = close_field
+                cleaned_lines.append(';'.join(base_parts) + '\n')
             else:
                 cleaned_lines.append(line)
         
@@ -70,10 +78,16 @@ def process_file(file_path, revert=False):
 
 def main():
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
+    compare_mode = len(sys.argv) > 1 and sys.argv[1] == "--compare"
+    test_mode = len(sys.argv) > 1 and sys.argv[1] == "--test"
     
-    # Check for candles in mt4_test_results first, then fall back to m15_candles
-    test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles"
-    original_dir = Path(__file__).parent / "m15_candles"
+    # Check for candles in mt4_test_results first, then fall back to m15_candles or m15_tests
+    if test_mode:
+        test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_tests"
+        original_dir = Path(__file__).parent / "m15_tests"
+    else:
+        test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles"
+        original_dir = Path(__file__).parent / "m15_candles"
     orders_dir = Path(__file__).parent / "mt4_test_results" / "m15_orders"
     
     if test_results_dir.exists():
@@ -94,14 +108,14 @@ def main():
     print(f"Found {len(csv_files)} files\n")
     
     if not revert:
-        # Get list of order files to match
+        # Get list of order files to match (only in compare mode)
         order_files = set()
-        if orders_dir.exists():
+        if compare_mode and orders_dir.exists():
             for order_file in orders_dir.glob("*.csv"):
                 order_files.add(order_file.stem)  # Get filename without extension
-            print(f"Matching {len(order_files)} order files\n")
+            print(f"Compare mode: Matching {len(order_files)} order files\n")
         
-        if not order_files:
+        if compare_mode and not order_files:
             print("No order files found - skipping processing")
             print("(Run order-maker EA first to generate order files)")
             return
@@ -111,19 +125,25 @@ def main():
         files_to_remove = []
         
         for csv_file in csv_files:
-            # Only process files that have corresponding order files
-            if csv_file.stem in order_files:
+            # In compare mode: only process files that have corresponding order files
+            # In normal mode: process all files
+            if compare_mode:
+                if csv_file.stem in order_files:
+                    process_file(csv_file, revert)
+                    processed_count += 1
+                else:
+                    # Only delete source files if we're actively matching
+                    if not csv_file.stem.endswith('_mod'):
+                        files_to_remove.append(csv_file)
+                        skipped_count += 1
+            else:
+                # Normal mode: process all files
                 process_file(csv_file, revert)
                 processed_count += 1
-            else:
-                # Only delete source files if we're actively matching
-                if len(order_files) > 0 and not csv_file.stem.endswith('_mod'):
-                    files_to_remove.append(csv_file)
-                    skipped_count += 1
             time.sleep(0.01)
         
-        # Remove skipped files (only source files without matching orders)
-        if files_to_remove:
+        # Remove skipped files (only in compare mode)
+        if compare_mode and files_to_remove:
             print(f"\nRemoving {len(files_to_remove)} unmatched source files...")
             for file_to_remove in files_to_remove:
                 try:
@@ -133,7 +153,8 @@ def main():
                     print(f"Error removing {file_to_remove.name}: {e}")
         
         print(f"\nProcessed: {processed_count} files")
-        print(f"Removed: {skipped_count} files")
+        if compare_mode:
+            print(f"Removed: {skipped_count} files")
     else:
         for csv_file in csv_files:
             process_file(csv_file, revert)
