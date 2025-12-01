@@ -673,9 +673,11 @@ def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
     """
     last_candle_low = last_candle['Low']
     last_candle_high = last_candle['High']
+    last_candle_direction = 'UP' if last_candle['Close'] > last_candle['Open'] else 'DOWN'
     last_candle_idx = len(lookback_df_for_lines)  # Index ostatniej świeczki (299 dla 300 świeczek)
     
     crossed_lines = []
+    offsets = {}  # Przechowuj offset dla każdej linii
     
     for line_info in detected_lines:
         slope = line_info['slope']
@@ -683,6 +685,17 @@ def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
         line_type = line_info['type']
         
         line_value = slope * last_candle_idx + intercept
+        
+        # Oblicz offset (odległość od linii do last_candle)
+        # Użyj mid-point świeczki dla offset
+        last_candle_mid = (last_candle_low + last_candle_high) / 2
+        offset = last_candle_mid - line_value
+        
+        # Zapisz offset dla głównych linii (zawsze)
+        if line_type == 'ascending':
+            offsets["AS1"] = offset
+        else:
+            offsets["DR1"] = offset
         
         # Prefix kierunku: A=ascending, D=descending
         direction_prefix = "A" if line_type == 'ascending' else "D"
@@ -715,8 +728,19 @@ def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
                     crossed_lines.append(f"AR{res['level']}")
                 else:
                     crossed_lines.append(f"DR{res['level']}")
+
+    # jeżeli były jakieś przecięcia...
+    if crossed_lines:
+        crossed_lines = ["CROSSED " + last_candle_direction] + crossed_lines
     
-    return crossed_lines
+    # Dodaj offset dla AS1/DR1 zawsze (niezależnie od crossings)
+    result = crossed_lines if crossed_lines else []
+    if "AS1" in offsets:
+        result.append(f"AS1_OFFSET:{offsets['AS1']:.1f}")
+    if "DR1" in offsets:
+        result.append(f"DR1_OFFSET:{offsets['DR1']:.1f}")
+    
+    return result
 
 
 def process_single_file(csv_filepath, output_dir='support_charts'):
