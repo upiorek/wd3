@@ -3,6 +3,9 @@ import time
 import sys
 from pathlib import Path
 
+ALGO = "odd_even"
+#ALGO = "magic_lines"
+
 def process_file(file_path, revert=False):
     """Process or revert a CSV file - simulates order-maker logic."""
     with open(file_path, 'r') as f:
@@ -10,6 +13,8 @@ def process_file(file_path, revert=False):
     
     if len(lines) < 2:
         return
+    
+    order_type = "NONE"
     
     if revert:
         # Remove BUY/SELL and distSL markers, restore original filename
@@ -56,13 +61,35 @@ def process_file(file_path, revert=False):
             
             # Decision candle: analyze open price and mark BUY/SELL
             if i == decision_index:
-                open_price = float(parts[1])
-                # Odd/even logic (matching order-maker)
-                price_int = int(open_price * 100)
-                is_odd = (price_int % 2 == 1)
-                order_type = "BUY" if is_odd else "SELL"
-                processed_lines.append(f"{ohlc_line} {order_type}\n")
-                continue
+                if ALGO == "odd_even":
+                    open_price = float(parts[1])
+                    # Odd/even logic (matching order-maker)
+                    price_int = int(open_price * 100)
+                    is_odd = (price_int % 2 == 1)
+                    order_type = "BUY" if is_odd else "SELL"
+                    processed_lines.append(f"{ohlc_line} {order_type}\n")
+                    continue                
+                elif ALGO == "magic_lines":
+                    # dump [0:i] lines to temp file
+                    temp_lines = []
+                    for j in range(i):
+                        temp_lines.append(f"{';'.join(lines[j].strip().split(';')[:5])}\n")
+                    temp_path = file_path.parent / "temp_candles.csv"
+                    with open(temp_path, 'w') as temp_f:
+                        temp_f.writelines(temp_lines)
+
+                    # call aifx\strategy\magic_lines.py process_single_file()
+                    # get result from stdout
+                    result = os.popen(f'python "{Path(__file__).parent.parent / "strategy" / "magic_lines.py"}" "{temp_path}"').read().strip()
+                    temp_path.unlink()  # remove temp file
+                    if "CROSSED UP" in result:
+                        order_type = "BUY"
+                    elif "CROSSED DOWN" in result:
+                        order_type = "SELL"
+                    else:
+                        order_type = "NONE"
+                    processed_lines.append(f"{ohlc_line} {order_type}\n")
+                    continue
             
             # All other lines: just remove volume
             processed_lines.append(f"{ohlc_line}\n")
@@ -74,7 +101,10 @@ def process_file(file_path, revert=False):
         with open(new_path, 'w') as f:
             f.writelines(processed_lines)
     
-    print(f"{action}: {file_path.name} -> {new_path.name}")
+    if ALGO == "magic_lines":
+        print(f"{action}: {file_path.name} -> {new_path.name} {order_type}")
+    else:
+        print(f"{action}: {file_path.name} -> {new_path.name}")
 
 def main():
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
