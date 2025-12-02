@@ -2,7 +2,6 @@ import os
 import time
 import sys
 from pathlib import Path
-from io import StringIO
 
 def revert_mod_file(file_path):
     """Remove all annotations, keeping only candles and BUY/SELL signal."""
@@ -52,6 +51,177 @@ def revert_mod_file(file_path):
         print(f"Reverted: {file_path.name}")
     else:
         print(f"No changes: {file_path.name}")
+
+def calculate_distances(signal, entry_price, open_price, high, low):
+    """Calculate TP and SL distances from entry price.
+    
+    Returns: (dist_tp, dist_sl, dist_tp_open, dist_sl_open)
+    """
+    if signal == 'BUY':
+        # For BUY: TP is above entry, SL is below
+        dist_tp = high - entry_price
+        dist_sl = low - entry_price
+        dist_tp_open = open_price - entry_price
+        dist_sl_open = open_price - entry_price
+    else:  # SELL
+        # For SELL: TP is below entry, SL is above
+        dist_tp = entry_price - low
+        dist_sl = entry_price - high
+        dist_tp_open = entry_price - open_price
+        dist_sl_open = entry_price - open_price
+    
+    return dist_tp, dist_sl, dist_tp_open, dist_sl_open
+
+def check_targets_hit(signal, entry_price, open_price, high, low, tp_target, sl_target, sl_target_at_open):
+    """Check if TP or SL targets are hit.
+    
+    Args:
+        sl_target: Current SL target (may be 0 if BE was triggered)
+        sl_target_at_open: The SL target at the start of the candle (before any BE move this candle)
+    
+    Returns: (tp_hit, sl_hit, tp_at_open, sl_at_open)
+    """
+    dist_tp, dist_sl, _, _ = calculate_distances(signal, entry_price, open_price, high, low)
+    
+    tp_hit = dist_tp >= tp_target
+    sl_hit = dist_sl <= sl_target  # Use current sl_target for hit detection
+    
+    if signal == 'BUY':
+        tp_at_open = (open_price >= entry_price + tp_target)
+        sl_at_open = (open_price <= entry_price + sl_target_at_open)
+    else:  # SELL
+        tp_at_open = (open_price <= entry_price - tp_target)
+        sl_at_open = (open_price >= entry_price - sl_target_at_open)
+    
+    return tp_hit, sl_hit, tp_at_open, sl_at_open
+
+def determine_result(tp_hit, sl_hit, tp_at_open, sl_at_open, sl_moved_to_be, be_hit, 
+                      sl_be_moved_idx, i, dist_tp, dist_sl, dist_tp_open, dist_sl_open):
+    """Determine the result of the trade based on which targets were hit.
+    
+    Returns: (result, result_at_open, be_hit_updated, be_hit_idx, final_dist_tp, final_dist_sl, bad_luck)
+    """
+    bad_luck = False
+    result = None
+    result_at_open = False
+    be_hit_updated = be_hit
+    be_hit_idx = None
+    final_dist_tp = 0
+    final_dist_sl = 0
+    
+    # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
+    if tp_hit and sl_hit:
+        bad_luck = True
+        # Prefer worst scenario - if BE was triggered, it's BE, otherwise it's SL
+        if sl_moved_to_be:
+            result = 'BE'  # Break-even was hit (neutral outcome)
+        else:
+            result = 'SL'  # Original SL was hit (loss outcome)
+        result_at_open = sl_at_open
+        # Store actual distances (may include slippage)
+        final_dist_sl = dist_sl
+        final_dist_tp = dist_tp
+    elif tp_hit:
+        result = 'TP'
+        result_at_open = tp_at_open
+        # Store actual distance: if at open, use open distance (slippage); else use high/low distance
+        final_dist_tp = dist_tp_open if tp_at_open else dist_tp
+        final_dist_sl = dist_sl
+    elif sl_hit:
+        if sl_moved_to_be and not be_hit:
+            # BE was hit - this is the final result
+            be_hit_updated = True
+            result = 'BE'
+            # Only mark "(at open)" if BE was set on a previous candle
+            result_at_open = sl_at_open and (sl_be_moved_idx < i)
+            be_hit_idx = i
+            # Store actual distances (may include slippage)
+            final_dist_sl = dist_sl
+            final_dist_tp = dist_tp
+        else:
+            # Original SL was hit
+            result = 'SL'
+            result_at_open = sl_at_open
+            # Store actual distance: if at open, use open distance (slippage); else use low/high distance
+            final_dist_sl = dist_sl_open if sl_at_open else dist_sl
+            final_dist_tp = dist_tp
+    
+    return result, result_at_open, be_hit_updated, be_hit_idx, final_dist_tp, final_dist_sl, bad_luck
+
+def clean_base_line(line_content):
+    """Extract base OHLC data from a line, removing any annotations.
+    
+    Returns: base_line (string with only Time;Open;High;Low;Close)
+    """
+    if ' gain' in line_content or ' loss' in line_content:
+        parts = line_content.split(';')
+        if len(parts) >= 5:
+            close_field = parts[4].split()[0]  # Take only the price part
+            return ';'.join(parts[:4] + [close_field])
+        else:
+            return ';'.join(parts)
+    return line_content
+
+def calculate_current_gain_loss(signal, entry_price, close, i, result_idx, result, result_at_open, 
+                                 final_dist_tp, final_dist_sl, tp_target, sl_target):
+    """Calculate the gain/loss to display for the current candle.
+    
+    Returns: current_gain_loss (float)
+    """
+    if i == result_idx:
+        # For result candle, show the actual final result distance
+        if result == 'TP':
+            # If hit at open (slippage/gap), show actual distance; otherwise cap at target
+            current_gain_loss = final_dist_tp if result_at_open else min(final_dist_tp, tp_target)
+        elif result == 'SL':
+            # If hit at open (slippage/gap), show actual distance; otherwise cap at target
+            current_gain_loss = final_dist_sl if result_at_open else max(final_dist_sl, sl_target)
+        elif result == 'BE':
+            current_gain_loss = 0.0
+        else:
+            # Fallback to close-based calculation
+            if signal == 'BUY':
+                current_gain_loss = close - entry_price
+            else:  # SELL
+                current_gain_loss = entry_price - close
+    else:
+        # For non-result candles, show close-based gain/loss
+        if signal == 'BUY':
+            current_gain_loss = close - entry_price
+        else:  # SELL
+            current_gain_loss = entry_price - close
+    
+    return current_gain_loss
+
+def annotate_line(base_line, current_gain_loss, i, result_idx, result, result_at_open, bad_luck,
+                  sl_be_moved_idx):
+    """Annotate a line with gain/loss and result markers.
+    
+    Returns: annotated line string
+    """
+    gain_loss_label = "gain" if current_gain_loss > 0 else "loss"
+    
+    # Add "(at open)" suffix if result hit at open price
+    open_suffix = " (at open)" if (i == result_idx and result_at_open) else ""
+    
+    # Add "(bad luck)" suffix if bad luck scenario
+    bad_luck_suffix = " (bad luck)" if (i == result_idx and bad_luck) else ""
+    
+    if i == result_idx:
+        # Add final result marker with gain/loss
+        # If BE was hit in the same candle where SL->BE happened, show both
+        if result == 'BE' and sl_be_moved_idx == i:
+            return f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} SL->BE {result}{open_suffix}{bad_luck_suffix}\n"
+        else:
+            return f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} {result}{open_suffix}{bad_luck_suffix}\n"
+    elif result is None:
+        # Check if this is the candle where SL moved to BE
+        if sl_be_moved_idx is not None and i == sl_be_moved_idx:
+            return f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} SL->BE\n"
+        else:
+            return f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f}\n"
+    # After final result, return None to indicate no annotation
+    return None
 
 def process_mod_file(file_path):
     """Process a _mod file and add distance to TP/SL for each candle."""
@@ -107,7 +277,6 @@ def process_mod_file(file_path):
     final_dist_tp = 0
     last_close_price = 0
     bad_luck = False  # Flag for when multiple outcomes could happen in same candle
-    signal_idx = signal_line_idx + 1  # Index of the entry candle
     
     # Process all candles starting from entry candle
     # Entry happens at open of signal_idx, and TP/SL could be hit during that same candle
@@ -122,214 +291,56 @@ def process_mod_file(file_path):
             low = float(parts[3])
             close = float(parts[4].split()[0]) if len(parts) > 4 else float(parts[3])
             
-            if False and signal == 'SELL' and i == 302:  # Debug first SELL candle
-                print(f"DEBUG Parsing i={i}: parts[3]={parts[3]}, low={low}")
-            
             # Track last close price
             last_close_price = close
             
-            if signal == 'BUY':
-                # For BUY: TP is above entry, SL is below
-                dist_tp = high - entry_price
-                dist_sl = low - entry_price
-                dist_tp_open = open_price - entry_price  # Distance at open (for slippage display)
-                dist_sl_open = open_price - entry_price  # Distance at open (for slippage display)
-                
-                # Store sl_target at start of candle for at_open checks
-                sl_target_at_open = sl_target
-                
-                # Check if TP or SL/BE hit on this candle
-                if result is None:
-                    # Check if we should move SL to BE
-                    if not sl_moved_to_be and dist_tp >= be_trigger:
-                        sl_moved_to_be = True
-                        sl_be_moved_idx = i  # Track which candle this happened on
-                        sl_target = 0  # Move SL to break-even
-
-                    tp_hit = dist_tp >= tp_target
-                    sl_hit = dist_sl <= sl_target
-                    
-                    # Check if TP/SL hit at open price (use original sl_target before any BE move this candle)
-                    tp_at_open = (open_price >= entry_price + tp_target)
-                    sl_at_open = (open_price <= entry_price + sl_target_at_open)
-                    
-                    # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
-                    if tp_hit and sl_hit:
-                        bad_luck = True
-                        # Prefer worst scenario - if BE was triggered, it's BE, otherwise it's SL
-                        if sl_moved_to_be:
-                            result = 'BE'  # Break-even was hit (neutral outcome)
-                        else:
-                            result = 'SL'  # Original SL was hit (loss outcome)
-                        result_idx = i
-                        result_at_open = sl_at_open
-                        # Store actual distances (may include slippage)
-                        final_dist_sl = dist_sl
-                        final_dist_tp = dist_tp
-                    elif tp_hit:
-                        result = 'TP'
-                        result_idx = i
-                        result_at_open = tp_at_open
-                        # Store actual distance: if at open, use open distance (slippage); else use high distance
-                        final_dist_tp = dist_tp_open if tp_at_open else dist_tp
-                        final_dist_sl = dist_sl
-                    elif sl_hit:
-                        if sl_moved_to_be and not be_hit:
-                            # BE was hit - this is the final result
-                            be_hit = True
-                            result = 'BE'
-                            result_idx = i
-                            # Only mark "(at open)" if BE was set on a previous candle
-                            result_at_open = sl_at_open and (sl_be_moved_idx < i)
-                            be_hit_idx = i
-                            # Store actual distances (may include slippage)
-                            final_dist_sl = dist_sl
-                            final_dist_tp = dist_tp
-                        else:
-                            # Original SL was hit
-                            result = 'SL'
-                            result_idx = i
-                            result_at_open = sl_at_open
-                            # Store actual distance: if at open, use open distance (slippage); else use low distance
-                            final_dist_sl = dist_sl_open if sl_at_open else dist_sl
-                            final_dist_tp = dist_tp
+            # Calculate distances for this candle
+            dist_tp, dist_sl, dist_tp_open, dist_sl_open = calculate_distances(
+                signal, entry_price, open_price, high, low
+            )
             
-            elif signal == 'SELL':
-                # For SELL: TP is below entry, SL is above
-                dist_tp = entry_price - low
-                dist_sl = entry_price - high
-                dist_tp_open = entry_price - open_price  # Distance at open (for slippage display)
-                dist_sl_open = entry_price - open_price  # Distance at open (for slippage display)
-                                
-                # Store sl_target at start of candle for at_open checks
-                sl_target_at_open = sl_target
-                
-                # Check if TP or SL/BE hit on this candle
-                if result is None:
-                    # Check if we should move SL to BE
-                    if not sl_moved_to_be and dist_tp >= be_trigger:
-                        sl_moved_to_be = True
-                        sl_be_moved_idx = i  # Track which candle this happened on
-                        sl_target = 0  # Move SL to break-even
-                        if False:  # Debug
-                            print(f"  BE TRIGGERED at i={i}: dist_tp={dist_tp}, be_trigger={be_trigger}, low={low}")
+            # Store sl_target at start of candle for at_open checks
+            sl_target_at_open = sl_target
+            
+            # Check if TP or SL/BE hit on this candle
+            if result is None:
+                # Check if we should move SL to BE
+                if not sl_moved_to_be and dist_tp >= be_trigger:
+                    sl_moved_to_be = True
+                    sl_be_moved_idx = i  # Track which candle this happened on
+                    sl_target = 0  # Move SL to break-even
 
-                    tp_hit = dist_tp >= tp_target
-                    sl_hit = dist_sl <= sl_target
-                    
-                    # Check if TP/SL hit at open price (use original sl_target before any BE move this candle)
-                    tp_at_open = (open_price <= entry_price - tp_target)
-                    sl_at_open = (open_price >= entry_price - sl_target_at_open)
-                    
-                    if False:  # Debug - set to True to enable
-                        print(f"SELL i={i}, open={open_price}, entry={entry_price}")
-                        print(f"  dist_tp={dist_tp}, dist_sl={dist_sl}, tp_hit={tp_hit}, sl_hit={sl_hit}")
-                        print(f"  sl_target={sl_target}, sl_moved_to_be={sl_moved_to_be}")
-                        print(f"  sl_target={sl_target}, entry-sl_target={entry_price - sl_target}")
-                        print(f"  sl_at_open: {open_price} >= {entry_price - sl_target} = {sl_at_open}")
-                    
-                    # Check if both TP and SL could be hit in same candle (BAD LUCK scenario)
-                    if tp_hit and sl_hit:
-                        bad_luck = True
-                        # Prefer worst scenario - if BE was triggered, it's BE, otherwise it's SL
-                        if sl_moved_to_be:
-                            result = 'BE'  # Break-even was hit (neutral outcome)
-                        else:
-                            result = 'SL'  # Original SL was hit (loss outcome)
-                        result_idx = i
-                        result_at_open = sl_at_open
-                        # Store actual distances (may include slippage)
-                        final_dist_sl = dist_sl
-                        final_dist_tp = dist_tp
-                    elif tp_hit:
-                        result = 'TP'
-                        result_idx = i
-                        result_at_open = tp_at_open
-                        # Store actual distance: if at open, use open distance (slippage); else use low distance
-                        final_dist_tp = dist_tp_open if tp_at_open else dist_tp
-                        final_dist_sl = dist_sl
-                    elif sl_hit:
-                        if sl_moved_to_be and not be_hit:
-                            # BE was hit - this is the final result
-                            be_hit = True
-                            result = 'BE'
-                            result_idx = i
-                            # Only mark "(at open)" if BE was set on a previous candle
-                            result_at_open = sl_at_open and (sl_be_moved_idx < i)
-                            be_hit_idx = i
-                            # Store actual distances (may include slippage)
-                            final_dist_sl = dist_sl
-                            final_dist_tp = dist_tp
-                        else:
-                            # Original SL was hit
-                            result = 'SL'
-                            result_idx = i
-                            result_at_open = sl_at_open
-                            # Store actual distance: if at open, use open distance (slippage); else use high distance
-                            final_dist_sl = dist_sl_open if sl_at_open else dist_sl
-                            final_dist_tp = dist_tp
+                tp_hit, sl_hit, tp_at_open, sl_at_open = check_targets_hit(
+                    signal, entry_price, open_price, high, low, tp_target, sl_target, sl_target_at_open
+                )
+                
+                # Determine result based on what was hit
+                result, result_at_open, be_hit, be_hit_idx_temp, final_dist_tp, final_dist_sl, bad_luck = determine_result(
+                    tp_hit, sl_hit, tp_at_open, sl_at_open, sl_moved_to_be, be_hit,
+                    sl_be_moved_idx, i, dist_tp, dist_sl, dist_tp_open, dist_sl_open
+                )
+                if result is not None:
+                    result_idx = i
+                    if be_hit_idx_temp is not None:
+                        be_hit_idx = be_hit_idx_temp
             
             # Add distance info to the line
-            line_content = lines[i].rstrip()
-            # Remove any previously added data (in case of re-running)
-            if ' gain' in line_content or ' loss' in line_content:
-                # Get base line without any added data
-                parts = line_content.split(';')
-                if len(parts) >= 5:
-                    # Clean the close price field (5th field) by removing any markers
-                    close_field = parts[4].split()[0]  # Take only the price part
-                    base_line = ';'.join(parts[:4] + [close_field])
-                else:
-                    base_line = ';'.join(parts)
-            else:
-                base_line = line_content
+            base_line = clean_base_line(lines[i].rstrip())
             
             # Calculate current gain/loss for this candle
-            if i == result_idx:
-                # For result candle, show the actual final result distance
-                if result == 'TP':
-                    # If hit at open (slippage/gap), show actual distance; otherwise cap at target
-                    current_gain_loss = final_dist_tp if result_at_open else min(final_dist_tp, tp_target)
-                elif result == 'SL':
-                    # If hit at open (slippage/gap), show actual distance; otherwise cap at target
-                    current_gain_loss = final_dist_sl if result_at_open else max(final_dist_sl, sl_target)
-                elif result == 'BE':
-                    current_gain_loss = 0.0
-                else:
-                    # Fallback to close-based calculation
-                    if signal == 'BUY':
-                        current_gain_loss = close - entry_price
-                    else:  # SELL
-                        current_gain_loss = entry_price - close
-            else:
-                # For non-result candles, show close-based gain/loss
-                if signal == 'BUY':
-                    current_gain_loss = close - entry_price
-                else:  # SELL
-                    current_gain_loss = entry_price - close
+            current_gain_loss = calculate_current_gain_loss(
+                signal, entry_price, close, i, result_idx, result, result_at_open,
+                final_dist_tp, final_dist_sl, tp_target, sl_target
+            )
             
-            gain_loss_label = "gain" if current_gain_loss > 0 else "loss"
+            # Annotate the line
+            annotated_line = annotate_line(
+                base_line, current_gain_loss, i, result_idx, result, result_at_open, 
+                bad_luck, sl_be_moved_idx
+            )
             
-            # Add "(at open)" suffix if result hit at open price
-            open_suffix = " (at open)" if (i == result_idx and result_at_open) else ""
-            
-            # Add "(bad luck)" suffix if bad luck scenario
-            bad_luck_suffix = " (bad luck)" if (i == result_idx and bad_luck) else ""
-            
-            if i == result_idx:
-                # Add final result marker with gain/loss
-                # If BE was hit in the same candle where SL->BE happened, show both
-                if result == 'BE' and sl_be_moved_idx == i:
-                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} SL->BE {result}{open_suffix}{bad_luck_suffix}\n"
-                else:
-                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} {result}{open_suffix}{bad_luck_suffix}\n"
-            elif result is None:
-                # Check if this is the candle where SL moved to BE
-                if sl_be_moved_idx is not None and i == sl_be_moved_idx:
-                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f} SL->BE\n"
-                else:
-                    lines[i] = f"{base_line} {gain_loss_label} {abs(current_gain_loss):.2f}\n"
-            # After final result, don't add anything
+            if annotated_line is not None:
+                lines[i] = annotated_line
         
         except (ValueError, IndexError):
             continue
@@ -342,20 +353,12 @@ def process_mod_file(file_path):
     elif result == 'SL':
         final_result = 'SL'
         gain_loss = final_dist_sl if result_at_open else max(final_dist_sl, sl_target)
-        if False:  # Debug
-            print(f"DEBUG SL: final_dist_sl={final_dist_sl}, result_at_open={result_at_open}, sl_target={sl_target}, gain_loss={gain_loss}")
-    elif result == 'BE':
-        final_result = 'BE'
-        gain_loss = 0.0  # Break-even is always 0
-    elif be_hit:
+    elif result == 'BE' or be_hit:
         final_result = 'BE'
         gain_loss = 0.0  # Break-even is always 0
     else:
         # Calculate result based on last close price for trades that didn't hit TP/SL/BE
-        if signal == 'BUY':
-            close_gain_loss = last_close_price - entry_price
-        else:  # SELL
-            close_gain_loss = entry_price - last_close_price
+        close_gain_loss = last_close_price - entry_price if signal == 'BUY' else entry_price - last_close_price
         
         if close_gain_loss > 0:
             final_result = 'Profiting'
@@ -369,15 +372,7 @@ def process_mod_file(file_path):
     with open(file_path, 'w') as f:
         f.writelines(lines)
     
-    if gain_loss > 0:
-        result_text = f"GAIN +{gain_loss:.2f}"
-    elif gain_loss < 0:
-        result_text = f"LOSS {gain_loss:.2f}"
-    else:
-        result_text = f"BREAK EVEN {gain_loss:.2f}"
-    
-    # Don't print individual file results anymore, just return the data
-    return final_result, bad_luck, gain_loss  # Return the result, bad_luck flag, and gain/loss for statistics
+    return final_result, bad_luck, gain_loss
 
 def main():    
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
