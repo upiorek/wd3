@@ -51,7 +51,7 @@ def test_buy_tp():
     
     # Import and run
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -82,7 +82,7 @@ def test_sell_tp():
     filepath = create_test_file("test_sell_tp_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -109,7 +109,7 @@ def test_buy_sl():
     filepath = create_test_file("test_buy_sl_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -137,7 +137,7 @@ def test_sell_sl():
     filepath = create_test_file("test_sell_sl_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -165,7 +165,7 @@ def test_buy_sl_to_be():
     filepath = create_test_file("test_buy_sl_be_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -192,7 +192,7 @@ def test_sell_sl_to_be():
     filepath = create_test_file("test_sell_sl_be_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -221,7 +221,7 @@ def test_buy_tp_and_sl_same_candle():
     filepath = create_test_file("test_buy_bad_luck_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -251,7 +251,7 @@ def test_sell_tp_and_sl_same_candle():
     filepath = create_test_file("test_sell_bad_luck_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -283,7 +283,7 @@ def test_buy_tp_at_open():
     filepath = create_test_file("test_buy_tp_open_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -311,7 +311,7 @@ def test_buy_sl_at_open():
     filepath = create_test_file("test_buy_sl_open_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -341,7 +341,7 @@ def test_buy_be_at_open():
     filepath = create_test_file("test_buy_be_open_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -369,7 +369,7 @@ def test_sl_hit_on_entry_candle():
     filepath = create_test_file("test_sl_entry_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -404,7 +404,7 @@ def test_be_triggered_and_hit_same_candle_no_at_open():
     filepath = create_test_file("test_be_same_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -432,7 +432,7 @@ def test_tp_hit_on_entry_candle():
     filepath = create_test_file("test_tp_entry_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -464,7 +464,7 @@ def test_be_move_on_entry_then_hit_later():
     filepath = create_test_file("test_be_later_with_at_open_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -492,7 +492,7 @@ def test_bad_luck_with_be_triggered_same_candle():
     filepath = create_test_file("test_bad_luck_be_trigger_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -522,7 +522,7 @@ def test_entry_candle_has_gain_loss():
     filepath = create_test_file("test_entry_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -567,7 +567,7 @@ def test_tp_exceeds_target_capped_at_200():
     filepath = create_test_file("test_tp_capped_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -597,7 +597,7 @@ def test_sell_tp_exceeds_target_capped_at_200():
     filepath = create_test_file("test_sell_tp_capped_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -626,7 +626,7 @@ def test_sl_exceeds_target_capped_at_50():
     filepath = create_test_file("test_sl_capped_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -655,7 +655,7 @@ def test_bad_luck_tp_exceeds_target():
     filepath = create_test_file("test_bad_luck_tp_capped_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -685,7 +685,7 @@ def test_buy_tp_at_open_with_slippage():
     filepath = create_test_file("test_buy_tp_slippage_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -715,7 +715,7 @@ def test_sell_sl_at_open_with_slippage():
     filepath = create_test_file("test_sell_sl_slippage_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -745,7 +745,7 @@ def test_buy_be_triggered_tp_hit_during_candle():
     filepath = create_test_file("test_buy_be_tp_same_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -776,7 +776,7 @@ def test_sell_tp_at_open_with_slippage():
     filepath = create_test_file("test_sell_tp_slippage_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -805,7 +805,7 @@ def test_bad_luck_both_at_open():
     filepath = create_test_file("test_bad_luck_both_at_open_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -835,7 +835,7 @@ def test_sell_sl_at_open_slippage_real_case():
     filepath = create_test_file("test_sell_sl_real_case_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -873,7 +873,7 @@ def test_buy_sl_then_be_trigger_later():
     filepath = create_test_file("test_buy_sl_be_later_no_corrupt_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -910,7 +910,7 @@ def test_sell_sl_then_be_trigger_later():
     filepath = create_test_file("test_sell_sl_be_later_no_corrupt_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -947,7 +947,7 @@ def test_buy_tp_then_be_trigger_later():
     filepath = create_test_file("test_buy_tp_be_later_no_affect_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -983,7 +983,7 @@ def test_buy_slippage_at_open_triggers_be():
     filepath = create_test_file("test_buy_slippage_triggers_be_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1018,7 +1018,7 @@ def test_sell_slippage_at_open_triggers_be():
     filepath = create_test_file("test_sell_slippage_triggers_be_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1053,7 +1053,7 @@ def test_buy_slippage_triggers_and_hits_be_at_same_open():
     filepath = create_test_file("test_buy_slip_be_trigger_hit_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1087,7 +1087,7 @@ def test_buy_sl_with_significant_slippage():
     filepath = create_test_file("test_buy_sl_big_slippage_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1121,7 +1121,7 @@ def test_sell_sl_gap_at_open_slippage():
     filepath = create_test_file("test_sell_sl_gap_open_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1154,7 +1154,7 @@ def test_buy_sl_at_entry_candle_with_large_move():
     filepath = create_test_file("test_buy_sl_entry_big_move_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     entry_line = lines[3].strip()
@@ -1191,7 +1191,7 @@ def test_buy_tp_and_be_same_candle():
     filepath = create_test_file("test_buy_tp_be_same_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1226,7 +1226,7 @@ def test_sell_tp_and_be_same_candle():
     filepath = create_test_file("test_sell_tp_be_same_candle_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1262,7 +1262,7 @@ def test_buy_be_hit_then_sl_same_candle():
     filepath = create_test_file("test_buy_be_then_sl_same_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     
@@ -1300,7 +1300,7 @@ def test_sell_be_hit_then_sl_same_candle():
     filepath = create_test_file("test_sell_be_then_sl_same_mod.csv", content)
     
     from analyze_trades import process_mod_file
-    result, bad_luck, gain_loss = process_mod_file(filepath)
+    result, bad_luck, gain_loss, _ = process_mod_file(filepath)
     
     lines = read_file_lines(filepath)
     

@@ -229,7 +229,7 @@ def process_mod_file(file_path):
         lines = f.readlines()
     
     if len(lines) < 2:
-        return None, False, 0
+        return None, False, 0, 1
     
     # Find the line with BUY or SELL
     signal_line_idx = None
@@ -246,22 +246,22 @@ def process_mod_file(file_path):
             break
     
     if signal_line_idx is None or signal is None:
-        print(f"No signal found in {file_path.name}")
-        return None, False, 0
+        # print(f"No signal found in {file_path.name}")
+        return None, False, 0, 1
     
     # Get entry price (open price of next candle after signal)
     if signal_line_idx + 1 >= len(lines):
         print(f"No candles after signal in {file_path.name}")
-        return None, False, 0
+        return None, False, 0, 1
     
     entry_candle = lines[signal_line_idx + 1].strip().split(';')
     if len(entry_candle) < 2:
-        return None, False, 0
+        return None, False, 0, 1
     
     try:
         entry_price = float(entry_candle[1])
     except ValueError:
-        return None, False, 0
+        return None, False, 0, 1
     
     tp_target = 200
     sl_target = -50
@@ -372,7 +372,10 @@ def process_mod_file(file_path):
     with open(file_path, 'w') as f:
         f.writelines(lines)
     
-    return final_result, bad_luck, gain_loss
+    # Entry line number for clickable links (signal_line_idx + 2 because: 0-indexed array + 1 for entry + 1 for file lines)
+    entry_line_num = signal_line_idx + 2
+    
+    return final_result, bad_luck, gain_loss, entry_line_num
 
 def main():    
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
@@ -426,20 +429,20 @@ def main():
         
         processed_count = 0
         for mod_file in mod_files:
-            result, is_bad_luck, gain_loss = process_mod_file(mod_file)
+            result, is_bad_luck, gain_loss, entry_line_num = process_mod_file(mod_file)
             processed_count += 1
             
             if result:
                 results[result] += 1
-                files_by_category[result].append((str(mod_file), gain_loss))
+                files_by_category[result].append((str(mod_file), gain_loss, entry_line_num))
                 total_gain_loss += gain_loss
             else:
                 results['None'] += 1
-                files_by_category['None'].append((str(mod_file), 0))
+                files_by_category['None'].append((str(mod_file), 0, entry_line_num))
             
             if is_bad_luck:
                 bad_luck_count += 1
-                bad_luck_files.append((str(mod_file), result, gain_loss))
+                bad_luck_files.append((str(mod_file), result, gain_loss, entry_line_num))
         
         print(f"Processed {processed_count}/{len(mod_files)} files... Done!")
         
@@ -456,35 +459,37 @@ def main():
         print(f"{'-'*50}")
         
         print(f"TP (Take Profit):  {results['TP']:3d} trades")
-        for filepath, gain_loss in sorted(files_by_category['TP'], key=lambda x: x[1], reverse=True):
-            print(f"  - {filepath}: {gain_loss:+.2f}")
+        for filepath, gain_loss, line_num in sorted(files_by_category['TP'], key=lambda x: x[1], reverse=True):
+            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")
         
         print(f"Profiting (open):  {results['Profiting']:3d} trades")
-        for filepath, gain_loss in sorted(files_by_category['Profiting'], key=lambda x: x[1], reverse=True):
-            print(f"  - {filepath}: {gain_loss:+.2f}")
+        for filepath, gain_loss, line_num in sorted(files_by_category['Profiting'], key=lambda x: x[1], reverse=True):
+            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")
             
         print(f"BE (Break Even):   {results['BE']:3d} trades")
-        for filepath, gain_loss in sorted(files_by_category['BE'], key=lambda x: x[1], reverse=True):
-            print(f"  - {filepath}: {gain_loss:+.2f}")      
+        for filepath, gain_loss, line_num in sorted(files_by_category['BE'], key=lambda x: x[1], reverse=True):
+            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")      
 
         print(f"Losing (open):     {results['Losing']:3d} trades")
-        for filepath, gain_loss in sorted(files_by_category['Losing'], key=lambda x: x[1]):
-            print(f"  - {filepath}: {gain_loss:+.2f}")
+        for filepath, gain_loss, line_num in sorted(files_by_category['Losing'], key=lambda x: x[1]):
+            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")
             
         print(f"SL (Stop Loss):    {results['SL']:3d} trades")
-        for filepath, gain_loss in sorted(files_by_category['SL'], key=lambda x: x[1]):
-            print(f"  - {filepath}: {gain_loss:+.2f}")
-        
-        if results['None'] > 0:
-            print(f"No Result:         {results['None']:3d} trades")
-            for filepath, gain_loss in sorted(files_by_category['None'], key=lambda x: x[0]):
-                print(f"  - {filepath}")
+        for filepath, gain_loss, line_num in sorted(files_by_category['SL'], key=lambda x: x[1]):
+            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")        
                 
         print(f"{'-'*50}")
         print(f"Bad Luck Trades:   {bad_luck_count:3d} trades")
         if bad_luck_files:
-            for filepath, result, gain_loss in sorted(bad_luck_files, key=lambda x: x[0]):
-                print(f"  - {filepath}: {result} {gain_loss:+.2f}")
+            for filepath, result, gain_loss, line_num in sorted(bad_luck_files, key=lambda x: x[0]):
+                print(f"  - {filepath}:{line_num}: {result} {gain_loss:+.2f}")
+                
+        print(f"{'-'*50}")
+        if results['None'] > 0:
+            print(f"No Result:         {results['None']:3d} trades")
+            # for filepath, gain_loss, line_num in sorted(files_by_category['None'], key=lambda x: x[0]):
+            #    print(f"  - {filepath}:{line_num}:")
+            
         print(f"{'='*50}")
         total_closed = results['TP'] + results['BE'] + results['SL']
         if total_closed > 0:
