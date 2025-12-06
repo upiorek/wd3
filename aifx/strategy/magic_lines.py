@@ -16,13 +16,14 @@ import sys
 import os
 import pandas as pd
 import numpy as np
+import mplfinance as mpf
+
 from pathlib import Path
-from datetime import datetime, date
 from scipy.signal import argrelextrema
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import mplfinance as mpf
 
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
@@ -125,10 +126,17 @@ def detect_impulses(df):
     return impulses
 
 
-def find_hierarchical_lines(df, base_slope, base_intercept, used_points, extrema_low, extrema_high, impulses_idx, 
+def find_hierarchical_lines(df, base_line, extrema_low, extrema_high, impulses_idx, 
                             num_below=4, num_above=4, tolerance=50):
     """
     Znajduje hierarchiczne linie równoległe poniżej (wsparcia S2, S3...) i powyżej (opory R2, R3...).
+    
+    Args:
+        df: DataFrame z kolumną 'index'
+        base_line: dict z kluczami 'slope', 'intercept', 'used' (główna linia)
+        extrema_low, extrema_high, impulses_idx: indeksy punktów ekstremalnych
+        num_below, num_above: liczba poziomów do znalezienia
+        tolerance: tolerancja dopasowania punktów
     
     Zwraca:
         (supports_below, resistances_above)
@@ -137,30 +145,39 @@ def find_hierarchical_lines(df, base_slope, base_intercept, used_points, extrema
     supports_below = []
     resistances_above = []
     
+    base_slope = base_line['slope']
+    base_intercept = base_line['intercept']
+    used_points = base_line['used']
+    
     # Zbierz wszystkie punkty (minima + impulsy)
-    all_low_points = []
+    all_points = []
     for idx in extrema_low:
-        all_low_points.append({
+        all_points.append({
             'index': int(df.iloc[idx]['index']),
             'price': float(df.iloc[idx]['Low'])
         })
     for idx in impulses_idx:
-        all_low_points.append({
+        all_points.append({
             'index': int(df.iloc[idx]['index']),
             'price': float(df.iloc[idx]['Low'])
-        })
-    
-    # Zbierz wszystkie punkty (maxima)
-    all_high_points = []
+        })    
     for idx in extrema_high:
-        all_high_points.append({
+        all_points.append({
             'index': int(df.iloc[idx]['index']),
             'price': float(df.iloc[idx]['High'])
         })
     
-    # Funkcja do znajdowania linii poniżej głównej (wsparcia)
-    def find_support_level(points, excluded_points, level):
-        """Znajduje kolejny poziom wsparcia poniżej głównej linii"""
+    # Funkcja do znajdowania linii równoległych (wsparcia lub oporu)
+    def find_parallel_level(points, excluded_points, level, is_support=True):
+        """
+        Znajduje kolejny poziom wsparcia (poniżej) lub oporu (powyżej) głównej linii
+        
+        Args:
+            points: lista punktów do analizy
+            excluded_points: punkty już użyte w poprzednich poziomach
+            level: numer poziomu (2, 3, 4, ...)
+            is_support: True dla wsparcia (offset < 0), False dla oporu (offset > 0)
+        """
         best_intercept = None
         best_score = 0
         best_touches = []
@@ -177,8 +194,10 @@ def find_hierarchical_lines(df, base_slope, base_intercept, used_points, extrema
             intercept = p['price'] - base_slope * p['index']
             offset = intercept - base_intercept
             
-            # Offset musi być ujemny (linia poniżej głównej)
-            if offset >= 0:
+            # Sprawdź czy offset ma odpowiedni znak (ujemny dla wsparcia, dodatni dla oporu)
+            if is_support and offset >= 0:
+                continue
+            if not is_support and offset <= 0:
                 continue
             
             # Policz ile punktów pasuje do tej linii
@@ -209,58 +228,10 @@ def find_hierarchical_lines(df, base_slope, base_intercept, used_points, extrema
             }
         return None
     
-    # Funkcja do znajdowania linii powyżej głównej (opory)
-    def find_resistance_level(points, excluded_points, level):
-        """Znajduje kolejny poziom oporu powyżej głównej linii"""
-        best_intercept = None
-        best_score = 0
-        best_touches = []
-        best_offset = 0
-        
-        for p in points:
-            # Sprawdź czy punkt nie jest już użyty
-            if any(abs(p['index'] - ep['index']) < 2 and abs(p['price'] - ep['price']) < 10 
-                   for ep in excluded_points):
-                continue
-            
-            intercept = p['price'] - base_slope * p['index']
-            offset = intercept - base_intercept
-            
-            # Offset musi być dodatni (linia powyżej głównej)
-            if offset <= 0:
-                continue
-            
-            score = 0
-            touches = []
-            for pt in points:
-                expected_price = base_slope * pt['index'] + intercept
-                dist = abs(pt['price'] - expected_price)
-                
-                if dist <= tolerance:
-                    score += 1
-                    touches.append({'index': pt['index'], 'price': pt['price']})
-            
-            if score > best_score:
-                best_score = score
-                best_intercept = intercept
-                best_touches = touches
-                best_offset = offset
-        
-        if best_score >= 2:
-            return {
-                'slope': base_slope,
-                'intercept': best_intercept,
-                'touches': best_touches,
-                'offset': best_offset,
-                'score': best_score,
-                'level': level
-            }
-        return None
-    
     # Znajdź linie wsparcia poniżej
     excluded = list(used_points)
     for level in range(2, num_below + 2):
-        support = find_support_level(all_low_points, excluded, level)
+        support = find_parallel_level(all_points, excluded, level, is_support=True)
         if support:
             supports_below.append(support)
             excluded.extend(support['touches'])
@@ -270,7 +241,7 @@ def find_hierarchical_lines(df, base_slope, base_intercept, used_points, extrema
     # Znajdź linie oporu powyżej
     excluded = list(used_points)
     for level in range(2, num_above + 2):
-        resistance = find_resistance_level(all_high_points, excluded, level)
+        resistance = find_parallel_level(all_points, excluded, level, is_support=False)
         if resistance:
             resistances_above.append(resistance)
             excluded.extend(resistance['touches'])
@@ -414,9 +385,7 @@ def find_support_lines(lookback_df):
         # Znajdź hierarchiczne linie
         supp_below, res_above = find_hierarchical_lines(
             lookback_df, 
-            best_ascending['slope'], 
-            best_ascending['intercept'], 
-            best_ascending['used'],
+            best_ascending,
             minima_idx, 
             maxima_idx, 
             impulses_idx,
@@ -442,9 +411,7 @@ def find_support_lines(lookback_df):
     if best_descending['score'] > 0:
         supp_below, res_above = find_hierarchical_lines(
             lookback_df,
-            best_descending['slope'],
-            best_descending['intercept'],
-            best_descending['used'],
+            best_descending,
             minima_idx,
             maxima_idx,
             impulses_idx,
@@ -616,7 +583,6 @@ def plot_chart(df_plot, detected_lines, output_filepath, lookback_start_dt, look
     os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
     
     # Konfiguracja siatki - pionowe linie o pełnych godzinach (00:00)
-    import matplotlib.dates as mdates
     
     # Ustaw styl matplotlib przed generowaniem wykresu
     plt.rcParams['figure.subplot.left'] = 0.05
@@ -848,7 +814,8 @@ def main():
         
         result = process_single_file(csv_file, str(output_dir))
         print(f"Wynik: {result}")
-        print(f"Wykres zapisano w: {output_dir}")
+        full_output_path = output_dir.resolve()
+        print(f"Wykres zapisano w: {full_output_path}")
     else:
         # Tryb batch - przetwarzanie wszystkich plików
         if len(sys.argv) > 1 and sys.argv[1] == '--help':
