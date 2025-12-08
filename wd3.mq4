@@ -12,7 +12,7 @@ datetime lastMarketLogTime = 0;
 datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 int hearbeat = 0;
-string version = "3.13";
+string version = "3.17";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -524,9 +524,10 @@ void LogM1Candles()
       double low = iLow(Symbol(), PERIOD_M1, 1);
       double close = iClose(Symbol(), PERIOD_M1, 1);
       
-      // Create filename with date format: YYYY-MM-DD-m1.csv
-      string fileName = TimeToString(candleTime, TIME_DATE) + "-m1.csv";
-      StringReplace(fileName, ".", "-"); // Replace dots with dashes
+      // Create filename with date format: candles/YYYY-MM-DD-m1.csv
+      string dateStr = TimeToString(candleTime, TIME_DATE);
+      StringReplace(dateStr, ".", "-"); // Replace dots with dashes in date
+      string fileName = "candles/" + dateStr + "-m1.csv";
       
       // Check if file exists to determine if we need to write header
       bool fileExists = false;
@@ -553,10 +554,10 @@ void LogM1Candles()
          
          // Format: Time;Open;High;Low;Close
          string candleData = TimeToString(candleTime, TIME_DATE|TIME_MINUTES) + ";" +
-                           DoubleToString(open, 5) + ";" +
-                           DoubleToString(high, 5) + ";" +
-                           DoubleToString(low, 5) + ";" +
-                           DoubleToString(close, 5) + "\n";
+                           DoubleToString(open, 2) + ";" +
+                           DoubleToString(high, 2) + ";" +
+                           DoubleToString(low, 2) + ";" +
+                           DoubleToString(close, 2) + "\n";
          
          FileWriteString(fileHandle, candleData);
          FileClose(fileHandle);
@@ -579,48 +580,42 @@ void LogM15Candles()
    // Only log when a new candle has completed (when current candle time changes)
    if(lastM15CandleTime != 0 && currentCandleTime != lastM15CandleTime)
    {
-      // Log the previous completed candle (index 1)
+      // Create filename with date and time format: candles/YYYY-MM-DD-HH-MM-m15.csv
       datetime candleTime = iTime(Symbol(), PERIOD_M15, 1);
-      double open = iOpen(Symbol(), PERIOD_M15, 1);
-      double high = iHigh(Symbol(), PERIOD_M15, 1);
-      double low = iLow(Symbol(), PERIOD_M15, 1);
-      double close = iClose(Symbol(), PERIOD_M15, 1);
+      string dateStr = TimeToString(candleTime, TIME_DATE);
+      StringReplace(dateStr, ".", "-"); // Replace dots with dashes in date
+      string timeStr = TimeToString(candleTime, TIME_MINUTES);
+      StringReplace(timeStr, ":", "-"); // Replace colons with dashes in time
+      string fileName = "candles/" + dateStr + "-" + timeStr + "-m15.csv";
       
-      // Create filename with date format: YYYY-MM-DD-m15.csv
-      string fileName = TimeToString(candleTime, TIME_DATE) + "-m15.csv";
-      StringReplace(fileName, ".", "-"); // Replace dots with dashes
-      
-      // Check if file exists to determine if we need to write header
-      bool fileExists = false;
-      int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT|FILE_CSV);
-      if(checkHandle != INVALID_HANDLE)
-      {
-         fileExists = true;
-         FileClose(checkHandle);
-      }
-      
-      int fileHandle = FileOpen(fileName, FILE_READ|FILE_WRITE|FILE_TXT|FILE_CSV);
+      int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT|FILE_CSV);
       
       if(fileHandle != INVALID_HANDLE)
       {
-         // Move to end of file to append
-         FileSeek(fileHandle, 0, SEEK_END);
+         // Write header
+         string header = "Time;Open;High;Low;Close\n";
+         FileWriteString(fileHandle, header);
          
-         // Write header if this is a new file
-         if(!fileExists)
+         // Write 300 candles (previous 299 + current completed one at index 1)
+         // Index 1 is the just-completed candle, indices 2-300 are the previous 299
+         for(int i = 300; i >= 1; i--)
          {
-            string header = "Time;Open;High;Low;Close\n";
-            FileWriteString(fileHandle, header);
+            datetime candle_time = iTime(Symbol(), PERIOD_M15, i);
+            double candle_open = iOpen(Symbol(), PERIOD_M15, i);
+            double candle_high = iHigh(Symbol(), PERIOD_M15, i);
+            double candle_low = iLow(Symbol(), PERIOD_M15, i);
+            double candle_close = iClose(Symbol(), PERIOD_M15, i);
+            
+            // Format: Time;Open;High;Low;Close
+            string candleData = TimeToString(candle_time, TIME_DATE|TIME_MINUTES) + ";" +
+                              DoubleToString(candle_open, 2) + ";" +
+                              DoubleToString(candle_high, 2) + ";" +
+                              DoubleToString(candle_low, 2) + ";" +
+                              DoubleToString(candle_close, 2) + "\n";
+            
+            FileWriteString(fileHandle, candleData);
          }
          
-         // Format: Time;Open;High;Low;Close
-         string candleData = TimeToString(candleTime, TIME_DATE|TIME_MINUTES) + ";" +
-                           DoubleToString(open, 5) + ";" +
-                           DoubleToString(high, 5) + ";" +
-                           DoubleToString(low, 5) + ";" +
-                           DoubleToString(close, 5) + "\n";
-         
-         FileWriteString(fileHandle, candleData);
          FileClose(fileHandle);
       }
       else
