@@ -9,8 +9,10 @@ datetime lastHistoryLogTime = 0;
 datetime lastDroppedCheck = 0;
 datetime lastModifiedCheck = 0;
 datetime lastMarketLogTime = 0;
+datetime lastM1CandleTime = 0;
+datetime lastM15CandleTime = 0;
 int hearbeat = 0;
-string version = "3.11";
+string version = "3.13";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -507,10 +509,140 @@ void CheckAndModifyOrders()
    }
 }
 
+void LogM1Candles()
+{
+   // Get the current M1 candle time
+   datetime currentCandleTime = iTime(Symbol(), PERIOD_M1, 0);
+   
+   // Only log when a new candle has completed (when current candle time changes)
+   if(lastM1CandleTime != 0 && currentCandleTime != lastM1CandleTime)
+   {
+      // Log the previous completed candle (index 1)
+      datetime candleTime = iTime(Symbol(), PERIOD_M1, 1);
+      double open = iOpen(Symbol(), PERIOD_M1, 1);
+      double high = iHigh(Symbol(), PERIOD_M1, 1);
+      double low = iLow(Symbol(), PERIOD_M1, 1);
+      double close = iClose(Symbol(), PERIOD_M1, 1);
+      
+      // Create filename with date format: YYYY-MM-DD-m1.csv
+      string fileName = TimeToString(candleTime, TIME_DATE) + "-m1.csv";
+      StringReplace(fileName, ".", "-"); // Replace dots with dashes
+      
+      // Check if file exists to determine if we need to write header
+      bool fileExists = false;
+      int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT|FILE_CSV);
+      if(checkHandle != INVALID_HANDLE)
+      {
+         fileExists = true;
+         FileClose(checkHandle);
+      }
+      
+      int fileHandle = FileOpen(fileName, FILE_READ|FILE_WRITE|FILE_TXT|FILE_CSV);
+      
+      if(fileHandle != INVALID_HANDLE)
+      {
+         // Move to end of file to append
+         FileSeek(fileHandle, 0, SEEK_END);
+         
+         // Write header if this is a new file
+         if(!fileExists)
+         {
+            string header = "Time;Open;High;Low;Close\n";
+            FileWriteString(fileHandle, header);
+         }
+         
+         // Format: Time;Open;High;Low;Close
+         string candleData = TimeToString(candleTime, TIME_DATE|TIME_MINUTES) + ";" +
+                           DoubleToString(open, 5) + ";" +
+                           DoubleToString(high, 5) + ";" +
+                           DoubleToString(low, 5) + ";" +
+                           DoubleToString(close, 5) + "\n";
+         
+         FileWriteString(fileHandle, candleData);
+         FileClose(fileHandle);
+      }
+      else
+      {
+         Print("Error opening M1 candle log file: ", GetLastError());
+      }
+   }
+   
+   // Update last candle time
+   lastM1CandleTime = currentCandleTime;
+}
+
+void LogM15Candles()
+{
+   // Get the current M15 candle time
+   datetime currentCandleTime = iTime(Symbol(), PERIOD_M15, 0);
+   
+   // Only log when a new candle has completed (when current candle time changes)
+   if(lastM15CandleTime != 0 && currentCandleTime != lastM15CandleTime)
+   {
+      // Log the previous completed candle (index 1)
+      datetime candleTime = iTime(Symbol(), PERIOD_M15, 1);
+      double open = iOpen(Symbol(), PERIOD_M15, 1);
+      double high = iHigh(Symbol(), PERIOD_M15, 1);
+      double low = iLow(Symbol(), PERIOD_M15, 1);
+      double close = iClose(Symbol(), PERIOD_M15, 1);
+      
+      // Create filename with date format: YYYY-MM-DD-m15.csv
+      string fileName = TimeToString(candleTime, TIME_DATE) + "-m15.csv";
+      StringReplace(fileName, ".", "-"); // Replace dots with dashes
+      
+      // Check if file exists to determine if we need to write header
+      bool fileExists = false;
+      int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT|FILE_CSV);
+      if(checkHandle != INVALID_HANDLE)
+      {
+         fileExists = true;
+         FileClose(checkHandle);
+      }
+      
+      int fileHandle = FileOpen(fileName, FILE_READ|FILE_WRITE|FILE_TXT|FILE_CSV);
+      
+      if(fileHandle != INVALID_HANDLE)
+      {
+         // Move to end of file to append
+         FileSeek(fileHandle, 0, SEEK_END);
+         
+         // Write header if this is a new file
+         if(!fileExists)
+         {
+            string header = "Time;Open;High;Low;Close\n";
+            FileWriteString(fileHandle, header);
+         }
+         
+         // Format: Time;Open;High;Low;Close
+         string candleData = TimeToString(candleTime, TIME_DATE|TIME_MINUTES) + ";" +
+                           DoubleToString(open, 5) + ";" +
+                           DoubleToString(high, 5) + ";" +
+                           DoubleToString(low, 5) + ";" +
+                           DoubleToString(close, 5) + "\n";
+         
+         FileWriteString(fileHandle, candleData);
+         FileClose(fileHandle);
+      }
+      else
+      {
+         Print("Error opening M15 candle log file: ", GetLastError());
+      }
+   }
+   
+   // Update last candle time
+   lastM15CandleTime = currentCandleTime;
+}
+
 void OnTick()
 {
    datetime currentTime = TimeCurrent();
    hearbeat++;
+   
+   // Log M1 candles (check on every tick for new candle)
+   LogM1Candles();
+   
+   // Log M15 candles (check on every tick for new candle)
+   LogM15Candles();
    
    // Log account info
    if(currentTime - lastLogTime >= 1)
