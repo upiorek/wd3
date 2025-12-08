@@ -842,13 +842,17 @@ function getCandleCsvFilesList() {
     if (is_dir($candlesDir)) {
         $files = scandir($candlesDir);
         foreach ($files as $file) {
-            // Match files ending with -m1.csv or -m15.csv
-            if (preg_match('/^(\d{4}-\d{2}-\d{2})-(m1|m15)\.csv$/', $file, $matches)) {
+            // Match files: YYYY-MM-DD-m1.csv or YYYY-MM-DD-HH-MM-m15.csv
+            if (preg_match('/^(\d{4}-\d{2}-\d{2})(?:-(\d{2}-\d{2}))?-(m1|m15)\.csv$/', $file, $matches)) {
                 $filePath = $candlesDir . '/' . $file;
+                $date = $matches[1];
+                $time = isset($matches[2]) ? $matches[2] : '';
+                $timeframe = strtoupper($matches[3]);
+                
                 $csvFiles[] = array(
                     'name' => $file,
-                    'date' => $matches[1],
-                    'timeframe' => strtoupper($matches[2]),
+                    'date' => $time ? $date . ' ' . str_replace('-', ':', $time) : $date,
+                    'timeframe' => $timeframe,
                     'path' => $filePath,
                     'size' => filesize($filePath),
                     'modified' => filemtime($filePath)
@@ -872,8 +876,8 @@ function getCandleCsvFilesList() {
  * @return array Result with success status and content or error message
  */
 function readCandleCsvFile($fileName, $lines = 0) {
-    // Validate file name format
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}-(m1|m15)\.csv$/', $fileName)) {
+    // Validate file name format: YYYY-MM-DD-m1.csv or YYYY-MM-DD-HH-MM-m15.csv
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:-\d{2}-\d{2})?-(m1|m15)\.csv$/', $fileName)) {
         return array('success' => false, 'message' => 'Invalid CSV file name format');
     }
     
@@ -918,6 +922,37 @@ function readCandleCsvFile($fileName, $lines = 0) {
         'data' => $dataLines,
         'showing' => count($dataLines)
     );
+}
+
+/**
+ * Read sheep file content
+ * @return string The content of the sheep file with HTML formatting
+ */
+function readSheepFile() {
+    $sheepFile = '/home/ubuntu/repo/sheep';
+    
+    if (!file_exists($sheepFile)) {
+        return '<p class="error-message">Sheep file not found.</p>';
+    }
+    
+    $content = file_get_contents($sheepFile);
+    
+    if ($content === false) {
+        return '<p class="error-message">Error reading sheep file.</p>';
+    }
+    
+    // Get file modification time
+    $modTime = filemtime($sheepFile);
+    $modTimeFormatted = date('Y-m-d H:i:s', $modTime);
+    
+    $html = '<div class="log-file-header">';
+    $html .= '<div class="log-file-info">';
+    $html .= '<span>Last updated: ' . htmlspecialchars($modTimeFormatted) . '</span>';
+    $html .= '</div>';
+    $html .= '</div>';
+    $html .= '<pre class="log-content">' . htmlspecialchars($content) . '</pre>';
+    
+    return $html;
 }
 
 // Unified AJAX handler
@@ -1062,6 +1097,43 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             $result = readCandleCsvFile($fileName, $lines);
             echo json_encode($result);
+            break;
+            
+        case 'sheep_status':
+            echo readSheepFile();
+            break;
+            
+        case 'download_candles_csv':
+            if (!isset($_GET['file'])) {
+                echo json_encode(['success' => false, 'message' => 'File parameter required']);
+                break;
+            }
+            
+            $fileName = $_GET['file'];
+            
+            // Validate file name (support both old and new formats)
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:-\d{2}-\d{2})?-(m1|m15)\.csv$/', $fileName)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid CSV file name']);
+                break;
+            }
+            
+            $filePath = MQL4_FILES_PATH . '/candles/' . $fileName;
+            
+            if (!file_exists($filePath)) {
+                echo json_encode(['success' => false, 'message' => 'CSV file not found']);
+                break;
+            }
+            
+            // Set headers for file download
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="' . $fileName . '"');
+            header('Content-Length: ' . filesize($filePath));
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Pragma: public');
+            
+            // Output file content
+            readfile($filePath);
+            exit;
             break;
             
         case 'add_new_order':
@@ -1675,6 +1747,13 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         <hr style="margin: 30px 0;">
         
+        <h2>Sheep Service</h2>
+        <div id="sheep-content" class="content-section sheep-section">
+            <?php echo readSheepFile(); ?>
+        </div>
+        
+        <hr style="margin: 30px 0;">
+        
         <h2 id="candles-csv-heading">Candle Data - <?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files</h2>
         <div class="content-section candles-csv-section">
             <div class="logs-controls">
@@ -1703,6 +1782,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     </select>
                 </div>
                 <button onclick="refreshCandlesCsvList()" class="refresh-logs-btn">Refresh Files List</button>
+                <button onclick="downloadCandleCsv()" class="refresh-logs-btn" style="background-color: #28a745; margin-left: 10px;">Download CSV</button>
             </div>
             
             <div id="csv-content" class="log-content-area">
@@ -1716,6 +1796,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const APP = {
             sections: {
                 account_log: { element: 'account-log', action: 'account_log', text: true, onSuccess: 'refreshProfits' },
+                sheep_status: { element: 'sheep-content', action: 'sheep_status', text: true },
                 orders_log: { element: 'orders-log-list', action: 'orders_log_list', heading: 'orders-log-heading', prefix: 'Orders Log' },
                 orders_list: { element: 'orders-list', action: 'orders_list', heading: 'orders-list-heading', prefix: 'Review List' },
                 approved_orders: { element: 'approved-orders-list', action: 'approved_orders_list', heading: 'approved-orders-heading', prefix: 'Approved Orders' },
@@ -1806,6 +1887,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         // Consolidated refresh functions
         const refresh = {
             accountLog: () => refreshSection('account_log'),
+            sheepStatus: () => refreshSection('sheep_status'),
             ordersLog: () => {
                 refreshSection('orders_log', true);
                 // Also refresh the drop order list when orders log updates
@@ -2210,6 +2292,24 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 .catch(error => alert('Error: ' + error.message));
         }
         
+        function downloadCandleCsv() {
+            const fileSelect = document.getElementById('csv-file-select');
+            
+            if (!fileSelect.value) {
+                alert('Please select a CSV file to download');
+                return;
+            }
+            
+            // Create a download link and trigger it
+            const url = `index.php?ajax=download_candles_csv&file=${encodeURIComponent(fileSelect.value)}`;
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileSelect.value;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
         function loadCandleCsvFile() {
             const fileSelect = document.getElementById('csv-file-select');
             const linesSelect = document.getElementById('csv-lines-select');
@@ -2291,6 +2391,11 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             setInterval(() => {
                 refresh.profits();
             }, 1000);
+            
+            // Auto-refresh sheep status every 10 seconds
+            setInterval(() => {
+                refresh.sheepStatus();
+            }, 10000);
         });
     </script>
 </body>
