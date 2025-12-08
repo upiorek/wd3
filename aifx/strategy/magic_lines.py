@@ -12,6 +12,7 @@ Użycie:
     python magic_lines.py <plik.csv>  # przetwarza pojedynczy plik
 """
 
+import math
 import sys
 import os
 import pandas as pd
@@ -28,12 +29,39 @@ import matplotlib.pyplot as plt
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 MIN_SLOPE = 0.4  # Minimalny slope linii
-HIERARCHICAL_LEVELS_BELOW = 4  # Liczba linii wsparcia poniżej głównej
-HIERARCHICAL_LEVELS_ABOVE = 4  # Liczba linii oporu powyżej głównej
+MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
-SHOW_IMPULSES = True  # Czy pokazywać impulsy / local min / local max na wykresie
+SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
 DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
+
+class impulse_point:
+    def __init__(self, 
+                 index, # indeks świeczki
+                 price, # cena impulsu
+                 strength=1, # siła impulsu
+                 type='impulse' # typ impulsu (np. 'gap', 'minimum', 'maximum')
+                 ):
+        self.index = index 
+        self.price = price 
+        self.strength = strength 
+        self.type = type 
+
+class magic_line:
+    def __init__(self, 
+                 slope,  # nachylenie linii
+                 intercept, # wartość y przy x=0
+                 offset,  # offset względem poprzedniej linii
+                 used_points, # lista punktów użytych do wyznaczenia linii
+                 score,  # liczba punktów dopasowanych do linii
+                 level  # poziom hierarchii linii
+                 ):
+        self.slope = slope
+        self.intercept = intercept 
+        self.offset = offset
+        self.score = score
+        self.used_points = used_points 
+        self.level = level
 
 # ===== FUNKCJE POMOCNICZE =====
 
@@ -53,302 +81,211 @@ def load_csv_data(filepath):
     
     return df
 
-def detect_impulses(df):
+def detect_impulses(df) -> list[impulse_point]:
     """
-    Wykrywa impulsy rynkowe na podstawie 7 kryteriów.
-    Zwraca listę indeksów świeczek będących impulsami.
+    Wykrywa impulsy rynkowe na podstawie różnych kryteriów.
+    Zwraca listę impulse_point.
     """
     impulses = []
     
-    if len(df) < 50:
-        return impulses
-    
-    # Oblicz wskaźniki
-    ema20 = df['Close'].ewm(span=20, adjust=False).mean()
-    ema50 = df['Close'].ewm(span=50, adjust=False).mean()
-    
-    # ATR dla volatility
-    high_low = df['High'] - df['Low']
-    high_close = abs(df['High'] - df['Close'].shift())
-    low_close = abs(df['Low'] - df['Close'].shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    atr = tr.rolling(window=14).mean()
-    
-    for i in range(50, len(df)):
+    for i in range(1, len(df)):
         current = df.iloc[i]
-        prev = df.iloc[i-1]
+        prev = df.iloc[i-1]        
         
-        strength = 0
-        
-        # 1. Strong bullish candle
-        body_size = abs(current['Close'] - current['Open'])
-        candle_range = current['High'] - current['Low']
-        if current['Close'] > current['Open'] and body_size > candle_range * 0.6:
-            strength += 1
-        
-        # 2. Momentum candle
-        if current['Close'] > prev['Close'] and body_size > df.iloc[i-5:i]['Close'].diff().abs().mean() * 1.5:
-            strength += 1
-        
-        # 3. Price gap (luka cenowa)
+        # Price gap (luka cenowa)
         gap_up = current['Low'] > prev['High']
-        if gap_up:
-            gap_size = current['Low'] - prev['High']
-            # Luka większa niż 50 punktów
-            if gap_size > 50:
-                strength += 2  # Duża luka = 2 punkty
-            elif gap_size > 20:
-                strength += 1  # Mała luka = 1 punkt
-        
-        # 4. Volatility expansion
-        if not pd.isna(atr.iloc[i]) and not pd.isna(atr.iloc[i-1]):
-            if atr.iloc[i] > atr.iloc[i-1] * 1.2:
-                strength += 1
-        
-        # 5. EMA20 bounce
-        if prev['Low'] <= ema20.iloc[i-1] * 1.002 and current['Close'] > ema20.iloc[i]:
-            strength += 1
-        
-        # 6. New high (trend continuation)
-        recent_high = df.iloc[i-20:i]['High'].max()
-        if current['High'] > recent_high:
-            strength += 1
-        
-        # 7. Support retest
-        recent_low = df.iloc[i-20:i]['Low'].min()
-        if abs(current['Low'] - recent_low) < 50 and current['Close'] > current['Low'] + body_size * 0.5:
-            strength += 1
-        
-        # Impulse jeśli spełnia min 4 kryteria
-        if strength >= 4:
-            impulses.append(i)
+        gap_size = math.fabs(current['Open'] - prev['Close'])
+        if gap_size > 20: # luka większa niż 20 punktów
+            # dodaj 2 punkty na krańcach luki
+            impulse_prev = impulse_point(i-1, prev['High'] if gap_up else prev['Low'], strength=1, type='gap')
+            impulses.append(impulse_prev)
+
+            impulse_curr = impulse_point(i, current['Low'] if gap_up else current['High'], strength=1, type='gap')
+            impulses.append(impulse_curr)
+            
+    # Lokalna minima/maxima
+    minima_idx = argrelextrema(df['Low'].values, np.less, order=5)[0]
+    for idx in minima_idx:
+        impulses.append(impulse_point(idx, df.iloc[idx]['Low'], strength=1, type='minimum'))
+
+    maxima_idx = argrelextrema(df['High'].values, np.greater, order=5)[0]
+    for idx in maxima_idx:
+        impulses.append(impulse_point(idx, df.iloc[idx]['High'], strength=1, type='maximum'))
+
+    # print(f"wykryto minima: {len(minima_idx)}, maxima: {len(maxima_idx)}")
+    # print(f"wykryto impulsy: {len(impulses)}")
     
     return impulses
 
-
-def find_hierarchical_lines(df, base_line, extrema_low, extrema_high, impulses_idx, 
-                            num_below=4, num_above=4, tolerance=50):
+# Funkcja do znajdowania linii równoległych
+def find_parallel_level(
+        points : list[impulse_point], 
+        prev_line : magic_line, 
+        search_up : bool) \
+            -> magic_line:
     """
-    Znajduje hierarchiczne linie równoległe poniżej (wsparcia S2, S3...) i powyżej (opory R2, R3...).
+    Znajduje kolejną linie równoległą (wsparcia lub oporu).
     
     Args:
-        df: DataFrame z kolumną 'index'
-        base_line: dict z kluczami 'slope', 'intercept', 'used' (główna linia)
-        extrema_low, extrema_high, impulses_idx: indeksy punktów ekstremalnych
-        num_below, num_above: liczba poziomów do znalezienia
-        tolerance: tolerancja dopasowania punktów
-    
-    Zwraca:
-        (supports_below, resistances_above)
-        gdzie każda linia to dict z: slope, intercept, touches, offset, score, level
+        points: lista punktów do analizy
+        prev_line: poprzednia linia (do wykluczenia punktów z obszau)
+        search_up: bool, czy szukamy powyżej (True) czy poniżej (False) poprzedniej linii
     """
-    supports_below = []
-    resistances_above = []
+
+    best_intercept = None
+    best_score = 0
+    best_touches = []
+    best_offset = 0
     
-    base_slope = base_line['slope']
-    base_intercept = base_line['intercept']
-    used_points = base_line['used']
-    
-    # Zbierz wszystkie punkty (minima + impulsy)
-    all_points = []
-    for idx in extrema_low:
-        all_points.append({
-            'index': int(df.iloc[idx]['index']),
-            'price': float(df.iloc[idx]['Low'])
-        })
-    for idx in impulses_idx:
-        all_points.append({
-            'index': int(df.iloc[idx]['index']),
-            'price': float(df.iloc[idx]['Low'])
-        })    
-    for idx in extrema_high:
-        all_points.append({
-            'index': int(df.iloc[idx]['index']),
-            'price': float(df.iloc[idx]['High'])
-        })
-    
-    # Funkcja do znajdowania linii równoległych (wsparcia lub oporu)
-    def find_parallel_level(points, excluded_points, level, is_support=True):
-        """
-        Znajduje kolejny poziom wsparcia (poniżej) lub oporu (powyżej) głównej linii
+    # Dla każdego punktu sprawdź czy może być bazą dla nowej linii
+    for p in points:
+        # Sprawdź czy punkt leży w obszarze wykluczenia na podstawie prev_line
+        # oraz search_dir
+        if prev_line:
+            expected_price = prev_line.slope * p.index + prev_line.intercept
+            if not search_up and p.price >= expected_price:
+                continue
+            if search_up and p.price <= expected_price:
+                continue
+
+        base_slope = prev_line.slope
         
-        Args:
-            points: lista punktów do analizy
-            excluded_points: punkty już użyte w poprzednich poziomach
-            level: numer poziomu (2, 3, 4, ...)
-            is_support: True dla wsparcia (offset < 0), False dla oporu (offset > 0)
-        """
-        best_intercept = None
-        best_score = 0
-        best_touches = []
-        best_offset = 0
-        
-        # Dla każdego punktu sprawdź czy może być bazą dla nowej linii
-        for p in points:
-            # Sprawdź czy punkt nie jest już użyty w poprzednich poziomach
-            if any(abs(p['index'] - ep['index']) < 2 and abs(p['price'] - ep['price']) < 10 
-                   for ep in excluded_points):
-                continue
-            
-            # Oblicz intercept dla linii równoległej przechodzącej przez ten punkt
-            intercept = p['price'] - base_slope * p['index']
-            offset = intercept - base_intercept
-            
-            # Sprawdź czy offset ma odpowiedni znak (ujemny dla wsparcia, dodatni dla oporu)
-            if is_support and offset >= 0:
-                continue
-            if not is_support and offset <= 0:
-                continue
-            
-            # Policz ile punktów pasuje do tej linii
-            score = 0
-            touches = []
-            for pt in points:
-                expected_price = base_slope * pt['index'] + intercept
-                dist = abs(pt['price'] - expected_price)
+        # Oblicz intercept dla linii równoległej przechodzącej przez ten punkt
+        intercept = p.price - prev_line.slope * p.index
+        offset = intercept - prev_line.intercept
                 
-                if dist <= tolerance:
-                    score += 1
-                    touches.append({'index': pt['index'], 'price': pt['price']})
-            
-            if score > best_score:
-                best_score = score
-                best_intercept = intercept
-                best_touches = touches
-                best_offset = offset
+        # Sprawdź czy offset ma odpowiedni znak
+        # search_up=False (poniżej): offset musi być ujemny (linia niżej)
+        # search_up=True (powyżej): offset musi być dodatni (linia wyżej)
+        if not search_up and offset >= 0:
+            continue
+        if search_up and offset <= 0:
+            continue
         
-        if best_score >= 2:  # Minimum 2 punkty
-            return {
-                'slope': base_slope,
-                'intercept': best_intercept,
-                'touches': best_touches,
-                'offset': best_offset,
-                'score': best_score,
-                'level': level
-            }
-        return None
+        # Policz ile punktów pasuje do tej linii
+        score = 0
+        touches = []
+        for pt in points:
+            expected_price = base_slope * pt.index + intercept
+            dist = abs(pt.price - expected_price)
+            
+            if dist <= HIERARCHICAL_TOLERANCE:
+                score += pt.strength
+                touches.append(pt)
+        
+        if score > best_score:
+            best_score = score
+            best_intercept = intercept
+            best_touches = touches
+            best_offset = offset
     
-    # Znajdź linie wsparcia poniżej
-    excluded = list(used_points)
-    for level in range(2, num_below + 2):
-        support = find_parallel_level(all_points, excluded, level, is_support=True)
-        if support:
-            supports_below.append(support)
-            excluded.extend(support['touches'])
-        else:
-            break
+    if best_score >= 2:  # Minimum 2 punkty
+        return magic_line(
+            slope=base_slope,
+            intercept=best_intercept,
+            offset=best_offset,
+            used_points=best_touches,
+            score=best_score,
+            level=prev_line.level + 1
+        )
     
-    # Znajdź linie oporu powyżej
-    excluded = list(used_points)
-    for level in range(2, num_above + 2):
-        resistance = find_parallel_level(all_points, excluded, level, is_support=False)
-        if resistance:
-            resistances_above.append(resistance)
-            excluded.extend(resistance['touches'])
-        else:
-            break
-    
-    return supports_below, resistances_above
+    # else
+    return None
 
-
-def find_support_lines(lookback_df):
+def find_hierarchical_lines(base_line : magic_line,
+                            points : list[impulse_point], 
+                            max_num_lines=4, 
+                            tolerance=50) \
+                                -> tuple[list[magic_line], list[magic_line]]:
     """
-    Znajduje główną linię support/resistance oraz hierarchiczne linie równoległe.
+    Znajduje hierarchiczne linie równoległe poniżej i powyżej bazowej linii.
+
+    """
+
+    lines_below = []
+    lines_above = []
+
+    for search_up in [True, False]:
+        prev_line = base_line
+        for i in range(max_num_lines):
+            parallel_line = find_parallel_level(points, prev_line, search_up)
+            if parallel_line:
+                if search_up:
+                    lines_above.append(parallel_line)
+                else:
+                    lines_below.append(parallel_line)
+                prev_line = parallel_line
+            else:
+                break
     
-    Zwraca listę wykrytych linii (może być 0, 1 lub 2 - wznosząca i/lub opadająca).
-    Każda linia to dict z kluczami:
-        - type: 'ascending' lub 'descending'
-        - slope, intercept: parametry linii
-        - score: liczba punktów dopasowanych
-        - used_minima: lista punktów użytych do głównej linii
-        - local_maxima, all_minima, impulses: punkty dla wykresu
-        - hierarchical_supports: linie wsparcia poniżej (S2, S3, ...)
-        - hierarchical_resistances: linie oporu powyżej (R2, R3, ...)
+    return lines_below, lines_above
+
+def calculate_line_score(slope, points, tolerance=LINE_TOLERANCE) -> magic_line:
+    """Oblicza score dla linii o danym slope"""
+    best_intercept = None
+    best_score = 0
+    best_used = []
+    
+    # Dla każdego punktu oblicz intercept i policz score
+    for p_start in points:
+        intercept = p_start.price - slope * p_start.index
+        
+        score = 0
+        used = []
+        # Sprawdź ile punktów pasuje do tej linii
+        for p in points:
+            expected_price = slope * p.index + intercept
+            dist = abs(p.price - expected_price)
+            if dist <= tolerance:
+                score += p.strength
+                used.append(p)
+        
+        # Zaktualizuj najlepszy wynik
+        if score > best_score:
+            best_score = score
+            best_intercept = intercept
+            best_used = used
+    
+    return magic_line(
+        slope=slope,
+        intercept=best_intercept,
+        offset=0,  # główna linia nie ma offsetu
+        score=best_score,
+        used_points=best_used,
+        level=1 # główna linia
+    )
+
+def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_point]]:
+    """
+    Znajduje główną linię support/resistance oraz hierarchiczne linie równoległe.    
+    Zwraca listę wykrytych linii (od 0 do HIERARCHICAL_LEVELS - wznosząca i/lub opadająca).
     """
     # Dodaj kolumnę index dla lookback_df
     lookback_df = lookback_df.copy()
     lookback_df['index'] = range(len(lookback_df))
     
-    # 1. Wykryj impulsy
-    impulses_idx = detect_impulses(lookback_df)
-    
-    # 2. Znajdź lokalne minima/maxima
-    minima_idx = argrelextrema(lookback_df['Low'].values, np.less, order=5)[0]
-    maxima_idx = argrelextrema(lookback_df['High'].values, np.greater, order=5)[0]
-    
-    # 3. Zbuduj listę punktów (impulses + minima)
-    points = []
-    for imp_idx in impulses_idx:
-        points.append({
-            'index': lookback_df.iloc[imp_idx]['index'],
-            'price': lookback_df.iloc[imp_idx]['Low'],
-            'type': 'impulse'
-        })
-    
-    for min_idx in minima_idx:
-        points.append({
-            'index': lookback_df.iloc[min_idx]['index'],
-            'price': lookback_df.iloc[min_idx]['Low'],
-            'type': 'minimum'
-        })
-    
-    # Zbierz punkty dla wizualizacji
-    all_minima = [{'index': int(lookback_df.iloc[i]['index']), 
-                   'price': float(lookback_df.iloc[i]['Low'])} for i in minima_idx]
-    local_maxima = [{'index': int(lookback_df.iloc[i]['index']), 
-                     'price': float(lookback_df.iloc[i]['High'])} for i in maxima_idx]
-    impulse_points = [{'index': int(lookback_df.iloc[i]['index']), 
-                       'price': float(lookback_df.iloc[i]['Low'])} for i in impulses_idx]
-    
+    # Wykryj impulsy
+    points = detect_impulses(lookback_df)
+    # print(f"  Wykryto {len(points)} punktów impulsów/min/max")
+        
     if len(points) < 2:
         # Fallback: użyj dwóch najniższych punktów
         sorted_idx = lookback_df.nsmallest(2, 'Low').index.tolist()
-        points = [{'index': int(lookback_df.loc[i, 'index']), 
-                   'price': float(lookback_df.loc[i, 'Low']),
-                   'type': 'fallback'} for i in sorted_idx]
+        points = [impulse_point(int(lookback_df.loc[i, 'index']),
+                                float(lookback_df.loc[i, 'Low']),
+                                strength=1,
+                                type='fallback') for i in sorted_idx]
     
-    # 4. Znajdź najlepsze pary linii (wznosząca + opadająca)
-    def calculate_line_score(slope, points, tolerance=LINE_TOLERANCE):
-        """Oblicza score dla linii o danym slope"""
-        best_intercept = None
-        best_score = 0
-        best_used = []
-        
-        for p_start in points:
-            intercept = p_start['price'] - slope * p_start['index']
-            
-            score = 0
-            used = []
-            for p in points:
-                expected_price = slope * p['index'] + intercept
-                dist = abs(p['price'] - expected_price)
-                
-                if dist <= tolerance:
-                    weight = 2 if p['type'] == 'impulse' else 1
-                    score += weight
-                    used.append({'index': int(p['index']), 'price': float(p['price'])})
-            
-            if score > best_score:
-                best_score = score
-                best_intercept = intercept
-                best_used = used
-        
-        return {
-            'slope': slope,
-            'intercept': best_intercept,
-            'score': best_score,
-            'used': best_used
-        }
-    
+    # Znajdź najlepsze pary linii (wznosząca + opadająca)    
     # Zbierz wszystkie unikalne wartości |slope|
     unique_slopes = set()
     for i in range(len(points)):
         for j in range(i + 1, len(points)):
             p1, p2 = points[i], points[j]
-            if p2['index'] == p1['index']:
+            if p2.index == p1.index:
                 continue
             
-            slope = (p2['price'] - p1['price']) / (p2['index'] - p1['index'])
+            slope = (p2.price - p1.price) / (p2.index - p1.index)
             abs_slope = abs(slope)
             
             if abs_slope >= MIN_SLOPE:
@@ -358,16 +295,17 @@ def find_support_lines(lookback_df):
     best_pair = None
     best_combined_score = 0
     
-    for abs_slope in unique_slopes:
-        asc_result = calculate_line_score(abs_slope, points)
-        desc_result = calculate_line_score(-abs_slope, points)
-        combined_score = asc_result['score'] + desc_result['score']
+    for i, abs_slope in enumerate(unique_slopes):
+        # print(f"Sprawdzam slope: {abs_slope:.4f} {i+1}/{len(unique_slopes)}     ", end='\r')
+        asc_line = calculate_line_score(abs_slope, points)
+        desc_line = calculate_line_score(-abs_slope, points)
+        combined_score = asc_line.score + desc_line.score
         
         if combined_score > best_combined_score:
             best_combined_score = combined_score
             best_pair = {
-                'ascending': asc_result,
-                'descending': desc_result,
+                'ascending': asc_line,
+                'descending': desc_line,
                 'combined_score': combined_score
             }
     
@@ -375,68 +313,31 @@ def find_support_lines(lookback_df):
     if not best_pair:
         return []
     
-    best_ascending = best_pair['ascending'] if best_pair['ascending']['score'] > 0 else {'score': 0}
-    best_descending = best_pair['descending'] if best_pair['descending']['score'] > 0 else {'score': 0}
+    best_ascending = best_pair['ascending'] if best_pair['ascending'].score > 0 else magic_line(score=0)
+    best_descending = best_pair['descending'] if best_pair['descending'].score > 0 else magic_line(score=0)
     
     detected_lines = []
     
-    # Dodaj linię wznosząc
-    if best_ascending['score'] > 0:
-        # Znajdź hierarchiczne linie
-        supp_below, res_above = find_hierarchical_lines(
-            lookback_df, 
-            best_ascending,
-            minima_idx, 
-            maxima_idx, 
-            impulses_idx,
-            num_below=HIERARCHICAL_LEVELS_BELOW,
-            num_above=HIERARCHICAL_LEVELS_ABOVE,
+    # Dodaj główną oraz hierarchiczne linie
+    for main_line in [best_descending, best_ascending]:
+        below, above = find_hierarchical_lines(
+            main_line,
+            points,
+            max_num_lines=MAX_HIERARCHICAL_LEVELS,
             tolerance=HIERARCHICAL_TOLERANCE
         )
         
-        detected_lines.append({
-            'type': 'ascending',
-            'slope': best_ascending['slope'],
-            'intercept': best_ascending['intercept'],
-            'score': best_ascending['score'],
-            'used_minima': best_ascending['used'],
-            'local_maxima': local_maxima,
-            'all_minima': all_minima,
-            'impulses': impulse_points,
-            'hierarchical_supports': supp_below,
-            'hierarchical_resistances': res_above
-        })
-    
-    # Dodaj linię opadającą
-    if best_descending['score'] > 0:
-        supp_below, res_above = find_hierarchical_lines(
-            lookback_df,
-            best_descending,
-            minima_idx,
-            maxima_idx,
-            impulses_idx,
-            num_below=HIERARCHICAL_LEVELS_BELOW,
-            num_above=HIERARCHICAL_LEVELS_ABOVE,
-            tolerance=HIERARCHICAL_TOLERANCE
-        )
-        
-        detected_lines.append({
-            'type': 'descending',
-            'slope': best_descending['slope'],
-            'intercept': best_descending['intercept'],
-            'score': best_descending['score'],
-            'used_minima': best_descending['used'],
-            'local_maxima': local_maxima,
-            'all_minima': all_minima,
-            'impulses': impulse_points,
-            'hierarchical_supports': supp_below,
-            'hierarchical_resistances': res_above
-        })
-    
-    return detected_lines
+        detected_lines += [main_line]
+        detected_lines += below
+        detected_lines += above  
+
+    return detected_lines, points
 
 
-def plot_chart(df_plot, detected_lines, output_filepath, lookback_start_dt, lookback_end_dt):
+def plot_chart(df_plot, 
+               points : list[impulse_point],
+               detected_lines : list[magic_line], 
+               output_filepath, lookback_start_dt, lookback_end_dt):
     """
     Generuje wykres świeczkowy z liniami wsparcia/oporu.
     """
@@ -447,93 +348,52 @@ def plot_chart(df_plot, detected_lines, output_filepath, lookback_start_dt, look
         return
     
     apds = []
-    scatter_data = []  # Lista punktów do wyświetlenia
     
     # Dla każdej wykrytej linii
     for line_idx, line_info in enumerate(detected_lines):
-        slope = line_info['slope']
-        intercept = line_info['intercept']
-        line_type = line_info['type']
+        slope = line_info.slope
+        intercept = line_info.intercept
+        level = line_info.level
         
         # Oblicz wartości linii głównej
-        support_values = []
+        values = []
         for idx_val in df_plot.index:
             # Offset względem lookback_start_dt
             offset = len(df_plot[df_plot.index < idx_val])
-            support_price = intercept + slope * offset
-            support_values.append(support_price)
+            price = intercept + slope * offset
+            values.append(price)
         
         col_prefix = f'Line{line_idx}'
-        df_plot[f'{col_prefix}_Support'] = support_values
+        df_plot[f'{col_prefix}_'] = values
         
         # Kolor: zielony dla wznoszącej, czerwony dla opadającej
         main_line_color = 'green' if slope > 0 else 'red'
-        main_line_label = 'S1 Main' if slope > 0 else 'R1 Main'
         
         apds.append(mpf.make_addplot(
-            df_plot[f'{col_prefix}_Support'],
+            df_plot[f'{col_prefix}_'],
             color=main_line_color,
             width=1,
-            linestyle='-',
+            linestyle='-' if level == 1 else '--',
             alpha=0.6
-        ))
-        
-        # Linie hierarchiczne wsparcia (S2, S3, ...)
-        for supp in line_info.get('hierarchical_supports', []):
-            supp_values = []
-            for idx_val in df_plot.index:
-                offset = len(df_plot[df_plot.index < idx_val])
-                supp_price = supp['intercept'] + supp['slope'] * offset
-                supp_values.append(supp_price)
-            
-            df_plot[f"{col_prefix}_S{supp['level']}"] = supp_values
-            apds.append(mpf.make_addplot(
-                df_plot[f"{col_prefix}_S{supp['level']}"],
-                color=main_line_color,
-                width=1,
-                linestyle='--',
-                alpha=0.6
-            ))
-        
-        # Linie hierarchiczne oporu (R2, R3, ...)
-        for res in line_info.get('hierarchical_resistances', []):
-            res_values = []
-            for idx_val in df_plot.index:
-                offset = len(df_plot[df_plot.index < idx_val])
-                res_price = res['intercept'] + res['slope'] * offset
-                res_values.append(res_price)
-            
-            df_plot[f"{col_prefix}_R{res['level']}"] = res_values
-            apds.append(mpf.make_addplot(
-                df_plot[f"{col_prefix}_R{res['level']}"],
-                color=main_line_color,
-                width=1,
-                linestyle='--',
-                alpha=0.6
-            ))
+        ))        
     
     # Wyświetl impulsy, local min/max jeśli SHOW_IMPULSES = True
-    if SHOW_IMPULSES and detected_lines:
+    if SHOW_IMPULSES:
         # Zbierz wszystkie unikalne punkty ze wszystkich linii
         all_impulses = {}
         all_minima = {}
         all_maxima = {}
-        
-        for line_info in detected_lines:
-            # Impulsy
-            for imp in line_info.get('impulses', []):
-                idx = imp['index']
-                all_impulses[idx] = imp['price']
-            
-            # Local minima
-            for minimum in line_info.get('all_minima', []):
-                idx = minimum['index']
-                all_minima[idx] = minimum['price']
-            
-            # Local maxima
-            for maximum in line_info.get('local_maxima', []):
-                idx = maximum['index']
-                all_maxima[idx] = maximum['price']
+
+        for point in points:                     
+            if point.type == 'gap':
+                idx = point.index
+                all_impulses[idx] = point.price
+            elif point.type == 'minimum':
+                idx = point.index
+                all_minima[idx] = point.price
+            elif point.type == 'maximum':
+                idx = point.index
+                all_maxima[idx] = point.price
         
         # Utwórz serie dla każdego typu punktu
         impulse_series = pd.Series(index=df_plot.index, dtype=float)
@@ -630,7 +490,7 @@ def plot_chart(df_plot, detected_lines, output_filepath, lookback_start_dt, look
     plt.close(fig)
 
 
-def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
+def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_for_lines):
     """
     Sprawdza czy ostatnia świeczka przecina któreś linie.
     Zwraca listę przeciętych linii według konwencji:
@@ -646,68 +506,38 @@ def check_crossings(last_candle, detected_lines, lookback_df_for_lines):
     offsets = {}  # Przechowuj offset dla każdej linii
     
     for line_info in detected_lines:
-        slope = line_info['slope']
-        intercept = line_info['intercept']
-        line_type = line_info['type']
-        
+        slope = line_info.slope
+        intercept = line_info.intercept
+        line_type = 'ascending' if slope > 0 else 'descending'        
         line_value = slope * last_candle_idx + intercept
-        
-        # Oblicz offset (odległość od linii do last_candle)
-        # Użyj mid-point świeczki dla offset
-        last_candle_mid = (last_candle_low + last_candle_high) / 2
-        offset = last_candle_mid - line_value
-        
-        # Zapisz offset dla głównych linii (zawsze)
-        if line_type == 'ascending':
-            offsets["AS1"] = offset
+        level = line_info.level 
+
+        line_id = "A" if line_type == 'ascending' else "D"
+        if level == 1:
+            line_id += "S1"  # Główna linia
         else:
-            offsets["DR1"] = offset
-        
-        # Prefix kierunku: A=ascending, D=descending
-        direction_prefix = "A" if line_type == 'ascending' else "D"
-        
-        # Sprawdź linię główną - dla ascending AS1, dla descending DR1
-        if last_candle_low <= line_value <= last_candle_high:
             if line_type == 'ascending':
-                crossed_lines.append("AS1")
+                if line_info.offset > 0:
+                    line_id += f"S{level}"
+                else:
+                    line_id += f"R{level}"
             else:
-                crossed_lines.append("DR1")
-        
-        # Sprawdź linie hierarchiczne wsparcia
-        # Ascending: wsparcia poniżej (AS2-AS5), offset < 0
-        # Descending: wsparcia powyżej (DS2-DS5), offset > 0
-        for supp in line_info.get('hierarchical_supports', []):
-            supp_value = line_value + supp['offset']
-            if last_candle_low <= supp_value <= last_candle_high:
-                if line_type == 'ascending':
-                    crossed_lines.append(f"AS{supp['level']}")
+                if line_info.offset < 0:
+                    line_id += f"R{level}"
                 else:
-                    crossed_lines.append(f"DS{supp['level']}")
+                    line_id += f"S{level}"
         
-        # Sprawdź linie hierarchiczne oporu
-        # Ascending: opory powyżej (AR2-AR5), offset > 0
-        # Descending: opory poniżej (DR2-DR5), offset < 0
-        for res in line_info.get('hierarchical_resistances', []):
-            res_value = line_value + res['offset']
-            if last_candle_low <= res_value <= last_candle_high:
-                if line_type == 'ascending':
-                    crossed_lines.append(f"AR{res['level']}")
-                else:
-                    crossed_lines.append(f"DR{res['level']}")
+        # Sprawdź linię - dla ascending AS1, dla descending DR1
+        if last_candle_low <= line_value <= last_candle_high:
+            crossed_lines.append(line_id)        
 
     # jeżeli były jakieś przecięcia...
     if crossed_lines:
         crossed_lines = ["CROSSED " + last_candle_direction] + crossed_lines
     
-    # Dodaj offset dla AS1/DR1 zawsze (niezależnie od crossings)
     result = crossed_lines if crossed_lines else []
-    if "AS1" in offsets:
-        result.append(f"AS1_OFFSET:{offsets['AS1']:.1f}")
-    if "DR1" in offsets:
-        result.append(f"DR1_OFFSET:{offsets['DR1']:.1f}")
     
     return result
-
 
 def process_single_file(csv_filepath, output_dir='support_charts'):
     """
@@ -731,7 +561,7 @@ def process_single_file(csv_filepath, output_dir='support_charts'):
     lookback_df_for_lines = lookback_df_full.iloc[:-1].copy()
     
     # Wykryj linie
-    detected_lines = find_support_lines(lookback_df_for_lines)
+    detected_lines, points = find_support_lines(lookback_df_for_lines)
     
     if not detected_lines:
         return "NONE"
@@ -752,7 +582,7 @@ def process_single_file(csv_filepath, output_dir='support_charts'):
         lookback_start_dt = df.iloc[start_idx]['DateTime']
         lookback_end_dt = df.iloc[-1]['DateTime']
         
-        plot_chart(lookback_df_full.copy(), detected_lines, chart_filepath, 
+        plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath, 
                    lookback_start_dt, lookback_end_dt)
     
     if crossed_lines:
