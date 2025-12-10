@@ -2387,15 +2387,15 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 refresh.profits();
             }, 1000);
             
-            // Additional interval for title updates every 10 seconds
+            // Additional interval for title updates every second
             setInterval(() => {
                 refresh.profits();
             }, 1000);
             
-            // Auto-refresh sheep status every 10 seconds
+            // Auto-refresh sheep status every second
             setInterval(() => {
                 refresh.sheepStatus();
-            }, 10000);
+            }, 1000);
         });
     </script>
 </body>
