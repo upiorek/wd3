@@ -641,6 +641,26 @@ def process_all_files(input_dir, output_file='support_lines_results.txt', output
 
 def main():
     """Główna funkcja - uruchamia przetwarzanie"""
+
+    # Wyświetl ostatni commit git
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['git', 'log', '-1', '--format=%H%n%ci%n%s'],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            if len(lines) >= 3:
+                commit_hash = lines[0][:7]
+                commit_date = lines[1]
+                commit_msg = lines[2]
+                log(f"magic lines\nGit: [{commit_hash}] {commit_date} - {commit_msg}")
+    except Exception:
+        pass
+
     if len(sys.argv) > 1 and sys.argv[1] != '--help':
         # Tryb pojedynczego pliku
         csv_file = sys.argv[1]
@@ -653,6 +673,7 @@ def main():
         output_dir = csv_path.parent / 'charts'
         output_dir.mkdir(exist_ok=True)
         
+        log(f"Przetwarzam: {csv_path.name}")
         result = process_single_file(csv_file, str(output_dir))
         log(f"Wynik: {result}")
         full_output_path = output_dir.resolve()
@@ -674,25 +695,6 @@ def main():
         
         process_all_files(str(input_dir))
     
-    # Wyświetl ostatni commit git
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['git', 'log', '-1', '--format=%H%n%ci%n%s'],
-            capture_output=True,
-            text=True,
-            cwd=Path(__file__).parent
-        )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            if len(lines) >= 3:
-                commit_hash = lines[0][:7]
-                commit_date = lines[1]
-                commit_msg = lines[2]
-                log(f"\nGit: [{commit_hash}] {commit_date} - {commit_msg}")
-    except Exception:
-        pass
-
 
 if __name__ == '__main__':
     # Otwórz plik log w trybie write (nadpisz istniejący)
