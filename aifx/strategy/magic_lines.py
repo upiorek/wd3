@@ -662,6 +662,25 @@ def main():
             sys.exit(1)
         
         process_all_files(str(input_dir))
+    
+    # Wyświetl ostatni commit git
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['git', 'log', '-1', '--format=%H%n%ci%n%s'],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            if len(lines) >= 3:
+                commit_hash = lines[0][:7]
+                commit_date = lines[1]
+                commit_msg = lines[2]
+                print(f"\nGit: [{commit_hash}] {commit_date} - {commit_msg}")
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':
