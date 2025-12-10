@@ -39,8 +39,9 @@ def log(message):
 
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
-MIN_SLOPE = 0.4  # Minimalny slope linii
+MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
+MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
@@ -171,6 +172,11 @@ def find_parallel_level(
         if not search_up and offset >= 0:
             continue
         if search_up and offset <= 0:
+            continue
+
+        # Sprawdź czy offset jest wystarczająco duży 
+        # (minimalna odległość od poprzedniej linii)
+        if abs(offset) < MIN_HIERARCHICAL_OFFSET:
             continue
         
         # Policz ile punktów pasuje do tej linii
