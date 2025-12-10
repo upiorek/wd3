@@ -26,6 +26,17 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# ===== LOGGING =====
+LOG_FILE = 'magic_lines.log'
+log_file_handle = None
+
+def log(message):
+    """Wyświetla wiadomość na konsoli i zapisuje do pliku log"""
+    print(message)
+    if log_file_handle:
+        log_file_handle.write(message + '\n')
+        log_file_handle.flush()
+
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 MIN_SLOPE = 0.4  # Minimalny slope linii
@@ -602,30 +613,30 @@ def process_all_files(input_dir, output_file='support_lines_results.txt', output
     csv_files = [f for f in all_csv_files if not f.stem.endswith('_mod')]
     
     if not csv_files:
-        print(f"Nie znaleziono plików CSV w: {input_dir}")
+        log(f"Nie znaleziono plików CSV w: {input_dir}")
         return
     
-    print(f"Znaleziono {len(csv_files)} plików CSV (pominięto {len(all_csv_files) - len(csv_files)} plików *_mod.csv)")
-    print("Rozpoczynam przetwarzanie...")
+    log(f"Znaleziono {len(csv_files)} plików CSV (pominięto {len(all_csv_files) - len(csv_files)} plików *_mod.csv)")
+    log("Rozpoczynam przetwarzanie...")
     
     results = []
     
     for idx, csv_file in enumerate(csv_files, 1):
-        print(f"[{idx}/{len(csv_files)}] Przetwarzam: {csv_file.name}")
+        log(f"[{idx}/{len(csv_files)}] Przetwarzam: {csv_file.name}")
         
         try:
             result = process_single_file(str(csv_file), output_charts_dir)
             results.append(f"{csv_file.name}: {result}")
         except Exception as e:
-            print(f"  BŁĄD: {e}")
+            log(f"  BŁĄD: {e}")
             results.append(f"{csv_file.name}: ERROR - {str(e)}")
     
     # Zapisz wyniki
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write('\n'.join(results))
     
-    print(f"\n✓ Gotowe! Wyniki zapisano w: {output_file}")
-    print(f"Przetworzono {len(csv_files)} plików")
+    log(f"\n✓ Gotowe! Wyniki zapisano w: {output_file}")
+    log(f"Przetworzono {len(csv_files)} plików")
 
 
 def main():
@@ -634,7 +645,7 @@ def main():
         # Tryb pojedynczego pliku
         csv_file = sys.argv[1]
         if not os.path.exists(csv_file):
-            print(f"Błąd: Plik {csv_file} nie istnieje!")
+            log(f"Błąd: Plik {csv_file} nie istnieje!")
             sys.exit(1)
         
         # Utwórz katalog charts/ w tym samym miejscu co plik CSV
@@ -643,9 +654,9 @@ def main():
         output_dir.mkdir(exist_ok=True)
         
         result = process_single_file(csv_file, str(output_dir))
-        print(f"Wynik: {result}")
+        log(f"Wynik: {result}")
         full_output_path = output_dir.resolve()
-        print(f"Wykres zapisano w: {full_output_path}")
+        log(f"Wykres zapisano w: {full_output_path}")
     else:
         # Tryb batch - przetwarzanie wszystkich plików
         if len(sys.argv) > 1 and sys.argv[1] == '--help':
@@ -657,8 +668,8 @@ def main():
         input_dir = script_dir / 'tester-third' / 'mt4_test_results' / 'm15_candles'
         
         if not input_dir.exists():
-            print(f"Błąd: Katalog {input_dir} nie istnieje!")
-            print("Użycie: python magic_lines.py <plik.csv>")
+            log(f"Błąd: Katalog {input_dir} nie istnieje!")
+            log("Użycie: python magic_lines.py <plik.csv>")
             sys.exit(1)
         
         process_all_files(str(input_dir))
@@ -678,10 +689,16 @@ def main():
                 commit_hash = lines[0][:7]
                 commit_date = lines[1]
                 commit_msg = lines[2]
-                print(f"\nGit: [{commit_hash}] {commit_date} - {commit_msg}")
+                log(f"\nGit: [{commit_hash}] {commit_date} - {commit_msg}")
     except Exception:
         pass
 
 
 if __name__ == '__main__':
-    main()
+    # Otwórz plik log w trybie write (nadpisz istniejący)
+    log_file_handle = open(LOG_FILE, 'w', encoding='utf-8')
+    try:
+        main()
+    finally:
+        if log_file_handle:
+            log_file_handle.close()
