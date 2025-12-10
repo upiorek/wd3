@@ -47,6 +47,12 @@ LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
 DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
 
+# ===== score impulsow =====
+SHADOW_IMPULSE_STRENGTH = 0.5  # siła impulsu dla cieni lokalnych min/max
+BODY_IMPULSE_STRENGTH = 1.0    # siła impulsu dla korpusów lokalnych min/max
+
+# ===== KLASY DANYCH =====
+
 class impulse_point:
     def __init__(self, 
                  index, # indeks świeczki
@@ -118,11 +124,15 @@ def detect_impulses(df) -> list[impulse_point]:
     # Lokalna minima/maxima
     minima_idx = argrelextrema(df['Low'].values, np.less, order=5)[0]
     for idx in minima_idx:
-        impulses.append(impulse_point(idx, df.iloc[idx]['Low'], strength=1, type='minimum'))
+        is_up = df.iloc[idx]['Close'] > df.iloc[idx-1]['Open']
+        impulses.append(impulse_point(idx, df.iloc[idx]['Low'], strength=SHADOW_IMPULSE_STRENGTH, type='minimum'))
+        impulses.append(impulse_point(idx, df.iloc[idx]['Open' if is_up else 'Close'], strength=BODY_IMPULSE_STRENGTH, type='minimum'))
 
     maxima_idx = argrelextrema(df['High'].values, np.greater, order=5)[0]
     for idx in maxima_idx:
-        impulses.append(impulse_point(idx, df.iloc[idx]['High'], strength=1, type='maximum'))
+        is_up = df.iloc[idx]['Close'] > df.iloc[idx-1]['Open']
+        impulses.append(impulse_point(idx, df.iloc[idx]['High'], strength=SHADOW_IMPULSE_STRENGTH, type='maximum'))
+        impulses.append(impulse_point(idx, df.iloc[idx]['Close' if is_up else 'Open'], strength=BODY_IMPULSE_STRENGTH, type='maximum'))
 
     # print(f"wykryto minima: {len(minima_idx)}, maxima: {len(maxima_idx)}")
     # print(f"wykryto impulsy: {len(impulses)}")
