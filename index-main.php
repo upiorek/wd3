@@ -955,6 +955,50 @@ function readSheepFile() {
     return $html;
 }
 
+/**
+ * Get all M15 chart files sorted by modification time
+ * @return array Array of chart filenames sorted newest first
+ */
+function getAllM15Charts() {
+    $chartsDir = MQL4_FILES_PATH . '/candles/charts';
+    
+    if (!is_dir($chartsDir)) {
+        return array();
+    }
+    
+    // Get all support PNG files
+    $chartFiles = array();
+    foreach (scandir($chartsDir) as $file) {
+        if (preg_match('/^support_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.png$/', $file)) {
+            $filePath = $chartsDir . '/' . $file;
+            $chartFiles[] = array(
+                'name' => $file,
+                'modified' => filemtime($filePath)
+            );
+        }
+    }
+    
+    if (empty($chartFiles)) {
+        return array();
+    }
+    
+    // Sort by modification time (newest first)
+    usort($chartFiles, function($a, $b) {
+        return $b['modified'] - $a['modified'];
+    });
+    
+    return array_map(function($chart) { return $chart['name']; }, $chartFiles);
+}
+
+/**
+ * Get the latest M15 chart image path
+ * @return string|null The chart filename or null if not found
+ */
+function getLatestM15Chart() {
+    $charts = getAllM15Charts();
+    return !empty($charts) ? $charts[0] : null;
+}
+
 // Unified AJAX handler
 if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
     $action = isset($_GET['ajax']) ? $_GET['ajax'] : $_POST['ajax'];
@@ -1101,6 +1145,42 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'sheep_status':
             echo readSheepFile();
+            break;
+            
+        case 'get_m15_chart':
+            $index = isset($_GET['index']) ? intval($_GET['index']) : 0;
+            $charts = getAllM15Charts();
+            
+            if (empty($charts)) {
+                echo json_encode(['success' => false, 'message' => 'No charts available']);
+                break;
+            }
+            
+            // Ensure index is within bounds
+            if ($index < 0 || $index >= count($charts)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid chart index']);
+                break;
+            }
+            
+            $chartName = $charts[$index];
+            $chartPath = MQL4_FILES_PATH . '/candles/charts/' . $chartName;
+            
+            if (!file_exists($chartPath)) {
+                echo json_encode(['success' => false, 'message' => 'Chart file not found']);
+                break;
+            }
+            
+            $imageData = base64_encode(file_get_contents($chartPath));
+            
+            echo json_encode([
+                'success' => true,
+                'chartName' => $chartName,
+                'imageData' => $imageData,
+                'currentIndex' => $index,
+                'totalCharts' => count($charts),
+                'hasPrev' => $index < count($charts) - 1,
+                'hasNext' => $index > 0
+            ]);
             break;
             
         case 'download_candles_csv':
@@ -1754,6 +1834,38 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         <hr style="margin: 30px 0;">
         
+        <h2>M15 Charts <span id="chart-counter" style="font-size: 0.8em; color: #666;"></span></h2>
+        <div class="content-section chart-section">
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Previous</button>
+                <button onclick="loadNextChart()" id="next-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">Next →</button>
+                <button onclick="loadLatestChart()" class="refresh-logs-btn" style="background-color: #007bff;">Latest</button>
+            </div>
+            <div id="chart-preview">
+            <?php 
+            $latestChart = getLatestM15Chart();
+            if ($latestChart) {
+                $chartPath = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts/' . $latestChart;
+                if (file_exists($chartPath)) {
+                    // Convert the chart to base64 for inline display
+                    $imageData = base64_encode(file_get_contents($chartPath));
+                    $src = 'data:image/png;base64,' . $imageData;
+                    echo '<div class="chart-preview-content">';
+                    echo '<h4>' . htmlspecialchars($latestChart) . '</h4>';
+                    echo '<img src="' . $src . '" alt="M15 Charts" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />';
+                    echo '</div>';
+                } else {
+                    echo '<p class="info-message">Chart file not found.</p>';
+                }
+            } else {
+                echo '<p class="info-message">No M15 charts available.</p>';
+            }
+            ?>
+            </div>
+        </div>
+        
+        <hr style="margin: 30px 0;">
+        
         <h2 id="candles-csv-heading">Candle Data - <?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files</h2>
         <div class="content-section candles-csv-section">
             <div class="logs-controls">
@@ -2308,6 +2420,52 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        }
+        
+        // Chart navigation
+        let currentChartIndex = 0;
+        
+        function loadChart(index) {
+            utils.request(`index.php?ajax=get_m15_chart&index=${index}`)
+                .then(data => {
+                    if (!data.success) {
+                        document.getElementById('chart-preview').innerHTML = `<p class="error-message">Error: ${data.message}</p>`;
+                        return;
+                    }
+                    
+                    currentChartIndex = data.currentIndex;
+                    
+                    // Update chart display
+                    const html = `
+                        <div class="chart-preview-content">
+                            <h4>${data.chartName}</h4>
+                            <img src="data:image/png;base64,${data.imageData}" alt="M15 Chart" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />
+                        </div>
+                    `;
+                    document.getElementById('chart-preview').innerHTML = html;
+                    
+                    // Update counter
+                    document.getElementById('chart-counter').textContent = `(${data.currentIndex + 1} of ${data.totalCharts})`;
+                    
+                    // Update button states
+                    document.getElementById('prev-chart-btn').disabled = !data.hasPrev;
+                    document.getElementById('next-chart-btn').disabled = !data.hasNext;
+                })
+                .catch(error => {
+                    document.getElementById('chart-preview').innerHTML = `<p class="error-message">Error loading chart: ${error.message}</p>`;
+                });
+        }
+        
+        function loadPrevChart() {
+            loadChart(currentChartIndex + 1);
+        }
+        
+        function loadNextChart() {
+            loadChart(currentChartIndex - 1);
+        }
+        
+        function loadLatestChart() {
+            loadChart(0);
         }
         
         function loadCandleCsvFile() {
