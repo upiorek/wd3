@@ -57,7 +57,7 @@ class impulse_point:
     def __init__(self, 
                  index, # indeks świeczki
                  price, # cena impulsu
-                 strength=1, # siła impulsu
+                 strength=1.0, # siła impulsu
                  type='impulse' # typ impulsu (np. 'gap', 'minimum', 'maximum')
                  ):
         self.index = index 
@@ -217,6 +217,7 @@ def find_parallel_level(
         )
     
     # else
+    assert False, "No parallel line found"
     return None
 
 def find_hierarchical_lines(base_line : magic_line,
