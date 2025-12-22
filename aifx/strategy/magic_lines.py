@@ -12,6 +12,21 @@ Użycie:
     python magic_lines.py <plik.csv>  # przetwarza pojedynczy plik
 """
 
+
+
+"""
+TODO 
+
+fix min/max - powinno lepiej wygladać
+przyspieszenie: generuj tylko najbliższe linie względem ostatniej świeczki
+czy linie rosnące powinny mieć wyższy score dla maxmia niż dla minima (i odwrotnie dla linii opadającej)?
+brać pod uwagę "pierwszą rosnącą po minimum"
+buy tylko na zielonych
+
+"""
+
+
+
 import math
 import sys
 import os
@@ -40,6 +55,7 @@ def log(message):
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 MIN_SLOPE = 0.3  # Minimalny slope linii
+MAX_SLOPE = 5.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
@@ -85,7 +101,8 @@ class magic_line:
 
 def load_csv_data(filepath):
     """Wczytuje dane CSV w formacie mbank (Time;Open;High;Low;Close)"""
-    df = pd.read_csv(filepath, sep=';', parse_dates=['Time'])
+    # UWAGA: pomiń dodatkowe kolumny, jeśli istnieją np: ";decision-here"
+    df = pd.read_csv(filepath, sep=';', parse_dates=['Time'], usecols=[0, 1, 2, 3, 4], on_bad_lines='warn')
     df.rename(columns={'Time': 'DateTime'}, inplace=True)
     df['DateTime'] = pd.to_datetime(df['DateTime'])
     
@@ -125,13 +142,13 @@ def detect_impulses(df) -> list[impulse_point]:
     minima_idx = argrelextrema(df['Low'].values, np.less, order=5)[0]
     for idx in minima_idx:
         is_up = df.iloc[idx]['Close'] > df.iloc[idx-1]['Open']
-        impulses.append(impulse_point(idx, df.iloc[idx]['Low'], strength=SHADOW_IMPULSE_STRENGTH, type='minimum'))
+        #impulses.append(impulse_point(idx, df.iloc[idx]['Low'], strength=SHADOW_IMPULSE_STRENGTH, type='minimum'))
         impulses.append(impulse_point(idx, df.iloc[idx]['Open' if is_up else 'Close'], strength=BODY_IMPULSE_STRENGTH, type='minimum'))
 
     maxima_idx = argrelextrema(df['High'].values, np.greater, order=5)[0]
     for idx in maxima_idx:
         is_up = df.iloc[idx]['Close'] > df.iloc[idx-1]['Open']
-        impulses.append(impulse_point(idx, df.iloc[idx]['High'], strength=SHADOW_IMPULSE_STRENGTH, type='maximum'))
+        #impulses.append(impulse_point(idx, df.iloc[idx]['High'], strength=SHADOW_IMPULSE_STRENGTH, type='maximum'))
         impulses.append(impulse_point(idx, df.iloc[idx]['Close' if is_up else 'Open'], strength=BODY_IMPULSE_STRENGTH, type='maximum'))
 
     # print(f"wykryto minima: {len(minima_idx)}, maxima: {len(maxima_idx)}")
@@ -216,8 +233,7 @@ def find_parallel_level(
             level=prev_line.level + 1
         )
     
-    # else
-    assert False, "No parallel line found"
+    # No parallel line found - return None
     return None
 
 def find_hierarchical_lines(base_line : magic_line,
@@ -316,9 +332,9 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
             slope = (p2.price - p1.price) / (p2.index - p1.index)
             abs_slope = abs(slope)
             
-            if abs_slope >= MIN_SLOPE:
+            if abs_slope >= MIN_SLOPE and abs_slope <= MAX_SLOPE:
                 unique_slopes.add(abs_slope)
-    
+
     # Dla każdego |slope| oblicz combined_score
     best_pair = None
     best_combined_score = 0
@@ -567,7 +583,7 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
     
     return result
 
-def process_single_file(csv_filepath, output_dir='support_charts'):
+def process_single_file(csv_filepath, output_dir='charts'):
     """
     Przetwarza pojedynczy plik CSV:
     1. Wczytuje dane
@@ -600,11 +616,8 @@ def process_single_file(csv_filepath, output_dir='support_charts'):
     
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
-        last_candle_dt = df.iloc[-1]['DateTime']
-        hour_min = last_candle_dt.strftime('%H-%M')
-        date_str = last_candle_dt.strftime('%Y-%m-%d')
         
-        chart_filename = f"support_{date_str}_{hour_min}.png"
+        chart_filename = f"{Path(csv_filepath).stem}.png"
         chart_filepath = os.path.join(output_dir, chart_filename)
         
         lookback_start_dt = df.iloc[start_idx]['DateTime']
@@ -619,7 +632,7 @@ def process_single_file(csv_filepath, output_dir='support_charts'):
         return "NONE"
 
 
-def process_all_files(input_dir, output_file='support_lines_results.txt', output_charts_dir='support_charts'):
+def process_all_files(input_dir, output_file='support_lines_results.txt', output_charts_dir='charts'):
     """
     Przetwarza wszystkie pliki CSV w katalogu.
     Zapisuje wyniki do pliku support_lines_results.txt.
@@ -652,7 +665,8 @@ def process_all_files(input_dir, output_file='support_lines_results.txt', output
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write('\n'.join(results))
     
-    log(f"\n✓ Gotowe! Wyniki zapisano w: {output_file}")
+    log(f"\nGotowe! Wyniki zapisano w: {output_file}")
+    log(f"Wykresy zapisano w: {output_charts_dir}")
     log(f"Przetworzono {len(csv_files)} plików")
 
 
@@ -679,24 +693,36 @@ def main():
         pass
 
     if len(sys.argv) > 1 and sys.argv[1] != '--help':
-        # Tryb pojedynczego pliku
-        csv_file = sys.argv[1]
+        # Tryb pojedynczego pliku/folderu
+
+        # sprawdź czy podany argument to plik CSV czy folder
+        input_path = Path(sys.argv[1])
+        if input_path.is_dir():
+            process_all_files(str(input_path))
+            sys.exit(0)
+        elif input_path.is_file() and input_path.suffix.lower() == '.csv':
+            csv_file = str(input_path)
+
+            # Utwórz katalog charts/ w tym samym miejscu co plik CSV
+            csv_path = Path(csv_file)
+            output_dir = csv_path.parent / 'charts'
+            output_dir.mkdir(exist_ok=True)
+            
+            log(f"Przetwarzam: {csv_path.name}")
+            result = process_single_file(csv_file, str(output_dir))
+            log(f"Wynik: {result}")
+            full_output_path = output_dir.resolve()
+            log(f"Wykres zapisano w: {full_output_path}")
+        else:
+            log(f"Błąd: {input_path} nie jest plikiem CSV ani katalogiem!")
+            sys.exit(1)
+
         if not os.path.exists(csv_file):
             log(f"Błąd: Plik {csv_file} nie istnieje!")
             sys.exit(1)
         
-        # Utwórz katalog charts/ w tym samym miejscu co plik CSV
-        csv_path = Path(csv_file)
-        output_dir = csv_path.parent / 'charts'
-        output_dir.mkdir(exist_ok=True)
-        
-        log(f"Przetwarzam: {csv_path.name}")
-        result = process_single_file(csv_file, str(output_dir))
-        log(f"Wynik: {result}")
-        full_output_path = output_dir.resolve()
-        log(f"Wykres zapisano w: {full_output_path}")
     else:
-        # Tryb batch - przetwarzanie wszystkich plików
+        # Tryb batch - przetwarzanie wszystkich plików CSV w domyślnym katalogu
         if len(sys.argv) > 1 and sys.argv[1] == '--help':
             print(__doc__)
             sys.exit(0)
