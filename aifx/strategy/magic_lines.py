@@ -399,7 +399,7 @@ def plot_chart(df_plot,
         intercept = line_info.intercept
         level = line_info.level
         
-        # Oblicz wartości linii głównej
+        # Oblicz wartości linii głównej dla każdej świeczki
         values = []
         for idx_val in df_plot.index:
             # Offset względem lookback_start_dt
@@ -457,8 +457,8 @@ def plot_chart(df_plot,
             apds.append(mpf.make_addplot(
                 impulse_series,
                 type='scatter',
-                markersize=80,
-                marker='^',
+                markersize=60,
+                marker='x',
                 color='blue',
                 alpha=0.7
             ))
@@ -468,8 +468,8 @@ def plot_chart(df_plot,
                 minima_series,
                 type='scatter',
                 markersize=60,
-                marker='v',
-                color='orange',
+                marker='^',
+                color='red',
                 alpha=0.5
             ))
         
@@ -479,7 +479,7 @@ def plot_chart(df_plot,
                 type='scatter',
                 markersize=60,
                 marker='v',
-                color='purple',
+                color='green',
                 alpha=0.5
             ))
     
