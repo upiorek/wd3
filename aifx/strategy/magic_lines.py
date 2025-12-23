@@ -60,6 +60,7 @@ MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
+MINMAX_ORDER = 10  # liczba świeczek do analizy lokalnych min/max
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
@@ -139,19 +140,31 @@ def detect_impulses(df) -> list[impulse_point]:
 
             impulse_curr = impulse_point(i, current['Low'] if gap_up else current['High'], strength=1, type='gap')
             impulses.append(impulse_curr)
-            
-    # Lokalna minima/maxima
-    minima_idx = argrelextrema(df['Low'].values, np.less, order=5)[0]
-    for idx in minima_idx:
-        is_up = df.iloc[idx]['Close'] > df.iloc[idx-1]['Open']
-        #impulses.append(impulse_point(idx, df.iloc[idx]['Low'], strength=SHADOW_IMPULSE_STRENGTH, type='minimum'))
-        impulses.append(impulse_point(idx, df.iloc[idx]['Open' if is_up else 'Close'], strength=BODY_IMPULSE_STRENGTH, type='minimum'))
 
-    maxima_idx = argrelextrema(df['High'].values, np.greater, order=5)[0]
+    # Lokalna minima/maxima - korpusy świec
+    body_low = []
+    body_high = []
+    for i in range(0, len(df)-1):
+        body_low.append(min(df['Open'].values[i], df['Close'].values[i]))
+        body_high.append(max(df['Open'].values[i], df['Close'].values[i]))
+            
+    minima_idx = argrelextrema(
+        np.array(body_low), 
+        np.less, 
+        order=MINMAX_ORDER)[0]
+    
+    for idx in minima_idx:
+        impulses.append(impulse_point(idx, body_low[idx], 
+                                      strength=BODY_IMPULSE_STRENGTH, type='minimum'))
+
+    maxima_idx = argrelextrema(
+        np.array(body_high), 
+        np.greater, 
+        order=MINMAX_ORDER)[0]
+    
     for idx in maxima_idx:
-        is_up = df.iloc[idx]['Close'] > df.iloc[idx-1]['Open']
-        #impulses.append(impulse_point(idx, df.iloc[idx]['High'], strength=SHADOW_IMPULSE_STRENGTH, type='maximum'))
-        impulses.append(impulse_point(idx, df.iloc[idx]['Close' if is_up else 'Open'], strength=BODY_IMPULSE_STRENGTH, type='maximum'))
+        impulses.append(impulse_point(idx, body_high[idx], 
+                                      strength=BODY_IMPULSE_STRENGTH, type='maximum'))
 
     # print(f"wykryto minima: {len(minima_idx)}, maxima: {len(maxima_idx)}")
     # print(f"wykryto impulsy: {len(impulses)}")
@@ -603,8 +616,7 @@ def process_single_file(csv_filepath, output_dir='charts'):
     start_idx = max(0, total_candles - LOOKBACK_CANDLES)
     lookback_df_full = df.iloc[start_idx:].copy()
     
-    # Oblicz linie na podstawie pierwszych N-1 świeczek (pomijamy ostatnią)
-    lookback_df_for_lines = lookback_df_full.iloc[:-1].copy()
+    lookback_df_for_lines = lookback_df_full.iloc[:].copy()
     
     # Wykryj linie
     detected_lines, points = find_support_lines(lookback_df_for_lines)
@@ -618,7 +630,6 @@ def process_single_file(csv_filepath, output_dir='charts'):
     
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
-        
         chart_filename = f"{Path(csv_filepath).stem}.png"
         chart_filepath = os.path.join(output_dir, chart_filename)
         
