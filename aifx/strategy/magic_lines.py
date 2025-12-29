@@ -22,9 +22,10 @@ przyspieszenie: generuj tylko najbliższe linie względem ostatniej świeczki
 czy linie rosnące powinny mieć wyższy score dla maxmia niż dla minima (i odwrotnie dla linii opadającej)?
 brać pod uwagę "pierwszą rosnącą po minimum"
 buy tylko na zielonych
+bugi - czasem złe min/max
+lepszy opis crossingu + dodać offsety
 
 """
-
 
 
 import math
@@ -553,8 +554,8 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
     """
     Sprawdza czy ostatnia świeczka przecina któreś linie.
     Zwraca listę przeciętych linii według konwencji:
-    - Ascending: AS1 (main), AS2-AS5 (supports below), AR2-AR5 (resistances above)
-    - Descending: DR1 (main), DS2-DS5 (supports above), DR2-DR5 (resistances below)
+    - Ascending: A0 (main), AS1-AS5 (supports below), AR1-AR5 (resistances above)
+    - Descending: D0 (main), DS1-DS5 (supports above), DR1-DR5 (resistances below)
     """
     last_candle_low = last_candle['Low']
     last_candle_high = last_candle['High']
@@ -564,16 +565,20 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
     crossed_lines = []
     offsets = {}  # Przechowuj offset dla każdej linii
     
+    crossed = False
+    crossed_id = ""
     for line_info in detected_lines:
         slope = line_info.slope
         intercept = line_info.intercept
         line_type = 'ascending' if slope > 0 else 'descending'        
         line_value = slope * last_candle_idx + intercept
-        level = line_info.level 
+        # offset do obecnie analizowanej linii
+        line_offset = line_value - last_candle['Close']        
+        level = line_info.level - 1
 
         line_id = "A" if line_type == 'ascending' else "D"
-        if level == 1:
-            line_id += "S1"  # Główna linia
+        if level == 0:
+            line_id += "0"  # Główna linia
         else:
             if line_type == 'ascending':
                 if line_info.offset > 0:
@@ -588,11 +593,17 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
         
         # Sprawdź linię - dla ascending AS1, dla descending DR1
         if last_candle_low <= line_value <= last_candle_high:
-            crossed_lines.append(line_id)        
+            crossed = True
+            if crossed_id == "":
+                crossed_id = line_id
+            else: 
+                crossed_id += " " + line_id
+
+        crossed_lines.append([line_id, line_offset])        
 
     # jeżeli były jakieś przecięcia...
-    if crossed_lines:
-        crossed_lines = ["CROSSED " + last_candle_direction] + crossed_lines
+    if crossed:
+        crossed_lines = ["CROSSED " + crossed_id + " " + last_candle_direction] + crossed_lines
     
     result = crossed_lines if crossed_lines else []
     
@@ -640,7 +651,10 @@ def process_single_file(csv_filepath, output_dir='charts'):
                    lookback_start_dt, lookback_end_dt)
     
     if crossed_lines:
-        return " | ".join(crossed_lines)
+        ret = crossed_lines[0] + " | " 
+        # offset z dokładnością do 2 miejsca po przecinku
+        ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in crossed_lines[1:]])
+        return ret
     else:
         return "NONE"
 
