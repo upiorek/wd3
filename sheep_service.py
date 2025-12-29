@@ -192,11 +192,10 @@ def write_sheep_file():
             content += f"Moved {moved_count} old file(s) this update\n"
         
         # Add magic_lines.log to the content
-        content += "\n=== Magic Lines Log ===\n"
         try:
                 with open('/home/ubuntu/repo/magic_lines.log', 'r') as log_file:
                         log_content = log_file.read()
-                content += log_content
+                content += "\n" + log_content
                 
                 # If chart status in GENERATED, check for signals
                 if "GENERATED" in chart_status:
@@ -250,6 +249,22 @@ def main():
     print("Sheep service started. Press Ctrl+C to stop.")
     
     while running:
+        # Check settings file for disabled status
+        try:
+            settings_file = "/home/ubuntu/repo/settings"
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings_content = f.read().strip().lower()
+                    if 'service: disabled' in settings_content:
+                        print("Service disabled, waiting 15 seconds...")
+                        content = f"Sheep service is currently DISABLED.\nHeartbeat: {heartbeat}\n"
+                        with open("/home/ubuntu/repo/sheep.log", "w") as f:
+                            f.write(content)
+                        time.sleep(15)
+                        continue
+        except Exception as e:
+            print(f"Error reading settings file: {e}")
+        
         write_sheep_file()
         
         # Wait before next update (or exit if stopped)

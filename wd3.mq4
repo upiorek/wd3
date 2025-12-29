@@ -12,7 +12,7 @@ datetime lastMarketLogTime = 0;
 datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 int hearbeat = 0;
-string version = "3.20";
+string version = "3.21";
 
 // Simple risk management
 double tp = 200;
@@ -40,6 +40,7 @@ void LogAccountInfo()
                       "Margin: " + DoubleToString(AccountMargin(), 2) + " | " +
                       "Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | " +
                       "Margin Level: " + DoubleToString(AccountMargin() > 0 ? (AccountEquity() / AccountMargin()) * 100 : 0, 2) + "% | " +
+                      "\n" + 
                       "Active Orders: " + IntegerToString(OrdersTotal()) + " | " +
                       "Daily limit: " + IntegerToString(todayOrders) + "/" + IntegerToString(maxOrders) + "\n";
 
@@ -66,10 +67,11 @@ void LogMarketData()
       double eurusdBid = MarketInfo("EURUSD", MODE_BID);
       double eurusdAsk = MarketInfo("EURUSD", MODE_ASK);
       double eurusd = (eurusdBid + eurusdAsk) / 2;
-      
-      string logData = "US100.f: " + DoubleToString(us100, 2) + " | " +
-                      "EURUSD: " + DoubleToString(eurusd, 5) + "\n";
-      
+
+      string logData = "Market:" + "\n" +
+                       "US100.f: " + DoubleToString(us100, 2) + " | " +
+                       "EURUSD: " + DoubleToString(eurusd, 5) + "\n";
+
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
       FileClose(fileHandle);

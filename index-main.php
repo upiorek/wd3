@@ -582,9 +582,9 @@ function refreshAccountLog() {
         $marketContent = htmlspecialchars($marketContent);
         // replace | with <br/>
         $marketContent = str_replace('| ', '<br/>', $marketContent);
-        $output .= '<br/><br/>' . $marketContent;
+        $output .= '<br/>' . $marketContent;
     } else {
-        $output .= '<br/><br/>Market log file not found.';
+        $output .= '<br/>Market log file not found.';
     }
     
     if (strpos($output, 'not found') !== false && strpos($output, 'not found') === strpos($output, 'Account log file not found.')) {
@@ -1179,6 +1179,34 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'sheep_status':
             echo readSheepFile();
+            break;
+            
+        case 'read_settings':
+            $settingsFile = '/home/ubuntu/repo/settings';
+            if (file_exists($settingsFile)) {
+                $content = file_get_contents($settingsFile);
+                echo json_encode(['success' => true, 'content' => $content]);
+            } else {
+                echo json_encode(['success' => true, 'content' => '']);
+            }
+            break;
+            
+        case 'save_settings':
+            if (!isset($_POST['content'])) {
+                echo json_encode(['success' => false, 'message' => 'Content parameter required']);
+                break;
+            }
+            
+            $settingsFile = '/home/ubuntu/repo/settings';
+            $content = $_POST['content'];
+            
+            $result = file_put_contents($settingsFile, $content, LOCK_EX);
+            
+            if ($result !== false) {
+                echo json_encode(['success' => true, 'message' => 'Settings saved successfully']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to save settings']);
+            }
             break;
             
         case 'get_m15_chart':
@@ -1853,21 +1881,30 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 </div>
                 <button onclick="refreshLogsList()" class="refresh-logs-btn">Refresh Files List</button>
             </div>
-            
+
             <div id="log-content" class="log-content-area">
                 <p class="info-message">Select a log file to view its contents.</p>
             </div>
         </div>
-        
+
         <hr style="margin: 30px 0;">
-        
+
         <h2>Sheep Service</h2>
         <div id="sheep-content" class="content-section sheep-section">
             <?php echo readSheepFile(); ?>
         </div>
         
-        <hr style="margin: 30px 0;">
+        <h2>Sheep Settings</h2>
+        <div class="content-section settings-section">
+            <div class="settings-controls">
+                <textarea id="settings-editor" style="width: 100%; font-family: monospace; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+                <div style="margin-top: 10px;">
+                    <button onclick="saveSettings()" class="refresh-logs-btn" style="background-color: #28a745;">Save Settings</button>
+                </div>
+            </div>
+        </div>
         
+
         <h2>M15 Charts <span id="chart-counter" style="font-size: 0.8em; color: #666;"></span></h2>
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
@@ -2555,6 +2592,31 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 .catch(error => utils.showError('csv-content', error.message));
         }
 
+        // Settings functions
+        function loadSettings() {
+            utils.request('index.php?ajax=read_settings')
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('settings-editor').value = data.content;
+                    }
+                })
+                .catch(error => console.error('Error loading settings:', error));
+        }
+        
+        function saveSettings() {
+            const content = document.getElementById('settings-editor').value;
+            
+            const formData = new FormData();
+            formData.append('ajax', 'save_settings');
+            formData.append('content', content);
+            
+            utils.request('index.php', { method: 'POST', body: formData })
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                })
+                .catch(error => alert('Error saving settings: ' + error.message));
+        }
+        
         // Initialize app
         document.addEventListener('DOMContentLoaded', () => {
             // Form handler
@@ -2570,6 +2632,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             // Initialize form precision
             updateFormPrecision();
+            
+            // Load settings
+            loadSettings();
             
             // Auto-refresh
             setInterval(() => {
