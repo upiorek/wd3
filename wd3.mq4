@@ -12,14 +12,26 @@ datetime lastMarketLogTime = 0;
 datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 int hearbeat = 0;
-string version = "3.18";
+string version = "3.20";
+
+// Simple risk management
+double tp = 200;
+double be = tp / 2;
+double sl = tp / 4;
+double bonus = tp / 10;
+
+// Max daily orders
+int maxOrders = 20;
+
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
    
    if(fileHandle != INVALID_HANDLE)
    {
-      string logData = "WD: " + version + " | " + 
+      int todayOrders = CountOrdersOpenedToday();
+
+      string logData = "WD: " + version + " " + "Heartbeat: " + IntegerToString(hearbeat) + " | " + 
                       TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
                       "Account: " + IntegerToString(AccountNumber()) + " | " +
                       "Balance: " + DoubleToString(AccountBalance(), 2) + " | " +
@@ -28,9 +40,9 @@ void LogAccountInfo()
                       "Margin: " + DoubleToString(AccountMargin(), 2) + " | " +
                       "Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | " +
                       "Margin Level: " + DoubleToString(AccountMargin() > 0 ? (AccountEquity() / AccountMargin()) * 100 : 0, 2) + "% | " +
-                      "Orders: " + IntegerToString(OrdersTotal()) + " | " +
-                      "Heartbeat: " + IntegerToString(hearbeat) + "\n";
-      
+                      "Active Orders: " + IntegerToString(OrdersTotal()) + " | " +
+                      "Daily limit: " + IntegerToString(todayOrders) + "/" + IntegerToString(maxOrders) + "\n";
+
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
       FileClose(fileHandle);
@@ -68,6 +80,51 @@ void LogMarketData()
    }
 }
 
+int CountOrdersOpenedToday()
+{
+   datetime currentDay = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
+   datetime nextDay = currentDay + 86400; // Add 24 hours
+   
+   int todayOrdersCount = 0;
+   int totalHistoryOrders = OrdersHistoryTotal();
+
+   datetime orderOpenTime;
+
+   // Count closed orders from today
+   for(int i = 0; i < totalHistoryOrders; i++)
+   {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+      {
+         orderOpenTime = OrderOpenTime();
+         
+         // Check if order was opened today and is BUY or SELL order only
+         if(orderOpenTime >= currentDay && orderOpenTime < nextDay && 
+            (OrderType() == OP_BUY || OrderType() == OP_SELL))
+         {
+            todayOrdersCount++;
+         }
+      }
+   }
+   
+   // Count currently open orders from today
+   for(int j = 0; j < OrdersTotal(); j++)
+   {
+      if(OrderSelect(j, SELECT_BY_POS, MODE_TRADES))
+      {
+         orderOpenTime = OrderOpenTime();
+         
+         // Check if order was opened today and is BUY or SELL order only
+         if(orderOpenTime >= currentDay && orderOpenTime < nextDay && 
+            (OrderType() == OP_BUY || OrderType() == OP_SELL))
+         {
+            todayOrdersCount++;
+         }
+      }
+   }
+   
+   return todayOrdersCount;
+}
+
 void ReadAndSendOrderFromFile()
 {
    int fileHandle = FileOpen("approved.txt", FILE_READ|FILE_TXT);
@@ -81,7 +138,7 @@ void ReadAndSendOrderFromFile()
          if(line != "") fileContent += line + "\n";
       }
       FileClose(fileHandle);
-      
+
       if(fileContent != "") ParseAndSendOrder(fileContent);
    }
 }
@@ -107,19 +164,44 @@ void ParseAndSendOrder(string orderData)
          double price = StringToDouble(parts[3]);
          double stopLoss = StringToDouble(parts[4]);
          double takeProfit = StringToDouble(parts[5]);
-         
+
          if(symbol != "" && lots > 0 && orderType >= 0)
          {
+            // Check daily order limit
+            int todayOrders = CountOrdersOpenedToday();
+            if(todayOrders >= maxOrders)
+            {
+               Print("Daily order limit reached (", todayOrders, "/", maxOrders, "). Order not sent.");
+               ClearApprovedFile();
+               continue;
+            }
+            
             if((orderType == OP_BUY || orderType == OP_SELL) && price == 0.0)
             {
                price = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
+            }
+            
+            // Calculate SL and TP based on globals if not provided
+            if((orderType == OP_BUY || orderType == OP_SELL) && stopLoss == 0.0 && takeProfit == 0.0)
+            {
+               if(orderType == OP_BUY)
+               {
+                  stopLoss = price - sl;
+                  takeProfit = price + tp;
+               }
+               else if(orderType == OP_SELL)
+               {
+                  stopLoss = price + sl;
+                  takeProfit = price - tp;
+               }
+               Print("Using calculated SL/TP - SL: ", DoubleToString(stopLoss, 2), " TP: ", DoubleToString(takeProfit, 2));
             }
             
             int ticket = OrderSend(symbol, orderType, lots, price, 3, stopLoss, takeProfit, "wd", 0, 0, clrNONE);
             
             if(ticket > 0)
             {
-               Print("Order sent successfully! Ticket: ", ticket, " Symbol: ", symbol);
+               Print("Order sent successfully! Ticket: ", ticket, " Symbol: ", symbol, " (Today: ", (todayOrders + 1), "/", maxOrders, ")");
                ClearApprovedFile();
             }
             else
