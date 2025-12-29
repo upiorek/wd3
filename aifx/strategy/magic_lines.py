@@ -36,20 +36,22 @@ import mplfinance as mpf
 
 from pathlib import Path
 from scipy.signal import argrelextrema
+from datetime import datetime
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # ===== LOGGING =====
-LOG_FILE = 'magic_lines.log'
+LOG_FILE = '/home/ubuntu/repo/magic_lines.log'
 log_file_handle = None
 
 def log(message):
     """Wyświetla wiadomość na konsoli i zapisuje do pliku log"""
-    print(message)
+    formatted_message = f"{message}"
+    print(formatted_message)
     if log_file_handle:
-        log_file_handle.write(message + '\n')
+        log_file_handle.write(formatted_message + '\n')
         log_file_handle.flush()
 
 # ===== KONFIGURACJA =====
@@ -712,7 +714,8 @@ def main():
             result = process_single_file(csv_file, str(output_dir))
             log(f"Wynik: {result}")
             full_output_path = output_dir.resolve()
-            log(f"Wykres zapisano w: {full_output_path}")
+            png_filename = f"{csv_path.stem}.png"
+            #log(f"Wykres zapisano w: {full_output_path / png_filename}")
         else:
             log(f"Błąd: {input_path} nie jest plikiem CSV ani katalogiem!")
             sys.exit(1)

@@ -929,7 +929,7 @@ function readCandleCsvFile($fileName, $lines = 0) {
  * @return string The content of the sheep file with HTML formatting
  */
 function readSheepFile() {
-    $sheepFile = '/home/ubuntu/repo/sheep';
+    $sheepFile = '/home/ubuntu/repo/sheep.log';
     
     if (!file_exists($sheepFile)) {
         return '<p class="error-message">Sheep file not found.</p>';

@@ -118,15 +118,10 @@ def generate_chart_if_missing(m15_filename):
             os.makedirs(CHARTS_DIR)
             print(f"Created directory: {CHARTS_DIR}")
         
-        # Expected PNG filename: support_YYYY-MM-DD_HH-MM.png
+        # Expected PNG filename: YYYY-MM-DD-HH-MM-m15.png
         # From m15 filename: YYYY-MM-DD-HH-MM-m15.csv
-        # Extract date and time parts
-        parts = m15_filename.replace('-m15.csv', '').split('-')
-        if len(parts) >= 5:
-            # parts: [YYYY, MM, DD, HH, MM]
-            png_filename = f"support_{parts[0]}-{parts[1]}-{parts[2]}_{parts[3]}-{parts[4]}.png"
-        else:
-            return f"ERROR: invalid filename format"
+        # Simply replace .csv extension with .png
+        png_filename = m15_filename.replace('.csv', '.png')
         
         png_path = os.path.join(CHARTS_DIR, png_filename)
         
@@ -154,10 +149,10 @@ def generate_chart_if_missing(m15_filename):
             # Check if PNG was created
             if os.path.exists(png_path):
                 print(f"Successfully generated chart: {png_filename}")
-                return f"GENERATED: {png_filename}"
+                return f"GENERATED: {png_filename}\n{png_path}"
             else:
                 print(f"Chart generation completed but PNG not found: {png_filename}")
-                return f"ERROR: PNG not created"
+                return f"ERROR: PNG not created: {png_filename}\n{png_path}"
         else:
             print(f"Chart generation failed: {result.stderr}")
             return f"ERROR: generation failed"
@@ -196,7 +191,16 @@ def write_sheep_file():
         if moved_count > 0:
             content += f"Moved {moved_count} old file(s) this update\n"
         
-        with open("sheep", "w") as f:
+        # Add magic_lines.log to the content
+        content += "\n=== Magic Lines Log ===\n"
+        try:
+                with open('/home/ubuntu/repo/magic_lines.log', 'r') as log_file:
+                        log_content = log_file.read()
+                content += log_content
+        except Exception as e:
+                content += f"Could not read magic_lines.log.\n"
+
+        with open("/home/ubuntu/repo/sheep.log", "w") as f:
             f.write(content)
         
         print(f"Updated sheep file at {current_time} - Candles: {candles_count}, Old: {candles_old_count}, Latest M15: {latest_m15}, Chart: {chart_status}")
