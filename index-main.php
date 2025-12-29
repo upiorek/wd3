@@ -1890,22 +1890,21 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <hr style="margin: 30px 0;">
 
         <h2>Sheep Service</h2>
-        <div id="sheep-content" class="content-section sheep-section">
+        <div id="sheep-content" class="content-section sheep-section" style="background-color: #f8f9fa; border-left: 4px solid #554e14ff; border-radius: 4px; padding: 15px;">
             <?php echo readSheepFile(); ?>
         </div>
         
         <h2>Sheep Settings</h2>
-        <div class="content-section settings-section">
+        <div class="content-section settings-section" style="background-color: #f8f9fa; border-left: 4px solid #b6aa3dff; border-radius: 4px; padding: 15px;">
             <div class="settings-controls">
-                <textarea id="settings-editor" style="width: 100%; font-family: monospace; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+                <textarea id="settings-editor" style="width: 95%; font-family: monospace; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; min-height: 30px; overflow-y: hidden;"></textarea>
                 <div style="margin-top: 10px;">
                     <button onclick="saveSettings()" class="refresh-logs-btn" style="background-color: #28a745;">Save Settings</button>
                 </div>
             </div>
         </div>
-        
 
-        <h2>M15 Charts <span id="chart-counter" style="font-size: 0.8em; color: #666;"></span></h2>
+        <hr style="margin: 30px 0;">
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
                 <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Previous</button>
@@ -2593,11 +2592,18 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         }
 
         // Settings functions
+        function autoResizeTextarea(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+        
         function loadSettings() {
             utils.request('index.php?ajax=read_settings')
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('settings-editor').value = data.content;
+                        const textarea = document.getElementById('settings-editor');
+                        textarea.value = data.content;
+                        autoResizeTextarea(textarea);
                     }
                 })
                 .catch(error => console.error('Error loading settings:', error));
@@ -2635,6 +2641,14 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             // Load settings
             loadSettings();
+            
+            // Setup auto-resize for settings textarea
+            const settingsEditor = document.getElementById('settings-editor');
+            if (settingsEditor) {
+                settingsEditor.addEventListener('input', function() {
+                    autoResizeTextarea(this);
+                });
+            }
             
             // Auto-refresh
             setInterval(() => {
