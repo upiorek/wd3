@@ -766,9 +766,16 @@ def main():
         process_all_files(str(input_dir))
     
 
-if __name__ == '__main__':
+if __name__ == '__main__':    
     # Otwórz plik log w trybie write (nadpisz istniejący)
-    log_file_handle = open(LOG_FILE, 'w', encoding='utf-8')
+    try:
+        log_file_handle = open(LOG_FILE, 'w', encoding='utf-8')
+    except Exception as e:
+        print(f"Błąd otwarcia pliku log: {e}")
+        log_file_handle = open('magic_lines.log', 'w', encoding='utf-8')
+        # pełna ścieżka do pliku log
+        print(f"Zapis do domyślnego pliku magic_lines.log: {os.path.abspath('magic_lines.log')}")
+
     try:
         main()
     finally:
