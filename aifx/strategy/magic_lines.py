@@ -151,19 +151,31 @@ def detect_impulses(df) -> list[impulse_point]:
             
     minima_idx = argrelextrema(
         np.array(body_low), 
-        np.less, 
+        np.less_equal, 
         order=MINMAX_ORDER)[0]
     
+    # Odfiltruj plateau - zostaw tylko pierwszy punkt z ciągu równych wartości
+    filtered_minima = []
     for idx in minima_idx:
+        if idx == 0 or body_low[idx] < body_low[idx - 1]:
+            filtered_minima.append(idx)
+
+    for idx in filtered_minima:
         impulses.append(impulse_point(idx, body_low[idx], 
                                       strength=BODY_IMPULSE_STRENGTH, type='minimum'))
 
     maxima_idx = argrelextrema(
         np.array(body_high), 
-        np.greater, 
+        np.greater_equal, 
         order=MINMAX_ORDER)[0]
     
+    # Odfiltruj plateau - zostaw tylko pierwszy punkt z ciągu równych wartości
+    filtered_maxima = []
     for idx in maxima_idx:
+        if idx == 0 or body_high[idx] > body_high[idx - 1]:
+            filtered_maxima.append(idx)
+    
+    for idx in filtered_maxima:
         impulses.append(impulse_point(idx, body_high[idx], 
                                       strength=BODY_IMPULSE_STRENGTH, type='maximum'))
 
