@@ -967,9 +967,10 @@ function getAllM15Charts() {
     }
     
     // Get all support PNG files
+    // PNG filename example: 2025-12-29-10-15-m15.png
     $chartFiles = array();
     foreach (scandir($chartsDir) as $file) {
-        if (preg_match('/^support_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.png$/', $file)) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-m15\.png$/', $file)) {
             $filePath = $chartsDir . '/' . $file;
             $chartFiles[] = array(
                 'name' => $file,
