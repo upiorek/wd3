@@ -599,14 +599,13 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
             else: 
                 crossed_id += " " + line_id
 
-        crossed_lines.append([line_id, line_offset])        
+        crossed_lines.append([line_id, line_offset])
 
     # jeżeli były jakieś przecięcia...
     if crossed:
-        crossed_lines = ["CROSSED " + crossed_id + " " + last_candle_direction] + crossed_lines
-    
-    result = crossed_lines if crossed_lines else []
-    
+        crossed_lines = ["CROSSED " + crossed_id + " " + last_candle_direction] + crossed_lines    
+
+    result = crossed_lines if crossed else []    
     return result
 
 def process_single_file(csv_filepath, output_dir='charts'):
