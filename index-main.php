@@ -97,7 +97,20 @@ function getOrdersLogData() {
                 
                 // Handle different formats - current format has 5 parts, expected format has 8+ parts
                 if (count($parts) >= 5) {
-                    if (count($parts) >= 8) {
+                    if (count($parts) >= 9) {
+                        // Full format with time: Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit | OpenTime
+                        $ordersLog[] = array(
+                            'ticket' => $parts[0],
+                            'type' => $parts[1],
+                            'symbol' => $parts[2],
+                            'lots' => $parts[3],
+                            'openPrice' => $parts[4],
+                            'stopLoss' => $parts[5],
+                            'takeProfit' => $parts[6],
+                            'profit' => $parts[7],
+                            'openTime' => $parts[8]
+                        );
+                    } elseif (count($parts) >= 8) {
                         // Full format: Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit
                         $ordersLog[] = array(
                             'ticket' => $parts[0],
@@ -107,7 +120,8 @@ function getOrdersLogData() {
                             'openPrice' => $parts[4],
                             'stopLoss' => $parts[5],
                             'takeProfit' => $parts[6],
-                            'profit' => $parts[7]
+                            'profit' => $parts[7],
+                            'openTime' => 'N/A'
                         );
                     } else {
                         // Simplified format: Ticket | Type | Symbol | Lots | Profit
@@ -119,7 +133,8 @@ function getOrdersLogData() {
                             'openPrice' => 'N/A',
                             'stopLoss' => 'N/A',
                             'takeProfit' => 'N/A',
-                            'profit' => $parts[4]
+                            'profit' => $parts[4],
+                            'openTime' => 'N/A'
                         );
                     }
                 }
@@ -291,12 +306,13 @@ function generateOrdersLogTable($ordersLog) {
     $html .= '<thead>';
     $html .= '<tr>';
     $html .= '<th>Ticket</th>';
+    $html .= '<th>Time</th>';
     $html .= '<th>Type</th>';
     $html .= '<th>Symbol</th>';
     $html .= '<th>Lots</th>';
-    $html .= '<th>Open Price</th>';
-    $html .= '<th>Stop Loss</th>';
-    $html .= '<th>Take Profit</th>';
+    $html .= '<th>Open</th>';
+    $html .= '<th>SL</th>';
+    $html .= '<th>TP</th>';
     $html .= '<th>Profit</th>';
     $html .= '</tr>';
     $html .= '</thead>';
@@ -305,6 +321,7 @@ function generateOrdersLogTable($ordersLog) {
     foreach ($ordersLog as $order) {
         $html .= '<tr>';
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
+        $html .= '<td>' . ($order['openTime'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openTime'])) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
         $html .= '<td>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</td>';
@@ -339,20 +356,36 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<div>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</div>';
         $html .= '</div>';
         
-        // Third row: Labels (Open, SL, TP, Profit)
+        // Third row: Labels (Open Time, Open Price)
         $html .= '<div class="card-row labels">';
+        $html .= '<div>Open Time</div>';
         $html .= '<div>Open</div>';
+        $html .= '<div></div>';
+        $html .= '<div></div>';
+        $html .= '</div>';
+        
+        // Fourth row: Values (Open Time, Open Price)
+        $html .= '<div class="card-row values">';
+        $html .= '<div>' . ($order['openTime'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openTime'])) . '</div>';
+        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['openPrice'], $order['symbol'])) . '</div>';
+        $html .= '<div></div>';
+        $html .= '<div></div>';
+        $html .= '</div>';
+        
+        // Fifth row: Labels (SL, TP, Profit)
+        $html .= '<div class="card-row labels">';
         $html .= '<div>SL</div>';
         $html .= '<div>TP</div>';
         $html .= '<div>Profit</div>';
+        $html .= '<div></div>';
         $html .= '</div>';
         
-        // Fourth row: Values (Open, SL, TP, Profit)
+        // Sixth row: Values (SL, TP, Profit)
         $html .= '<div class="card-row values">';
-        $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['openPrice'], $order['symbol'])) . '</div>';
         $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['stopLoss'], $order['symbol'])) . '</div>';
         $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['takeProfit'], $order['symbol'])) . '</div>';
         $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</div>';
+        $html .= '<div></div>';
         $html .= '</div>';
         
         $html .= '</div>'; // End order-card

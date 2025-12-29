@@ -12,7 +12,7 @@ datetime lastMarketLogTime = 0;
 datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 int hearbeat = 0;
-string version = "3.17";
+string version = "3.18";
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -193,7 +193,7 @@ void LogAllOrders()
                logData += IntegerToString(OrderTicket()) + " | " + orderType + " | " + OrderSymbol() + " | " +
                          DoubleToString(OrderLots(), 2) + " | " + DoubleToString(OrderOpenPrice(), 5) + " | " +
                          DoubleToString(OrderStopLoss(), 5) + " | " + DoubleToString(OrderTakeProfit(), 5) + " | " +
-                         DoubleToString(OrderProfit(), 2) + "\n";
+                         DoubleToString(OrderProfit(), 2) + " | " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n";
             }
          }
       }
