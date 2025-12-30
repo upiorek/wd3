@@ -21,7 +21,7 @@ running = True
 heartbeat = 1
 
 # Candles directory paths
-VERSION = "1.3"
+VERSION = "1.4"
 CANDLES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles"
 CANDLES_OLD_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles_old"
 CHARTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts"
@@ -204,30 +204,38 @@ def write_sheep_file():
                         for line in log_content.splitlines():
                                 if line.startswith("Wynik:"):
                                         approved_file = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt"
+
+                                        # Check for UP signal (BUY) for ASCENDING line like ASx or ARx,
+                                        # that is mentioned between CROSSED and UP words
+                                        crossed_pos = line.find("CROSSED")
+                                        up_pos = line.find("UP")
+                                        if crossed_pos != -1 and up_pos > crossed_pos:
+                                                between = line[crossed_pos:up_pos]
+                                                if "AS" in between or "AR" in between:
+                                                        try:
+                                                                with open(approved_file, 'a') as f:
+                                                                        f.write("US100.f BUY 0.01 0 0 0\n")
+                                                                content += f"\n[SIGNAL DETECTED] Added BUY order to approved.txt\n"
+                                                                print(f"Signal detected: Added BUY order to approved.txt")
+                                                        except Exception as e:
+                                                                content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
+                                                                print(f"Error writing to approved.txt: {e}")
+                                                        break
                                         
-                                        # Check for UP signal (BUY)
-                                        if "CROSSED" in log_content and "UP" in log_content:
-                                                try:
-                                                        with open(approved_file, 'a') as f:
-                                                                f.write("US100.f BUY 0.01 0 0 0\n")
-                                                        content += f"\n[SIGNAL DETECTED] Added BUY order to approved.txt\n"
-                                                        print(f"Signal detected: Added BUY order to approved.txt")
-                                                except Exception as e:
-                                                        content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
-                                                        print(f"Error writing to approved.txt: {e}")
-                                                break
-                                        
-                                        # Check for DOWN signal (SELL)
-                                        if "CROSSED" in log_content and "DOWN" in log_content:
-                                                try:
-                                                        with open(approved_file, 'a') as f:
-                                                                f.write("US100.f SELL 0.01 0 0 0\n")
-                                                        content += f"\n[SIGNAL DETECTED] Added SELL order to approved.txt\n"
-                                                        print(f"Signal detected: Added SELL order to approved.txt")
-                                                except Exception as e:
-                                                        content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
-                                                        print(f"Error writing to approved.txt: {e}")
-                                                break
+                                        # Check for DOWN signal (SELL) for DESCENDING line like DSx or DRx
+                                        down_pos = line.find("DOWN")
+                                        if crossed_pos != -1 and down_pos > crossed_pos:
+                                                between = line[crossed_pos:down_pos]
+                                                if "DS" in between or "DR" in between:
+                                                        try:
+                                                                with open(approved_file, 'a') as f:
+                                                                        f.write("US100.f SELL 0.01 0 0 0\n")
+                                                                content += f"\n[SIGNAL DETECTED] Added SELL order to approved.txt\n"
+                                                                print(f"Signal detected: Added SELL order to approved.txt")
+                                                        except Exception as e:
+                                                                content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
+                                                                print(f"Error writing to approved.txt: {e}")
+                                                        break
         except Exception as e:
                 content += f"Could not read magic_lines.log.\n"
 
