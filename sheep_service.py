@@ -21,7 +21,7 @@ running = True
 heartbeat = 1
 
 # Candles directory paths
-VERSION = "1.4"
+VERSION = "1.5"
 CANDLES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles"
 CANDLES_OLD_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles_old"
 CHARTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts"
@@ -217,6 +217,9 @@ def write_sheep_file():
                                                                         f.write("US100.f BUY 0.01 0 0 0\n")
                                                                 content += f"\n[SIGNAL DETECTED] Added BUY order to approved.txt\n"
                                                                 print(f"Signal detected: Added BUY order to approved.txt")
+                                                                candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
+                                                                with open(f"/home/ubuntu/repo/sheep/sheep_actions_{candle_time}.log", "w") as f:
+                                                                        f.write(content)
                                                         except Exception as e:
                                                                 content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
                                                                 print(f"Error writing to approved.txt: {e}")
@@ -232,6 +235,9 @@ def write_sheep_file():
                                                                         f.write("US100.f SELL 0.01 0 0 0\n")
                                                                 content += f"\n[SIGNAL DETECTED] Added SELL order to approved.txt\n"
                                                                 print(f"Signal detected: Added SELL order to approved.txt")
+                                                                candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
+                                                                with open(f"/home/ubuntu/repo/sheep/sheep_actions_{candle_time}.log", "w") as f:
+                                                                        f.write(content)
                                                         except Exception as e:
                                                                 content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
                                                                 print(f"Error writing to approved.txt: {e}")

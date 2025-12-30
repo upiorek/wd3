@@ -975,17 +975,94 @@ function readSheepFile() {
     }
     
     // Get file modification time
-    $modTime = filemtime($sheepFile);
-    $modTimeFormatted = date('Y-m-d H:i:s', $modTime);
+    // $modTime = filemtime($sheepFile);
+    // $modTimeFormatted = date('Y-m-d H:i:s', $modTime);
     
     $html = '<div class="log-file-header">';
     $html .= '<div class="log-file-info">';
-    $html .= '<span>Last updated: ' . htmlspecialchars($modTimeFormatted) . '</span>';
+    // $html .= '<span>Last updated: ' . htmlspecialchars($modTimeFormatted) . '</span>';
     $html .= '</div>';
     $html .= '</div>';
     $html .= '<pre class="log-content">' . htmlspecialchars($content) . '</pre>';
     
     return $html;
+}
+
+/**
+ * Get list of text files from sheep directory
+ * @return array Array of files with details
+ */
+function getSheepFilesList() {
+    $sheepDir = '/home/ubuntu/repo/sheep';
+    $files = array();
+    
+    if (!is_dir($sheepDir)) {
+        return $files;
+    }
+    
+    foreach (scandir($sheepDir) as $file) {
+        if ($file !== '.' && $file !== '..' && is_file($sheepDir . '/' . $file)) {
+            $filePath = $sheepDir . '/' . $file;
+            $files[] = array(
+                'name' => $file,
+                'path' => $filePath,
+                'size' => filesize($filePath),
+                'modified' => filemtime($filePath)
+            );
+        }
+    }
+    
+    // Sort by modification time (newest first)
+    usort($files, function($a, $b) {
+        return $b['modified'] - $a['modified'];
+    });
+    
+    return $files;
+}
+
+/**
+ * Read sheep action file content
+ * @param string $fileName The file name to read
+ * @return array Result with success status and content or error message
+ */
+function readSheepActionFile($fileName) {
+    global $timestamp;
+    
+    // Validate file name (basic security check)
+    if (strpos($fileName, '..') !== false || strpos($fileName, '/') !== false) {
+        return array('success' => false, 'message' => 'Invalid file name');
+    }
+    
+    $filePath = '/home/ubuntu/repo/sheep/' . $fileName;
+    
+    if (!file_exists($filePath)) {
+        return array('success' => false, 'message' => 'File not found');
+    }
+    
+    if (!is_readable($filePath)) {
+        return array('success' => false, 'message' => 'Cannot read file');
+    }
+    
+    $content = file_get_contents($filePath);
+    
+    if ($content === false) {
+        return array('success' => false, 'message' => 'Error reading file');
+    }
+    
+    //$fileSize = filesize($filePath);
+    //$fileModified = date('Y-m-d H:i:s', filemtime($filePath));
+    
+    $html = '<div class="log-file-header">';
+    $html .= '<h4>File: ' . htmlspecialchars($fileName) . '</h4>';
+    //$html .= '<div class="log-file-info">';
+    //$html .= '<span>Size: ' . formatBytes($fileSize) . '</span>';
+    //$html .= '<span>Modified: ' . $fileModified . '</span>';
+    $html .= '</div>';
+    $html .= '</div>';
+    $html .= '<pre class="log-content">' . htmlspecialchars($content) . '</pre>';
+    //$html .= '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+    
+    return array('success' => true, 'content' => $html);
 }
 
 /**
@@ -1179,6 +1256,25 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'sheep_status':
             echo readSheepFile();
+            break;
+            
+        case 'sheep_files_list':
+            $sheepFiles = getSheepFilesList();
+            echo json_encode([
+                'files' => $sheepFiles,
+                'count' => count($sheepFiles)
+            ]);
+            break;
+            
+        case 'read_sheep_file':
+            if (!isset($_GET['file'])) {
+                echo json_encode(['success' => false, 'message' => 'File parameter required']);
+                break;
+            }
+            
+            $fileName = $_GET['file'];
+            $result = readSheepActionFile($fileName);
+            echo json_encode($result);
             break;
             
         case 'read_settings':
@@ -1903,8 +1999,32 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 </div>
             </div>
         </div>
+        
+        <h2 id="sheep-files-heading">Sheep Files (<?php $sheepFiles = getSheepFilesList(); echo count($sheepFiles); ?> files)</h2>
+        <div class="content-section sheep-files-section">
+            <div class="logs-controls">
+                <div class="form-group">
+                    <label for="sheep-file-select">Select File:</label>
+                    <select id="sheep-file-select" onchange="loadSheepFile()">
+                        <option value="">-- Select a file --</option>
+                        <?php
+                        foreach ($sheepFiles as $file) {
+                            echo '<option value="' . htmlspecialchars($file['name']) . '">' . 
+                                 htmlspecialchars($file['name']) . ' (' . formatBytes($file['size']) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <button onclick="refreshSheepFilesList()" class="refresh-logs-btn">Refresh Files List</button>
+            </div>
+
+            <div id="sheep-file-content" class="log-content-area">
+                <p class="info-message">Select a file to view its contents.</p>
+            </div>
+        </div>
 
         <hr style="margin: 30px 0;">
+
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
                 <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Previous</button>
@@ -1934,8 +2054,6 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             ?>
             </div>
         </div>
-        
-        <hr style="margin: 30px 0;">
         
         <h2 id="candles-csv-heading">Candle Data - <?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files</h2>
         <div class="content-section candles-csv-section">
@@ -2592,6 +2710,86 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 .catch(error => utils.showError('csv-content', error.message));
         }
 
+        // Sheep files functions
+        function refreshSheepFilesList() {
+            const select = document.getElementById('sheep-file-select');
+            const currentValue = select.value;
+            
+            utils.request('index.php?ajax=sheep_files_list')
+                .then(data => {
+                    utils.updateElement('sheep-files-heading', `Sheep Files (${data.count} files)`);
+                    select.innerHTML = '<option value="">-- Select a file --</option>';
+                    data.files.forEach(file => {
+                        const option = new Option(
+                            `${file.name} (${utils.formatBytes(file.size)})`,
+                            file.name
+                        );
+                        if (option.value === currentValue) option.selected = true;
+                        select.add(option);
+                    });
+                    alert('Sheep files refreshed');
+                })
+                .catch(error => alert('Error: ' + error.message));
+        }
+        
+        function loadSheepFile() {
+            const fileSelect = document.getElementById('sheep-file-select');
+            const contentDiv = document.getElementById('sheep-file-content');
+            
+            if (!fileSelect.value) {
+                contentDiv.innerHTML = '<p class="info-message">Select a file to view its contents.</p>';
+                return;
+            }
+            
+            contentDiv.innerHTML = '<p style="color: #856404;">Loading...</p>';
+            
+            utils.request(`index.php?ajax=read_sheep_file&file=${encodeURIComponent(fileSelect.value)}`)
+                .then(data => {
+                    contentDiv.innerHTML = data.success ? data.content : `<p class="error-message">Error: ${data.message}</p>`;
+                })
+                .catch(error => utils.showError('sheep-file-content', error.message));
+        }
+        
+        // Sheep files functions
+        function refreshSheepFilesList() {
+            const select = document.getElementById('sheep-file-select');
+            const currentValue = select.value;
+            
+            utils.request('index.php?ajax=sheep_files_list')
+                .then(data => {
+                    utils.updateElement('sheep-files-heading', `Sheep Files (${data.count} files)`);
+                    select.innerHTML = '<option value="">-- Select a file --</option>';
+                    data.files.forEach(file => {
+                        const option = new Option(
+                            `${file.name} (${utils.formatBytes(file.size)})`,
+                            file.name
+                        );
+                        if (option.value === currentValue) option.selected = true;
+                        select.add(option);
+                    });
+                    alert('Sheep files refreshed');
+                })
+                .catch(error => alert('Error: ' + error.message));
+        }
+        
+        function loadSheepFile() {
+            const fileSelect = document.getElementById('sheep-file-select');
+            const contentDiv = document.getElementById('sheep-file-content');
+            
+            if (!fileSelect.value) {
+                contentDiv.innerHTML = '<p class="info-message">Select a file to view its contents.</p>';
+                return;
+            }
+            
+            contentDiv.innerHTML = '<p style="color: #856404;">Loading...</p>';
+            
+            utils.request(`index.php?ajax=read_sheep_file&file=${encodeURIComponent(fileSelect.value)}`)
+                .then(data => {
+                    contentDiv.innerHTML = data.success ? data.content : `<p class="error-message">Error: ${data.message}</p>`;
+                })
+                .catch(error => utils.showError('sheep-file-content', error.message));
+        }
+        
         // Settings functions
         function autoResizeTextarea(textarea) {
             textarea.style.height = 'auto';
