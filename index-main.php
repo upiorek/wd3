@@ -1910,6 +1910,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Previous</button>
                 <button onclick="loadNextChart()" id="next-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">Next →</button>
                 <button onclick="loadLatestChart()" class="refresh-logs-btn" style="background-color: #007bff;">Latest</button>
+                <span id="chart-counter" style="margin-left: 10px; font-weight: bold;"></span>
             </div>
             <div id="chart-preview">
             <?php 
