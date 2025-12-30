@@ -27,3 +27,4 @@ aifx/tester-third/analyze.log
 
 sheep.log
 magic_lines.log
+sheep/*.log

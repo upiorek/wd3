@@ -149,11 +149,11 @@ def generate_chart_if_missing(m15_filename):
         if result.returncode == 0:
             # Check if PNG was created
             if os.path.exists(png_path):
-                print(f"Successfully generated chart: {png_filename}")
-                return f"GENERATED: {png_filename}\n{png_path}"
+                print(f"Successfully generated chart: {png_filename}\n{png_path}")
+                return f"GENERATED: {png_filename}"
             else:
-                print(f"Chart generation completed but PNG not found: {png_filename}")
-                return f"ERROR: PNG not created: {png_filename}\n{png_path}"
+                print(f"Chart generation completed but PNG not found: {png_filename}\n{png_path}")
+                return f"ERROR: PNG not created: {png_filename}"
         else:
             print(f"Chart generation failed: {result.stderr}")
             return f"ERROR: generation failed"
