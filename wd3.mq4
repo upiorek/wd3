@@ -11,8 +11,9 @@ datetime lastModifiedCheck = 0;
 datetime lastMarketLogTime = 0;
 datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
+
 int hearbeat = 0;
-string version = "3.21";
+string version = "3.23";
 
 // Simple risk management
 double tp = 200;
@@ -21,7 +22,7 @@ double sl = tp / 4;
 double bonus = tp / 10;
 
 // Max daily orders
-int maxOrders = 20;
+int maxOrders = 50;
 
 void LogAccountInfo()
 {
@@ -406,9 +407,8 @@ void LogOrderHistory()
       datetime currentDay = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
       datetime nextDay = currentDay + 86400; // Add 24 hours
       
-      string logData = "=== ORDER HISTORY LOG " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " ===\n";
-      logData += "Current Day Orders History\n";
-      
+      string logData = "history for: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n";
+    
       int totalHistoryOrders = OrdersHistoryTotal();
       int todayOrdersCount = 0;
       double totalProfit = 0.0;
@@ -446,7 +446,8 @@ void LogOrderHistory()
                   case OP_SELL: orderType = "SELL"; break;
                }
                
-               logData += IntegerToString(OrderTicket()) + " | " + orderType + " | " + OrderSymbol() + " | " +
+               logData += IntegerToString(OrderTicket()) + " | " + TimeToString(OrderOpenTime()) + "\n" +
+	                 orderType + " | " + OrderSymbol() + " | " +
                          DoubleToString(OrderLots(), 2) + " | " +
                          "Profit: " + DoubleToString(orderProfit, 2) + " | " +
                          "Commission: " + DoubleToString(orderCommission, 2) + " | " +
@@ -461,7 +462,7 @@ void LogOrderHistory()
       }
       else
       {
-         logData += "=== SUMMARY ===\n";
+         logData += "\n";
          logData += "Total orders closed today: " + IntegerToString(todayOrdersCount) + "\n";
          logData += "Total profit: " + DoubleToString(totalProfit, 2) + "\n";
          logData += "Total commission: " + DoubleToString(totalCommission, 2) + "\n";
@@ -474,8 +475,6 @@ void LogOrderHistory()
             logData += "Win rate: " + DoubleToString(winRate, 1) + "%\n";
          }
       }
-      
-      logData += "=== END HISTORY LOG ===\n\n";
       
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
@@ -712,6 +711,69 @@ void LogM15Candles()
    lastM15CandleTime = currentCandleTime;
 }
 
+void CheckBreakEvenOrders()
+{
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+      {
+         // Only process BUY and SELL orders
+         if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+            continue;
+            
+         double currentPrice;
+         double profitPoints;
+         double newStopLoss;
+	 bool modified;
+         
+         if(OrderType() == OP_BUY)
+         {
+            currentPrice = MarketInfo(OrderSymbol(), MODE_BID);
+            profitPoints = currentPrice - OrderOpenPrice();
+            newStopLoss = OrderOpenPrice() + bonus;
+            
+            // Check if profit has reached BE threshold and SL hasn't been moved to bonus yet
+            if(profitPoints >= be && OrderStopLoss() < newStopLoss)
+            {
+               modified = OrderModify(OrderTicket(), OrderOpenPrice(), newStopLoss, OrderTakeProfit(), OrderExpiration(), clrBlue);
+               if(modified)
+               {
+                  Print("BE triggered for BUY order ", OrderTicket(), 
+                        " - SL moved to bonus: ", DoubleToString(newStopLoss, 5),
+                        " (Profit: ", DoubleToString(profitPoints, 2), ")");
+               }
+               else
+               {
+                  Print("Failed to modify BUY order ", OrderTicket(), " Error: ", GetLastError());
+               }
+            }
+         }
+         else if(OrderType() == OP_SELL)
+         {
+            currentPrice = MarketInfo(OrderSymbol(), MODE_ASK);
+            profitPoints = OrderOpenPrice() - currentPrice;
+            newStopLoss = OrderOpenPrice() - bonus;
+            
+            // Check if profit has reached BE threshold and SL hasn't been moved to bonus yet
+            if(profitPoints >= be && (OrderStopLoss() == 0 || OrderStopLoss() > newStopLoss))
+            {
+               modified = OrderModify(OrderTicket(), OrderOpenPrice(), newStopLoss, OrderTakeProfit(), OrderExpiration(), clrRed);
+               if(modified)
+               {
+                  Print("BE triggered for SELL order ", OrderTicket(), 
+                        " - SL moved to bonus: ", DoubleToString(newStopLoss, 5),
+                        " (Profit: ", DoubleToString(profitPoints, 2), ")");
+               }
+               else
+               {
+                  Print("Failed to modify SELL order ", OrderTicket(), " Error: ", GetLastError());
+               }
+            }
+         }
+      }
+   }
+}
+
 void OnTick()
 {
    datetime currentTime = TimeCurrent();
@@ -759,12 +821,15 @@ void OnTick()
       lastModifiedCheck = currentTime;
    }
    
-   // Check for orders
+   // Check for new orders
    if(currentTime - lastFileCheck >= 5)
    {
       ReadAndSendOrderFromFile();
       lastFileCheck = currentTime;
    }
+
+   // Check for BE
+   CheckBreakEvenOrders();
 
    if(currentTime - lastFileCheck >= 30)
    {
