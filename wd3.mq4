@@ -32,18 +32,15 @@ void LogAccountInfo()
    {
       int todayOrders = CountOrdersOpenedToday();
 
-      string logData = "WD: " + version + " " + "Heartbeat: " + IntegerToString(hearbeat) + " | " + 
-                      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
-                      "Account: " + IntegerToString(AccountNumber()) + " | " +
-                      "Balance: " + DoubleToString(AccountBalance(), 2) + " | " +
-                      "Equity: " + DoubleToString(AccountEquity(), 2) + " | " +
-                      "Profit: " + DoubleToString(AccountProfit(), 2) + " | " +
-                      "Margin: " + DoubleToString(AccountMargin(), 2) + " | " +
-                      "Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | " +
+      string logData = "WD: " + version + " " + "Heartbeat: " + IntegerToString(hearbeat) + " / " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
+                      "Balance: " + DoubleToString(AccountBalance(), 2) + " / Equity: " + DoubleToString(AccountEquity(), 2) + " | " +
+                      "Margin: " + DoubleToString(AccountMargin(), 2) + " / Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | " +
                       "Margin Level: " + DoubleToString(AccountMargin() > 0 ? (AccountEquity() / AccountMargin()) * 100 : 0, 2) + "% | " +
                       "\n" + 
-                      "Active Orders: " + IntegerToString(OrdersTotal()) + " | " +
-                      "Daily limit: " + IntegerToString(todayOrders) + "/" + IntegerToString(maxOrders) + "\n";
+                      "Current Profit: " + DoubleToString(AccountProfit(), 2) + " | " +
+                      "Active Orders: " + IntegerToString(OrdersTotal()) + " / Daily limit: " + IntegerToString(todayOrders) + "/" + IntegerToString(maxOrders) +
+                      "\n" + 
+                      "sl: " + DoubleToString(sl, 0) + " / be: " + DoubleToString(be, 0) + " / tp: " + DoubleToString(tp, 0) + " / bonus: " + DoubleToString(bonus, 0) + "\n";
 
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);

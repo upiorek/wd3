@@ -136,13 +136,14 @@ def generate_chart_if_missing(m15_filename):
             return f"ERROR: CSV not found"
         
         print(f"Generating chart for {m15_filename}...")
+        timeout = 60  # seconds
         
         # Run magic_lines.py script
         result = subprocess.run(
             ['python3', MAGIC_LINES_SCRIPT, m15_full_path],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=60
         )
         
         if result.returncode == 0:
@@ -159,7 +160,7 @@ def generate_chart_if_missing(m15_filename):
             
     except subprocess.TimeoutExpired:
         print(f"Chart generation timed out for {m15_filename}")
-        return "ERROR: timeout"
+        return f"ERROR: timeout: waited more than {timeout} seconds"
     except Exception as e:
         print(f"Error generating chart: {e}")
         return f"ERROR: {str(e)}"
