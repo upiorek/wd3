@@ -13,7 +13,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.23";
+string version = "3.24";
 
 // Simple risk management
 double tp = 200;
@@ -443,12 +443,12 @@ void LogOrderHistory()
                   case OP_SELL: orderType = "SELL"; break;
                }
                
-               logData += IntegerToString(OrderTicket()) + " | " + TimeToString(OrderOpenTime()) + "\n" +
+               logData += IntegerToString(OrderTicket()) + " | " + TimeToString(OrderOpenTime()) + " => " + TimeToString(OrderCloseTime()) + "\n" +
 	                 orderType + " | " + OrderSymbol() + " | " +
                          DoubleToString(OrderLots(), 2) + " | " +
-                         "Profit: " + DoubleToString(orderProfit, 2) + " | " +
-                         "Commission: " + DoubleToString(orderCommission, 2) + " | " +
-                         "Net: " + DoubleToString(netProfit, 2) + "\n";
+                         "Profit: " + DoubleToString(orderProfit, 2) + "\n";
+                         //"Commission: " + DoubleToString(orderCommission, 2)
+                         //"Net: " + DoubleToString(netProfit, 2)
             }
          }
       }
