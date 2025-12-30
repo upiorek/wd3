@@ -1759,8 +1759,6 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 
         <!--<button onclick="refreshAccountLog()" style="margin-top: 15px;">Refresh</button>-->
 
-        <hr style="margin: 30px 0;">
-        
         <h2 id="orders-log-heading">Orders Log (<?php $orders_log = getOrdersLogData(); echo count($orders_log); ?>)</h2>
         <div id="orders-log-list" class="content-section orders-log">
             <?php
@@ -1859,8 +1857,10 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     <button type="button" onclick="dropOrder()" class="drop-order-btn">Drop</button>
                 </div>
             </div>
-        </div>        <hr style="margin: 30px 0;">
-        
+        </div>
+
+        <hr style="margin: 30px 0;">
+
         <div class="new-order-section">
             <h3>Add New Order</h3>
             <form id="new-order-form" class="new-order-form">
@@ -1991,7 +1991,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         </div>
         
         <h2>Sheep Settings</h2>
-        <div class="content-section settings-section" style="background-color: #f8f9fa; border-left: 4px solid #b6aa3dff; border-radius: 4px; padding: 15px;">
+        <div class="content-section settings-section" style="background-color: #f8f9fa; border-left: 4px solid #28a745; border-radius: 4px; padding: 15px;">
             <div class="settings-controls">
                 <textarea id="settings-editor" style="width: 95%; font-family: monospace; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; min-height: 30px; overflow-y: hidden;"></textarea>
                 <div style="margin-top: 10px;">
@@ -2001,7 +2001,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         </div>
         
         <h2 id="sheep-files-heading">Sheep Files (<?php $sheepFiles = getSheepFilesList(); echo count($sheepFiles); ?> files)</h2>
-        <div class="content-section sheep-files-section">
+        <div class="content-section sheep-files-section" style="background-color: #f8f9fa; border-left: 4px solid #fd7e14; border-radius: 4px; padding: 15px;">
             <div class="logs-controls">
                 <div class="form-group">
                     <label for="sheep-file-select">Select File:</label>
