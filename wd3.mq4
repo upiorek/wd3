@@ -404,7 +404,7 @@ void LogOrderHistory()
       datetime currentDay = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
       datetime nextDay = currentDay + 86400; // Add 24 hours
       
-      string logData = "history for: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n";
+      string logData = "history for: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n\n";
     
       int totalHistoryOrders = OrdersHistoryTotal();
       int todayOrdersCount = 0;
@@ -446,7 +446,8 @@ void LogOrderHistory()
                logData += IntegerToString(OrderTicket()) + " | " + TimeToString(OrderOpenTime()) + " => " + TimeToString(OrderCloseTime()) + "\n" +
 	                 orderType + " | " + OrderSymbol() + " | " +
                          DoubleToString(OrderLots(), 2) + " | " +
-                         "Profit: " + DoubleToString(orderProfit, 2) + "\n";
+                         "Profit: " + DoubleToString(orderProfit, 2) +
+                         "\n---\n";
                          //"Commission: " + DoubleToString(orderCommission, 2)
                          //"Net: " + DoubleToString(netProfit, 2)
             }
