@@ -165,6 +165,111 @@ def generate_chart_if_missing(m15_filename):
         print(f"Error generating chart: {e}")
         return f"ERROR: {str(e)}"
 
+def get_current_market_price(symbol="US100.f"):
+    """Get current market price from market_log.txt."""
+    try:
+        market_log = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/market_log.txt"
+        with open(market_log, 'r') as f:
+            for line in f:
+                if symbol in line:
+                    # Parse line like "US100.f: 25696.99 | EURUSD: 1.17505"
+                    parts = line.split('|')
+                    for part in parts:
+                        if symbol in part:
+                            price_str = part.split(':')[1].strip()
+                            return float(price_str)
+        return None
+    except Exception as e:
+        print(f"Error reading market price: {e}")
+        return None
+
+def get_existing_orders(symbol="US100.f", order_type=None):
+    """Get existing open orders from orders_log.txt."""
+    orders = []
+    try:
+        orders_log = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders_log.txt"
+        with open(orders_log, 'r') as f:
+            for line in f:
+                if symbol in line and '|' in line:
+                    # Parse line like: "17614451 | BUY | US100.f | 0.01 | 25714.61000 | ..."
+                    parts = [p.strip() for p in line.split('|')]
+                    if len(parts) >= 5:
+                        order_info = {
+                            'type': parts[1],
+                            'symbol': parts[2],
+                            'open_price': float(parts[4])
+                        }
+                        # Filter by order type if specified
+                        if order_type is None or order_info['type'] == order_type:
+                            orders.append(order_info)
+        return orders
+    except Exception as e:
+        print(f"Error reading existing orders: {e}")
+        return []
+
+# Minimum orders distance is 15 points, skip if too close
+def is_price_too_close(current_price, existing_orders, min_distance=15.0):
+    """Check if current price is too close to any existing order of the same type."""
+    for order in existing_orders:
+        price_diff = abs(current_price - order['open_price'])
+        if price_diff < min_distance:
+            print(f"Price {current_price} is too close to existing order at {order['open_price']} (diff: {price_diff:.2f})")
+            return True
+    return False
+
+def write_order_to_approved(order_type, latest_m15):
+    """Write order to approved.txt file."""
+    approved_file = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt"
+    
+    # Check current market price and existing orders
+    current_price = get_current_market_price("US100.f")
+    if current_price is None:
+        print("Cannot get current market price, skipping order")
+        return None, None
+    
+    existing_orders = get_existing_orders("US100.f", order_type)
+    candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
+    
+    if is_price_too_close(current_price, existing_orders):
+        print(f"Skipping {order_type} order - price too close to existing {order_type} order(s)")
+        return f"SKIPPED_{order_type}", candle_time
+    
+    try:
+        with open(approved_file, 'a') as f:
+            f.write(f"US100.f {order_type} 0.01 0 0 0\n")
+        print(f"Signal detected: Added {order_type} order to approved.txt")
+        return order_type, candle_time
+    except Exception as e:
+        print(f"Error writing {order_type} to approved.txt: {e}")
+        return None, None
+
+def check_for_signals(log_content, latest_m15):
+    """Check magic_lines.log for trading signals and write to approved.txt if found."""
+    
+    for line in log_content.splitlines():
+        if not line.startswith("Wynik:"):
+            continue
+        
+        crossed_pos = line.find("CROSSED")
+        if crossed_pos == -1:
+            continue
+        
+        # Check for BUY signal (ascending lines: AS or AR)
+        up_pos = line.find("UP")
+        if up_pos > crossed_pos:
+            between = line[crossed_pos:up_pos]
+            if "AS" in between or "AR" in between:
+                return write_order_to_approved("BUY", latest_m15)
+        
+        # Check for SELL signal (descending lines: DS or DR)
+        down_pos = line.find("DOWN")
+        if down_pos > crossed_pos:
+            between = line[crossed_pos:down_pos]
+            if "DS" in between or "DR" in between:
+                return write_order_to_approved("SELL", latest_m15)
+    
+    return None, None
+
 def write_sheep_file():
     """Write hello world and current time to the sheep file."""
     global heartbeat
@@ -192,58 +297,25 @@ def write_sheep_file():
         if moved_count > 0:
             content += f"Moved {moved_count} old file(s) this update\n"
         
-        # Add magic_lines.log to the content
+        # Add magic_lines.log to the content and check for signals
         try:
-                with open('/home/ubuntu/repo/magic_lines.log', 'r') as log_file:
-                        log_content = log_file.read()
-                content += "\n" + log_content
-                
-                # If chart status in GENERATED, check for signals
-                if "GENERATED" in chart_status:
-                        # Check for Wynik line with CROSSED and UP/DOWN
-                        for line in log_content.splitlines():
-                                if line.startswith("Wynik:"):
-                                        approved_file = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt"
-
-                                        # Check for UP signal (BUY) for ASCENDING line like ASx or ARx,
-                                        # that is mentioned between CROSSED and UP words
-                                        crossed_pos = line.find("CROSSED")
-                                        up_pos = line.find("UP")
-                                        if crossed_pos != -1 and up_pos > crossed_pos:
-                                                between = line[crossed_pos:up_pos]
-                                                if "AS" in between or "AR" in between:
-                                                        try:
-                                                                with open(approved_file, 'a') as f:
-                                                                        f.write("US100.f BUY 0.01 0 0 0\n")
-                                                                content += f"\n[SIGNAL DETECTED] Added BUY order to approved.txt\n"
-                                                                print(f"Signal detected: Added BUY order to approved.txt")
-                                                                candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
-                                                                with open(f"/home/ubuntu/repo/sheep/sheep_actions_{candle_time}.log", "w") as f:
-                                                                        f.write(content)
-                                                        except Exception as e:
-                                                                content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
-                                                                print(f"Error writing to approved.txt: {e}")
-                                                        break
-                                        
-                                        # Check for DOWN signal (SELL) for DESCENDING line like DSx or DRx
-                                        down_pos = line.find("DOWN")
-                                        if crossed_pos != -1 and down_pos > crossed_pos:
-                                                between = line[crossed_pos:down_pos]
-                                                if "DS" in between or "DR" in between:
-                                                        try:
-                                                                with open(approved_file, 'a') as f:
-                                                                        f.write("US100.f SELL 0.01 0 0 0\n")
-                                                                content += f"\n[SIGNAL DETECTED] Added SELL order to approved.txt\n"
-                                                                print(f"Signal detected: Added SELL order to approved.txt")
-                                                                candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
-                                                                with open(f"/home/ubuntu/repo/sheep/sheep_actions_{candle_time}.log", "w") as f:
-                                                                        f.write(content)
-                                                        except Exception as e:
-                                                                content += f"\n[ERROR] Could not write to approved.txt: {e}\n"
-                                                                print(f"Error writing to approved.txt: {e}")
-                                                        break
+            with open('/home/ubuntu/repo/magic_lines.log', 'r') as log_file:
+                log_content = log_file.read()
+            content += "\n" + log_content
+            
+            # If chart was just generated, check for trading signals
+            if "GENERATED" in chart_status:
+                signal_type, candle_time = check_for_signals(log_content, latest_m15)
+                if signal_type:
+                    if signal_type.startswith("SKIPPED_"):
+                        order_type = signal_type.replace("SKIPPED_", "")
+                        content += f"\n[SIGNAL SKIPPED] {order_type} order too close to existing order\n"
+                    else:
+                        content += f"\n[SIGNAL DETECTED] Added {signal_type} order to approved.txt\n"
+                    with open(f"/home/ubuntu/repo/sheep/sheep_actions_{candle_time}.log", "w") as f:
+                        f.write(content)
         except Exception as e:
-                content += f"Could not read magic_lines.log.\n"
+            content += f"Could not read magic_lines.log.\n"
 
         with open("/home/ubuntu/repo/sheep.log", "w") as f:
             f.write(content)
