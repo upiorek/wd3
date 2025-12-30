@@ -444,9 +444,8 @@ void LogOrderHistory()
                }
                
                logData += IntegerToString(OrderTicket()) + " | " + TimeToString(OrderOpenTime()) + " => " + TimeToString(OrderCloseTime()) + "\n" +
-	                 orderType + " | " + OrderSymbol() + " | " +
-                         DoubleToString(OrderLots(), 2) + " | " +
-                         "Profit: " + DoubleToString(orderProfit, 2) +
+	                 orderType + " | " + OrderSymbol() + " | " + DoubleToString(OrderLots(), 2)  + "\n" +
+                         "Open: " + DoubleToString(OrderOpenPrice(), 2) + " | " + "Profit: " + DoubleToString(orderProfit, 2) +
                          "\n---\n";
                          //"Commission: " + DoubleToString(orderCommission, 2)
                          //"Net: " + DoubleToString(netProfit, 2)
