@@ -723,7 +723,7 @@ function refreshOrderHistoryLog() {
         $content = file_get_contents(ORDER_HISTORY_LOG_FILE);
         $content = htmlspecialchars($content);
         echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
-        echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
+        // echo '<small class="timestamp">Last updated: ' . $timestamp . '</small>';
     } else {
         echo '<p class="error-message">Order history log file not found.</p>';
     }

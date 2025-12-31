@@ -9,19 +9,18 @@ Simple background service that creates a 'sheep' file with hello world and curre
 #   pkill -f sheep_service.py
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import signal
-import sys
 import os
 import shutil
 import subprocess
 
-# Flag to control the service loop
+# Global state
 running = True
 heartbeat = 1
 
 # Candles directory paths
-VERSION = "1.5"
+VERSION = "1.7"
 CANDLES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles"
 CANDLES_OLD_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles_old"
 CHARTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts"
@@ -35,56 +34,83 @@ def signal_handler(sig, frame):
     running = False
 
 def move_old_candle_files():
-    """Move candle files older than 1 day to the old directory."""
+    """Move candle files from previous day(s) to the old directory."""
     try:
-        # Create old directory if it doesn't exist
         if not os.path.exists(CANDLES_OLD_DIR):
             os.makedirs(CANDLES_OLD_DIR)
-            print(f"Created directory: {CANDLES_OLD_DIR}")
         
         if not os.path.exists(CANDLES_DIR):
-            print(f"Candles directory not found: {CANDLES_DIR}")
             return 0
         
-        # Get current time
-        current_time = time.time()
-        one_day_ago = current_time - (24 * 60 * 60)
-        
+        today = datetime.now().date()
         moved_count = 0
         
-        # Check all files in candles directory
         for filename in os.listdir(CANDLES_DIR):
             file_path = os.path.join(CANDLES_DIR, filename)
             
-            # Only process files, not directories
             if os.path.isfile(file_path):
-                # Get file modification time
                 file_mtime = os.path.getmtime(file_path)
+                file_date = datetime.fromtimestamp(file_mtime).date()
                 
-                # If file is older than 1 day, move it
-                if file_mtime <= one_day_ago:
+                if file_date < today:
                     dest_path = os.path.join(CANDLES_OLD_DIR, filename)
                     shutil.move(file_path, dest_path)
                     moved_count += 1
-                    print(f"Moved old file: {filename}")
         
         if moved_count > 0:
-            print(f"Moved {moved_count} old candle file(s) to {CANDLES_OLD_DIR}")
+            print(f"Moved {moved_count} old candle file(s)")
         
         return moved_count
     except Exception as e:
         print(f"Error moving old candle files: {e}")
         return 0
 
+def move_old_sheep_logs():
+    """Move sheep action logs from previous day(s) to sheep_old directory."""
+    try:
+        sheep_logs_dir = "/home/ubuntu/repo/sheep"
+        sheep_old_dir = "/home/ubuntu/repo/sheep_old"
+        
+        if not os.path.exists(sheep_old_dir):
+            os.makedirs(sheep_old_dir)
+        
+        if not os.path.exists(sheep_logs_dir):
+            return 0
+        
+        today = datetime.now().date()
+        moved_count = 0
+        
+        for filename in os.listdir(sheep_logs_dir):
+            if filename.startswith("sheep_actions_") and filename.endswith(".log"):
+                file_path = os.path.join(sheep_logs_dir, filename)
+                
+                if os.path.isfile(file_path):
+                    try:
+                        # Extract date from filename: sheep_actions_YYYY-MM-DD-HH-MM.log
+                        date_part = filename.replace("sheep_actions_", "").replace(".log", "")
+                        file_datetime = datetime.strptime(date_part, "%Y-%m-%d-%H-%M")
+                        file_date = file_datetime.date()
+                        
+                        if file_date < today:
+                            dest_path = os.path.join(sheep_old_dir, filename)
+                            shutil.move(file_path, dest_path)
+                            moved_count += 1
+                    except ValueError:
+                        continue
+        
+        if moved_count > 0:
+            print(f"Moved {moved_count} old sheep log(s)")
+        
+        return moved_count
+    except Exception as e:
+        print(f"Error moving old sheep logs: {e}")
+        return 0
+
 def count_files_in_directory(directory):
     """Count the number of files in a directory."""
-    try:
-        if not os.path.exists(directory):
-            return 0
-        return len([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
-    except Exception as e:
-        print(f"Error counting files in {directory}: {e}")
+    if not os.path.exists(directory):
         return 0
+    return len([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
 
 def get_latest_m15_file():
     """Get the name of the latest m15 file in the candles directory."""
@@ -136,9 +162,8 @@ def generate_chart_if_missing(m15_filename):
             return f"ERROR: CSV not found"
         
         print(f"Generating chart for {m15_filename}...")
-        timeout = 60  # seconds
         
-        # Run magic_lines.py script
+        # Run magic_lines.py script (60 second timeout)
         result = subprocess.run(
             ['python3', MAGIC_LINES_SCRIPT, m15_full_path],
             capture_output=True,
@@ -160,7 +185,7 @@ def generate_chart_if_missing(m15_filename):
             
     except subprocess.TimeoutExpired:
         print(f"Chart generation timed out for {m15_filename}")
-        return f"ERROR: timeout: waited more than {timeout} seconds"
+        return f"ERROR: timeout (60s)"
     except Exception as e:
         print(f"Error generating chart: {e}")
         return f"ERROR: {str(e)}"
@@ -353,12 +378,12 @@ def main():
             print(f"Error reading settings file: {e}")
         
         write_sheep_file()
-        
-        # Wait before next update (or exit if stopped)
-        for _ in range(1):
-            if not running:
-                break
-            time.sleep(1)
+
+        # Move old sheep action logs from previous day(s)
+        move_old_sheep_logs()
+
+        # Wait before next update
+        time.sleep(1)
     
     print("Sheep service stopped.")
 
