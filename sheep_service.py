@@ -20,7 +20,7 @@ running = True
 heartbeat = 1
 
 # Candles directory paths
-VERSION = "1.7"
+VERSION = "1.8"
 CANDLES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles"
 CANDLES_OLD_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles_old"
 CHARTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts"
@@ -111,6 +111,23 @@ def count_files_in_directory(directory):
     if not os.path.exists(directory):
         return 0
     return len([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
+
+def get_min_distance_from_settings():
+    """Read min_distance value from settings file."""
+    try:
+        settings_file = "/home/ubuntu/repo/settings"
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('min_distance:'):
+                        value = line.split(':', 1)[1].strip()
+                        return float(value)
+        # Default value if not found in settings
+        return 15.0
+    except Exception as e:
+        print(f"Error reading min_distance from settings: {e}")
+        return 15.0
 
 def get_latest_m15_file():
     """Get the name of the latest m15 file in the candles directory."""
@@ -232,17 +249,17 @@ def get_existing_orders(symbol="US100.f", order_type=None):
         print(f"Error reading existing orders: {e}")
         return []
 
-# Minimum orders distance is 15 points, skip if too close
-def is_price_too_close(current_price, existing_orders, min_distance=15.0):
+# Minimum orders distance is configurable from settings file
+def is_price_too_close(current_price, existing_orders, min_distance):
     """Check if current price is too close to any existing order of the same type."""
     for order in existing_orders:
         price_diff = abs(current_price - order['open_price'])
         if price_diff < min_distance:
-            print(f"Price {current_price} is too close to existing order at {order['open_price']} (diff: {price_diff:.2f})")
+            print(f"Price {current_price} is too close to existing order at {order['open_price']} (diff: {price_diff:.2f}, min: {min_distance})")
             return True
     return False
 
-def write_order_to_approved(order_type, latest_m15):
+def write_order_to_approved(order_type, latest_m15, min_distance):
     """Write order to approved.txt file."""
     approved_file = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt"
     
@@ -255,7 +272,7 @@ def write_order_to_approved(order_type, latest_m15):
     existing_orders = get_existing_orders("US100.f", order_type)
     candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
     
-    if is_price_too_close(current_price, existing_orders):
+    if is_price_too_close(current_price, existing_orders, min_distance):
         print(f"Skipping {order_type} order - price too close to existing {order_type} order(s)")
         return f"SKIPPED_{order_type}", candle_time
     
@@ -268,7 +285,7 @@ def write_order_to_approved(order_type, latest_m15):
         print(f"Error writing {order_type} to approved.txt: {e}")
         return None, None
 
-def check_for_signals(log_content, latest_m15):
+def check_for_signals(log_content, latest_m15, min_distance):
     """Check magic_lines.log for trading signals and write to approved.txt if found."""
     
     for line in log_content.splitlines():
@@ -284,14 +301,14 @@ def check_for_signals(log_content, latest_m15):
         if up_pos > crossed_pos:
             between = line[crossed_pos:up_pos]
             if "AS" in between or "AR" in between:
-                return write_order_to_approved("BUY", latest_m15)
+                return write_order_to_approved("BUY", latest_m15, min_distance)
         
         # Check for SELL signal (descending lines: DS or DR)
         down_pos = line.find("DOWN")
         if down_pos > crossed_pos:
             between = line[crossed_pos:down_pos]
             if "DS" in between or "DR" in between:
-                return write_order_to_approved("SELL", latest_m15)
+                return write_order_to_approved("SELL", latest_m15, min_distance)
     
     return None, None
 
@@ -330,7 +347,8 @@ def write_sheep_file():
             
             # If chart was just generated, check for trading signals
             if "GENERATED" in chart_status:
-                signal_type, candle_time = check_for_signals(log_content, latest_m15)
+                min_distance = get_min_distance_from_settings()
+                signal_type, candle_time = check_for_signals(log_content, latest_m15, min_distance)
                 if signal_type:
                     if signal_type.startswith("SKIPPED_"):
                         order_type = signal_type.replace("SKIPPED_", "")

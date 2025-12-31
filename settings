@@ -1,2 +1,7 @@
+# sheep service configuration version 1.8
+
 # service: enabled or disabled
 service: enabled
+
+# min_distance: value in points
+min_distance: 15
