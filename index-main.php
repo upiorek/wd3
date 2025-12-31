@@ -2010,8 +2010,11 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 	
         <hr style="margin: 30px 0;">
         
-        <h2>Daily Order History Log</h2>
-        <div id="order-history-log" class="content-section order-history-log">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <h2 style="margin: 0;">Daily Order History</h2>
+            <button type="button" id="toggle-order-history-btn" onclick="toggleOrderHistoryLog()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
+        </div>
+        <div id="order-history-log" class="content-section order-history-log" style="display: none;">
             <?php refreshOrderHistoryLog(); ?>
         </div>
 
@@ -2019,8 +2022,11 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 
         <hr style="margin: 30px 0;">
         
-        <h2 id="logs-heading">Logs (<?php $logFiles = getLogFilesList(); echo count($logFiles); ?> files)</h2>
-        <div class="content-section logs-section">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <h2 id="logs-heading" style="margin: 0;">Logs (<?php $logFiles = getLogFilesList(); echo count($logFiles); ?> files)</h2>
+            <button type="button" id="toggle-logs-btn" onclick="toggleLogsSection()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
+        </div>
+        <div id="logs-section" class="content-section logs-section" style="display: none;">
             <div class="logs-controls">
                 <div class="form-group">
                     <label for="log-file-select">Select Log File:</label>
@@ -2099,7 +2105,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <h2>M15 Charts <span id="chart-counter" style="font-size: 0.8em; color: #666;"></span></h2>
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
-                <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Previous</button>
+                <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Prev</button>
                 <button onclick="loadNextChart()" id="next-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">Next →</button>
                 <button onclick="loadLatestChart()" class="refresh-logs-btn" style="background-color: #007bff;">Latest</button>
                 <span id="chart-counter" style="margin-left: 10px; font-weight: bold;"></span>
@@ -2127,8 +2133,13 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             </div>
         </div>
         
-        <h2 id="candles-csv-heading">Candle Data - <?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files</h2>
-        <div class="content-section candles-csv-section">
+        <hr style="margin: 30px 0;">
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <h2 id="candles-csv-heading" style="margin: 0;">Candle Data - <?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files</h2>
+            <button type="button" id="toggle-candles-btn" onclick="toggleCandlesSection()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
+        </div>
+        <div id="candles-section" class="content-section candles-csv-section" style="display: none;">
             <div class="logs-controls">
                 <div class="form-group">
                     <label for="csv-file-select">Select CSV File:</label>
@@ -2685,6 +2696,65 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         // Chart navigation
         let currentChartIndex = 0;
+
+        // Daily Order History Log collapse state (collapsed by default)
+        let isOrderHistoryLogCollapsed = true;
+
+        // Logs section collapse state (collapsed by default)
+        let isLogsCollapsed = true;
+
+        // Candle Data section collapse state (collapsed by default)
+        let isCandlesCollapsed = true;
+
+        function toggleOrderHistoryLog() {
+            const section = document.getElementById('order-history-log');
+            const btn = document.getElementById('toggle-order-history-btn');
+            if (!section || !btn) return;
+
+            isOrderHistoryLogCollapsed = !isOrderHistoryLogCollapsed;
+
+            if (isOrderHistoryLogCollapsed) {
+                section.style.display = 'none';
+                btn.textContent = 'Show';
+            } else {
+                section.style.display = 'block';
+                btn.textContent = 'Hide';
+                // Refresh immediately when expanding
+                refresh.orderHistoryLog();
+            }
+        }
+
+        function toggleLogsSection() {
+            const section = document.getElementById('logs-section');
+            const btn = document.getElementById('toggle-logs-btn');
+            if (!section || !btn) return;
+
+            isLogsCollapsed = !isLogsCollapsed;
+
+            if (isLogsCollapsed) {
+                section.style.display = 'none';
+                btn.textContent = 'Show';
+            } else {
+                section.style.display = 'block';
+                btn.textContent = 'Hide';
+            }
+        }
+
+        function toggleCandlesSection() {
+            const section = document.getElementById('candles-section');
+            const btn = document.getElementById('toggle-candles-btn');
+            if (!section || !btn) return;
+
+            isCandlesCollapsed = !isCandlesCollapsed;
+
+            if (isCandlesCollapsed) {
+                section.style.display = 'none';
+                btn.textContent = 'Show';
+            } else {
+                section.style.display = 'block';
+                btn.textContent = 'Hide';
+            }
+        }
         
         function loadChart(index) {
             utils.request(`index.php?ajax=get_m15_chart&index=${index}`)
@@ -2704,9 +2774,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                                     display: inline-block; padding: 8px 8px; 
                                     background-color: #007bff; color: white; text-decoration: none; 
                                     border-radius: 4px; margin-top: 10px; margin-left: 15px;
-                                    ">
-                                Open Chart in New Tab</a></h4>
-                            <img src="data:image/png;base64,${data.imageData}" alt="M15 Chart" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />
+                                    ">Open</a></h4>
+                            <img src="data:image/png;base64,${data.imageData}" alt="M15 Chart" style="max-width: 100%; 
+                                height: auto; border: 1px solid #ddd; border-radius: 4px;" />
                         </div>
                     `;
                     document.getElementById('chart-preview').innerHTML = html;
@@ -2931,7 +3001,8 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             setInterval(() => {
                 refresh.accountLog();
                 refresh.ordersLog();
-                refresh.orderHistoryLog();
+                if (!isOrderHistoryLogCollapsed) 
+                    refresh.orderHistoryLog();
                 refresh.profits();
             }, 1000);
             
