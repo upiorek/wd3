@@ -319,7 +319,24 @@ function generateOrdersLogTable($ordersLog) {
     $html .= '<tbody>';
     
     foreach ($ordersLog as $order) {
-        $html .= '<tr>';
+        // Check if SL is profitable
+        $isProfitableSL = false;
+        if ($order['stopLoss'] !== 'N/A' && $order['openPrice'] !== 'N/A') {
+            $sl = floatval($order['stopLoss']);
+            $openPrice = floatval($order['openPrice']);
+            
+            if ($sl > 0) {
+                if ($order['type'] === 'BUY' && $sl > $openPrice) {
+                    $isProfitableSL = true;
+                } elseif ($order['type'] === 'SELL' && $sl < $openPrice) {
+                    $isProfitableSL = true;
+                }
+            }
+        }
+        
+        $rowStyle = $isProfitableSL ? ' style="background-color: #d4edda;"' : '';
+        
+        $html .= '<tr' . $rowStyle . '>';
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
         $html .= '<td>' . ($order['openTime'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openTime'])) . '</td>';
         $html .= '<td>' . htmlspecialchars($order['type']) . '</td>';
@@ -338,7 +355,24 @@ function generateOrdersLogTable($ordersLog) {
     // Generate mobile card layout
     $html .= '<div class="orders-log-cards">';
     foreach ($ordersLog as $order) {
-        $html .= '<div class="order-card">';
+        // Check if SL is profitable
+        $isProfitableSL = false;
+        if ($order['stopLoss'] !== 'N/A' && $order['openPrice'] !== 'N/A') {
+            $sl = floatval($order['stopLoss']);
+            $openPrice = floatval($order['openPrice']);
+            
+            if ($sl > 0) {
+                if ($order['type'] === 'BUY' && $sl > $openPrice) {
+                    $isProfitableSL = true;
+                } elseif ($order['type'] === 'SELL' && $sl < $openPrice) {
+                    $isProfitableSL = true;
+                }
+            }
+        }
+        
+        $cardStyle = $isProfitableSL ? ' style="background-color: #d4edda;"' : '';
+        
+        $html .= '<div class="order-card"' . $cardStyle . '>';
         
         // First row: Labels (Ticket, Type, Symbol, Lots)
         $html .= '<div class="card-row labels">';
