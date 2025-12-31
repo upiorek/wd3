@@ -2025,6 +2025,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 
         <hr style="margin: 30px 0;">
 
+        <h2>M15 Charts <span id="chart-counter" style="font-size: 0.8em; color: #666;"></span></h2>
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
                 <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Previous</button>
@@ -2866,6 +2867,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             setInterval(() => {
                 refresh.sheepStatus();
             }, 1000);
+            
+            // Load latest chart on page load
+            loadLatestChart();
         });
     </script>
 </body>
