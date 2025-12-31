@@ -1374,6 +1374,43 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 'hasNext' => $index > 0
             ]);
             break;
+
+        case 'view_m15_chart':
+            // Streams the PNG directly (used for opening in a new tab)
+            $index = isset($_GET['index']) ? intval($_GET['index']) : 0;
+            $charts = getAllM15Charts();
+
+            if (empty($charts)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'No charts available';
+                exit;
+            }
+
+            if ($index < 0 || $index >= count($charts)) {
+                http_response_code(400);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Invalid chart index';
+                exit;
+            }
+
+            $chartName = $charts[$index];
+            $chartPath = MQL4_FILES_PATH . '/candles/charts/' . $chartName;
+
+            if (!file_exists($chartPath)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Chart file not found';
+                exit;
+            }
+
+            header('Content-Type: image/png');
+            header('Content-Disposition: inline; filename="' . basename($chartName) . '"');
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            readfile($chartPath);
+            exit;
             
         case 'download_candles_csv':
             if (!isset($_GET['file'])) {
@@ -2662,7 +2699,13 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     // Update chart display
                     const html = `
                         <div class="chart-preview-content">
-                            <h4>${data.chartName}</h4>
+                            <h4>${data.chartName} 
+                                <a href="index.php?ajax=view_m15_chart&index=${data.currentIndex}" target="_blank" rel="noopener" style="
+                                    display: inline-block; padding: 8px 8px; 
+                                    background-color: #007bff; color: white; text-decoration: none; 
+                                    border-radius: 4px; margin-top: 10px; margin-left: 15px;
+                                    ">
+                                Open Chart in New Tab</a></h4>
                             <img src="data:image/png;base64,${data.imageData}" alt="M15 Chart" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />
                         </div>
                     `;
