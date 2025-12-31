@@ -2,9 +2,22 @@ import os
 import time
 import sys
 from pathlib import Path
+import importlib.util
+import shutil
 
-ALGO = "odd_even"
-#ALGO = "magic_lines"
+# Prefer importing via the aifx package (works well with VS Code/Pylance).
+# When launched from inside aifx/tester-third, ensure repo root is on sys.path.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+STRATEGY_DIR = Path(__file__).resolve().parent.parent / "strategy"
+
+#ALGO = "odd_even"
+ALGO = "magic_lines"
+
+from aifx.strategy import magic_lines as magic_lines
+from aifx.strategy import decissioner as decissioner
 
 def process_file(file_path, revert=False):
     """Process or revert a CSV file - simulates order-maker logic."""
@@ -68,26 +81,44 @@ def process_file(file_path, revert=False):
                     is_odd = (price_int % 2 == 1)
                     order_type = "BUY" if is_odd else "SELL"
                     processed_lines.append(f"{ohlc_line} {order_type}\n")
-                    continue                
+                    continue
+                
                 elif ALGO == "magic_lines":
                     # dump [0:i] lines to temp file
                     temp_lines = []
                     for j in range(i):
                         temp_lines.append(f"{';'.join(lines[j].strip().split(';')[:5])}\n")
-                    temp_path = file_path.parent / "temp_candles.csv"
+                    # add _temp suffix to avoid overwriting original
+                    temp_path = file_path.parent / f"{file_path.stem}_temp.csv"
                     with open(temp_path, 'w') as temp_f:
                         temp_f.writelines(temp_lines)
 
-                    # call aifx\strategy\magic_lines.py process_single_file()
-                    # get result from stdout
-                    result = os.popen(f'python "{Path(__file__).parent.parent / "strategy" / "magic_lines.py"}" "{temp_path}"').read().strip()
-                    temp_path.unlink()  # remove temp file
-                    if "CROSSED UP" in result:
-                        order_type = "BUY"
-                    elif "CROSSED DOWN" in result:
-                        order_type = "SELL"
+                    charts_dir = file_path.parent / "charts"
+                    if not charts_dir.exists():
+                        charts_dir.mkdir(parents=True, exist_ok=True)
+
+                    # check if chart and result file exist and if not - call magic_lines.process_single_file()                    
+                    result_txt_path = file_path.parent / "charts" / f"{file_path.stem}_result.txt"
+                    if result_txt_path.exists():
+                        with open(result_txt_path, 'r') as result_f:
+                            result = result_f.read().strip()
                     else:
-                        order_type = "NONE"
+                        result = magic_lines.process_single_file(str(temp_path), output_dir=str(file_path.parent / "charts"))
+
+
+                        # save result data to txt file next to charts
+                        with open(result_txt_path, 'w') as result_f:
+                            result_f.write(result or "No result\n")
+
+                        # rename chart file to match current file
+                        chart_path = file_path.parent / "charts" / f"{temp_path.stem}.png"
+                        if chart_path.exists():
+                            new_chart_path = file_path.parent / "charts" / f"{file_path.stem}.png"
+                            chart_path.rename(new_chart_path)
+
+                    temp_path.unlink()
+
+                    order_type = decissioner.decision(result)
                     processed_lines.append(f"{ohlc_line} {order_type}\n")
                     continue
             
@@ -110,6 +141,21 @@ def main():
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
     compare_mode = len(sys.argv) > 1 and sys.argv[1] == "--compare"
     test_mode = len(sys.argv) > 1 and sys.argv[1] == "--test"
+
+    def _clean_charts_dir(charts_dir: Path) -> None:
+        if not charts_dir.exists():
+            charts_dir.mkdir(parents=True, exist_ok=True)
+            return
+        if not charts_dir.is_dir():
+            return
+        for p in charts_dir.iterdir():
+            try:
+                if p.is_file() and p.suffix.lower() == ".png":
+                    p.unlink()
+                elif p.is_dir():
+                    shutil.rmtree(p)
+            except Exception as e:
+                print(f"Warning: could not remove {p}: {e}")
     
     # Check for candles in mt4_test_results first, then fall back to m15_candles or m15_tests
     if test_mode:
@@ -136,6 +182,16 @@ def main():
                         if revert or not f.stem.endswith("_mod")])
     
     print(f"Found {len(csv_files)} files\n")
+
+    # In test mode, always start with a clean charts folder.
+    # Requested cleanup target: mt4_test_results/m15_candles/charts.
+    if test_mode and not revert:
+        requested_charts_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles" / "charts"
+        _clean_charts_dir(requested_charts_dir)
+        # Also clean the charts dir for the folder we are actively processing.
+        active_charts_dir = candles_dir / "charts"
+        if active_charts_dir.resolve() != requested_charts_dir.resolve():
+            _clean_charts_dir(active_charts_dir)
     
     if not revert:
         # Get list of order files to match (only in compare mode)
@@ -167,7 +223,10 @@ def main():
                         files_to_remove.append(csv_file)
                         skipped_count += 1
             else:
-                # Normal mode: process all files
+                # Normal mode: process all files (except _mod and _temp)
+                if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
+                    continue
+
                 process_file(csv_file, revert)
                 processed_count += 1
         
@@ -187,6 +246,16 @@ def main():
     else:
         for csv_file in csv_files:
             process_file(csv_file, revert)
+        # delete "charts" directory
+        charts_dir = candles_dir / "charts"
+        if charts_dir.exists() and charts_dir.is_dir():
+            try:
+                for chart_file in charts_dir.glob("*.png"):
+                    chart_file.unlink()
+                charts_dir.rmdir()
+                print(f"\nRemoved charts directory: {charts_dir}")
+            except Exception as e:
+                print(f"Error removing charts directory: {e}")
     
     print("\nComplete!")
 

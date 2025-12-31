@@ -229,7 +229,7 @@ def process_mod_file(file_path):
         lines = f.readlines()
     
     if len(lines) < 2:
-        return None, False, 0, 1
+        return None, False, 0, 1, None, None
     
     # Find the line with BUY or SELL
     signal_line_idx = None
@@ -247,21 +247,21 @@ def process_mod_file(file_path):
     
     if signal_line_idx is None or signal is None:
         # print(f"No signal found in {file_path.name}")
-        return None, False, 0, 1
+        return None, False, 0, 1, None, None
     
     # Get entry price (open price of next candle after signal)
     if signal_line_idx + 1 >= len(lines):
         print(f"No candles after signal in {file_path.name}")
-        return None, False, 0, 1
+        return None, False, 0, 1, None, signal
     
     entry_candle = lines[signal_line_idx + 1].strip().split(';')
     if len(entry_candle) < 2:
-        return None, False, 0, 1
+        return None, False, 0, 1, None, signal
     
     try:
         entry_price = float(entry_candle[1])
     except ValueError:
-        return None, False, 0, 1
+        return None, False, 0, 1, None, signal
     
     tp_target = 200
     sl_target = -50
@@ -277,6 +277,25 @@ def process_mod_file(file_path):
     final_dist_tp = 0
     last_close_price = 0
     bad_luck = False  # Flag for when multiple outcomes could happen in same candle
+
+    # Track the candle time when the final result was determined.
+    # NOTE: candle timestamps in the file represent candle *open* time.
+    # When we report a result time, we prefer the candle *close* time,
+    # which corresponds to the next candle's timestamp (idx + 1).
+    result_time = None
+    last_time = None
+
+    def _extract_time(line: str):
+        parts = line.strip().split(';')
+        if not parts:
+            return None
+        t = parts[0].strip()
+        return t or None
+
+    def _time_at_index(idx: int):
+        if idx < 0 or idx >= len(lines):
+            return None
+        return _extract_time(lines[idx])
     
     # Process all candles starting from entry candle
     # Entry happens at open of signal_idx, and TP/SL could be hit during that same candle
@@ -286,6 +305,10 @@ def process_mod_file(file_path):
             continue
         
         try:
+            candle_time = parts[0].strip() if parts else None
+            if candle_time:
+                last_time = candle_time
+
             open_price = float(parts[1])
             high = float(parts[2])
             low = float(parts[3])
@@ -367,6 +390,22 @@ def process_mod_file(file_path):
         else:
             final_result = None
         gain_loss = close_gain_loss
+
+    # Prefer reporting the candle *close* time for resolved trades.
+    if result_idx is not None:
+        # Close time of candle at result_idx is the open time of candle (result_idx + 1).
+        result_time = _time_at_index(result_idx + 1) or _time_at_index(result_idx) or last_time
+
+    # If the trade never hit TP/SL/BE, treat the last candle's open time as the best-available decision time.
+    if result_time is None:
+        if last_time is None:
+            # Fallback: try to find the last parseable time in the file.
+            for line in reversed(lines):
+                t = _extract_time(line)
+                if t is not None:
+                    last_time = t
+                    break
+        result_time = last_time
     
     # Write back to file
     with open(file_path, 'w') as f:
@@ -375,7 +414,7 @@ def process_mod_file(file_path):
     # Entry line number for clickable links (signal_line_idx + 2 because: 0-indexed array + 1 for entry + 1 for file lines)
     entry_line_num = signal_line_idx + 2
     
-    return final_result, bad_luck, gain_loss, entry_line_num
+    return final_result, bad_luck, gain_loss, entry_line_num, result_time, signal
 
 def main():    
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
@@ -429,20 +468,20 @@ def main():
         
         processed_count = 0
         for mod_file in mod_files:
-            result, is_bad_luck, gain_loss, entry_line_num = process_mod_file(mod_file)
+            result, is_bad_luck, gain_loss, entry_line_num, result_time, order = process_mod_file(mod_file)
             processed_count += 1
             
             if result:
                 results[result] += 1
-                files_by_category[result].append((str(mod_file), gain_loss, entry_line_num))
+                files_by_category[result].append((str(mod_file), gain_loss, entry_line_num, result_time, order))
                 total_gain_loss += gain_loss
             else:
                 results['None'] += 1
-                files_by_category['None'].append((str(mod_file), 0, entry_line_num))
+                files_by_category['None'].append((str(mod_file), 0, entry_line_num, result_time, order))
             
             if is_bad_luck:
                 bad_luck_count += 1
-                bad_luck_files.append((str(mod_file), result, gain_loss, entry_line_num))
+                bad_luck_files.append((str(mod_file), result, gain_loss, entry_line_num, result_time, order))
         
         print(f"Processed {processed_count}/{len(mod_files)} files... Done!")
         
@@ -459,30 +498,54 @@ def main():
         print(f"{'-'*50}")
         
         print(f"TP (Take Profit):  {results['TP']:3d} trades")
-        for filepath, gain_loss, line_num in sorted(files_by_category['TP'], key=lambda x: x[1], reverse=True):
-            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")
+        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['TP'], key=lambda x: x[1], reverse=True):
+            order_prefix = f"{order} " if order else ""
+            print(f"  - {filepath}:{line_num}: {order_prefix}{gain_loss:+.2f} ({result_time})")
+            # find chart file and print its path (remove _mod from name)
+            chart_name = f"{Path(filepath).stem.replace('_mod', '')}.png"
+            chart_path = Path(filepath).parent / "charts" / chart_name
+            if chart_path.exists():
+                print(f"    Start: {chart_path}")
+            # find chart at restult time if available
+            if result_time:
+                # convert result_time to restult_name
+                restult_name = result_time.replace(":", "-").replace(" ", "-").replace(".", "-").replace("2025", "25").replace("2026", "26")
+                chart_name_time = f"{restult_name}.png"
+                chart_path_time = Path(filepath).parent / "charts" / chart_name_time
+                if chart_path_time.exists():
+                    print(f"    End: {chart_path_time}")
         
         print(f"Profiting (open):  {results['Profiting']:3d} trades")
-        for filepath, gain_loss, line_num in sorted(files_by_category['Profiting'], key=lambda x: x[1], reverse=True):
-            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")
+        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['Profiting'], key=lambda x: x[1], reverse=True):
+            time_suffix = f" [{result_time}]" if result_time else ""
+            order_prefix = f"{order} " if order else ""
+            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")
             
         print(f"BE (Break Even):   {results['BE']:3d} trades")
-        for filepath, gain_loss, line_num in sorted(files_by_category['BE'], key=lambda x: x[1], reverse=True):
-            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")      
+        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['BE'], key=lambda x: x[1], reverse=True):
+            time_suffix = f" [{result_time}]" if result_time else ""
+            order_prefix = f"{order} " if order else ""
+            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")      
 
         print(f"Losing (open):     {results['Losing']:3d} trades")
-        for filepath, gain_loss, line_num in sorted(files_by_category['Losing'], key=lambda x: x[1]):
-            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")
+        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['Losing'], key=lambda x: x[1]):
+            time_suffix = f" [{result_time}]" if result_time else ""
+            order_prefix = f"{order} " if order else ""
+            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")
             
         print(f"SL (Stop Loss):    {results['SL']:3d} trades")
-        for filepath, gain_loss, line_num in sorted(files_by_category['SL'], key=lambda x: x[1]):
-            print(f"  - {filepath}:{line_num}: {gain_loss:+.2f}")        
+        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['SL'], key=lambda x: x[1]):
+            time_suffix = f" [{result_time}]" if result_time else ""
+            order_prefix = f"{order} " if order else ""
+            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")        
                 
         print(f"{'-'*50}")
         print(f"Bad Luck Trades:   {bad_luck_count:3d} trades")
         if bad_luck_files:
-            for filepath, result, gain_loss, line_num in sorted(bad_luck_files, key=lambda x: x[0]):
-                print(f"  - {filepath}:{line_num}: {result} {gain_loss:+.2f}")
+            for filepath, result, gain_loss, line_num, result_time, order in sorted(bad_luck_files, key=lambda x: x[0]):
+                time_suffix = f" [{result_time}]" if result_time else ""
+                order_prefix = f"{order} " if order else ""
+                print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{result} {gain_loss:+.2f}")
                 
         print(f"{'-'*50}")
         if results['None'] > 0:
