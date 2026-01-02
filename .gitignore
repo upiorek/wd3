@@ -26,6 +26,8 @@ aifx/strategy/support_lines_results.txt
 aifx/tester-third/analyze.log
 
 magic_lines.log
+decision.log
 sheep.log
 sheep/*.log
 sheep_old/*.log
+

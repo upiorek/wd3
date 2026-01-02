@@ -15,12 +15,14 @@ import os
 import shutil
 import subprocess
 
+from aifx.strategy import decissioner
+
 # Global state
 running = True
 heartbeat = 1
 
 # Base directory paths
-VERSION = "2.0"
+VERSION = "2.1"
 REPO_DIR = "/home/ubuntu/repo"
 MQL4_FILES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files"
 MQL4_EXPERTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Experts"
@@ -297,7 +299,7 @@ def is_price_too_close(current_price, existing_orders, min_distance):
             return True
     return False
 
-def write_order_to_approved(order_type, latest_m15, min_distance):
+def write_order_to_approved(order_type, candle_time):
     """Write order to approved.txt file."""
     approved_file = os.path.join(MQL4_FILES_DIR, "approved.txt")
     
@@ -305,50 +307,37 @@ def write_order_to_approved(order_type, latest_m15, min_distance):
     current_price = get_current_market_price("US100.f")
     if current_price is None:
         print("Cannot get current market price, skipping order")
-        return None, None
+        return None
     
     existing_orders = get_existing_orders("US100.f", order_type)
-    candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
     
+    min_distance = get_min_distance_from_settings()
     if is_price_too_close(current_price, existing_orders, min_distance):
         print(f"Skipping {order_type} order - price too close to existing {order_type} order(s)")
-        return f"SKIPPED_{order_type}", candle_time
+        return f"SKIPPED_{order_type} for {candle_time}"
     
     try:
         with open(approved_file, 'a') as f:
             f.write(f"US100.f {order_type} 0.01 0 0 0\n")
-        print(f"Signal detected: Added {order_type} order to approved.txt")
-        return order_type, candle_time
+        print(f"Signal detected: for {candle_time} added {order_type} to approved.txt")
+        return order_type
     except Exception as e:
         print(f"Error writing {order_type} to approved.txt: {e}")
-        return None, None
+        return None
 
-def check_for_signals(log_content, latest_m15, min_distance):
-    """Check magic_lines.log for trading signals and write to approved.txt if found."""
+def check_for_signals(candle_time, decision):
+    """Check decision, write to approved.txt if found."""
     
-    for line in log_content.splitlines():
-        if not line.startswith("Wynik:"):
-            continue
+    for line in decision.splitlines():
+        # Check for BUY signal
+        if line.find("BUY") != -1:
+            return write_order_to_approved("BUY", candle_time)
         
-        crossed_pos = line.find("CROSSED")
-        if crossed_pos == -1:
-            continue
+        # Check for SELL signal
+        if line.find("SELL") != -1:
+            return write_order_to_approved("SELL", candle_time)
         
-        # Check for BUY signal (ascending lines: AS or AR)
-        up_pos = line.find("UP")
-        if up_pos > crossed_pos:
-            between = line[crossed_pos:up_pos]
-            if "AS" in between or "AR" in between:
-                return write_order_to_approved("BUY", latest_m15, min_distance)
-        
-        # Check for SELL signal (descending lines: DS or DR)
-        down_pos = line.find("DOWN")
-        if down_pos > crossed_pos:
-            between = line[crossed_pos:down_pos]
-            if "DS" in between or "DR" in between:
-                return write_order_to_approved("SELL", latest_m15, min_distance)
-    
-    return None, None
+    return None
 
 def copy_wdsettings():
     """Copy wdsettings from repo to wine directory."""
@@ -393,33 +382,39 @@ def write_sheep_file():
             content += f"Moved {moved_candles} old candle file(s) this update\n"
         if moved_charts > 0:
             content += f"Moved {moved_charts} old chart file(s) this update\n"
-        
+
+
         # Add magic_lines.log to the content and check for signals
         try:
             with open(os.path.join(REPO_DIR, 'magic_lines.log'), 'r') as log_file:
                 log_content = log_file.read()
             content += "\n" + log_content
             
-            # If chart was just generated, check for trading signals
-            if "GENERATED" in chart_status:
-                # Copy log to the CHARTS_DIR
-                # Use name from "Przetwarzam:" line if available
-                processed_filename = None
-                for line in log_content.splitlines():
-                    if line.startswith("Przetwarzam:"):
-                        processed_filename = line.split("Przetwarzam:")[1].strip()
-                        break
-                if processed_filename:
-                    dest_log_path = os.path.join(CHARTS_DIR, processed_filename.replace('.csv', '_results.log'))
-                    with open(dest_log_path, 'w') as f:
-                        # Write one line, what is after "Wynik: "
-                        for line in log_content.splitlines():
-                            if line.startswith("Wynik:"):
-                                f.write(line.split("Wynik:")[1].strip() + "\n")
-                                break
+            debug_content = f"\nDebug Info:\n"
+            candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
+            debug_content += f"Candle Time: {candle_time}\n"
 
-                min_distance = get_min_distance_from_settings()
-                signal_type, candle_time = check_for_signals(log_content, latest_m15, min_distance)
+            decision = None
+            # If chart was just generated, check for trading signals
+            if "GENERATED" or "EXISTS" in chart_status:
+                result = None
+                # Copy log to the CHARTS_DIR
+                dest_log_path = os.path.join(CHARTS_DIR, candle_time.replace('.csv', '_results.log'))
+                with open(dest_log_path, 'w') as f:
+                    # Write the result line, what is after "Wynik: "
+                    for line in log_content.splitlines():
+                        if line.startswith("Wynik:"):
+                            result = line.split("Wynik:")[1].strip() + "\n"
+                            f.write(result)
+                            break
+                # Use line that was processed as decissioner input
+                decision = decissioner.decision(result)
+                content += f"\ndecisionner\n{decision}\n"
+                # Write last decision to the decision.log
+                with open(os.path.join(REPO_DIR, "decision.log"), "w") as decision_file:
+                    decision_file.write(decision)
+
+                signal_type = check_for_signals(candle_time, decision)
                 if signal_type:
                     if signal_type.startswith("SKIPPED_"):
                         order_type = signal_type.replace("SKIPPED_", "")
@@ -431,6 +426,7 @@ def write_sheep_file():
         except Exception as e:
             content += f"Could not read magic_lines.log.\n"
 
+        #content += debug_content
         with open(os.path.join(REPO_DIR, "sheep.log"), "w") as f:
             f.write(content)
         
