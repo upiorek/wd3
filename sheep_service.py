@@ -315,7 +315,7 @@ def write_order_to_approved(order_type, candle_time):
     if is_price_too_close(current_price, existing_orders, min_distance):
         print(f"Skipping {order_type} order - price too close to existing {order_type} order(s)")
         return f"SKIPPED_{order_type} for {candle_time}"
-    
+
     try:
         with open(approved_file, 'a') as f:
             f.write(f"US100.f {order_type} 0.01 0 0 0\n")
@@ -396,7 +396,7 @@ def write_sheep_file():
 
             decision = None
             # If chart was just generated, check for trading signals
-            if "GENERATED" or "EXISTS" in chart_status:
+            if "GENERATED" in chart_status:
                 result = None
                 # Copy log to the CHARTS_DIR
                 dest_log_path = os.path.join(CHARTS_DIR, candle_time.replace('.csv', '_results.log'))
