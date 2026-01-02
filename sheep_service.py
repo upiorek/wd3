@@ -19,12 +19,17 @@ import subprocess
 running = True
 heartbeat = 1
 
+# Base directory paths
+VERSION = "1.9"
+REPO_DIR = "/home/ubuntu/repo"
+MQL4_FILES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files"
+MQL4_EXPERTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Experts"
+
 # Candles directory paths
-VERSION = "1.8"
-CANDLES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles"
-CANDLES_OLD_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles_old"
-CHARTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts"
-MAGIC_LINES_SCRIPT = "/home/ubuntu/repo/aifx/strategy/magic_lines.py"
+CANDLES_DIR = os.path.join(MQL4_FILES_DIR, "candles")
+CANDLES_OLD_DIR = os.path.join(MQL4_FILES_DIR, "candles_old")
+CHARTS_DIR = os.path.join(MQL4_FILES_DIR, "candles", "charts")
+MAGIC_LINES_SCRIPT = os.path.join(REPO_DIR, "aifx", "strategy", "magic_lines.py")
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
@@ -68,8 +73,8 @@ def move_old_candle_files():
 def move_old_sheep_logs():
     """Move sheep action logs from previous day(s) to sheep_old directory."""
     try:
-        sheep_logs_dir = "/home/ubuntu/repo/sheep"
-        sheep_old_dir = "/home/ubuntu/repo/sheep_old"
+        sheep_logs_dir = os.path.join(REPO_DIR, "sheep")
+        sheep_old_dir = os.path.join(REPO_DIR, "sheep_old")
         
         if not os.path.exists(sheep_old_dir):
             os.makedirs(sheep_old_dir)
@@ -115,7 +120,7 @@ def count_files_in_directory(directory):
 def get_min_distance_from_settings():
     """Read min_distance value from settings file."""
     try:
-        settings_file = "/home/ubuntu/repo/settings"
+        settings_file = os.path.join(REPO_DIR, "settings")
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
                 for line in f:
@@ -210,7 +215,7 @@ def generate_chart_if_missing(m15_filename):
 def get_current_market_price(symbol="US100.f"):
     """Get current market price from market_log.txt."""
     try:
-        market_log = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/market_log.txt"
+        market_log = os.path.join(MQL4_FILES_DIR, "market_log.txt")
         with open(market_log, 'r') as f:
             for line in f:
                 if symbol in line:
@@ -229,7 +234,7 @@ def get_existing_orders(symbol="US100.f", order_type=None):
     """Get existing open orders from orders_log.txt."""
     orders = []
     try:
-        orders_log = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/orders_log.txt"
+        orders_log = os.path.join(MQL4_FILES_DIR, "orders_log.txt")
         with open(orders_log, 'r') as f:
             for line in f:
                 if symbol in line and '|' in line:
@@ -261,7 +266,7 @@ def is_price_too_close(current_price, existing_orders, min_distance):
 
 def write_order_to_approved(order_type, latest_m15, min_distance):
     """Write order to approved.txt file."""
-    approved_file = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/approved.txt"
+    approved_file = os.path.join(MQL4_FILES_DIR, "approved.txt")
     
     # Check current market price and existing orders
     current_price = get_current_market_price("US100.f")
@@ -312,6 +317,20 @@ def check_for_signals(log_content, latest_m15, min_distance):
     
     return None, None
 
+def copy_wdsettings():
+    """Copy wdsettings from repo to wine directory."""
+    try:
+        source = os.path.join(REPO_DIR, "wdsettings")
+        destination = os.path.join(MQL4_EXPERTS_DIR, "wdsettings")
+        
+        if os.path.exists(source):
+            shutil.copy2(source, destination)
+            print(f"Copied wdsettings from {source} to {destination}")
+        else:
+            print(f"Warning: wdsettings source file not found at {source}")
+    except Exception as e:
+        print(f"Error copying wdsettings: {e}")
+
 def write_sheep_file():
     """Write hello world and current time to the sheep file."""
     global heartbeat
@@ -341,7 +360,7 @@ def write_sheep_file():
         
         # Add magic_lines.log to the content and check for signals
         try:
-            with open('/home/ubuntu/repo/magic_lines.log', 'r') as log_file:
+            with open(os.path.join(REPO_DIR, 'magic_lines.log'), 'r') as log_file:
                 log_content = log_file.read()
             content += "\n" + log_content
             
@@ -355,12 +374,12 @@ def write_sheep_file():
                         content += f"\n[SIGNAL SKIPPED] {order_type} order too close to existing order\n"
                     else:
                         content += f"\n[SIGNAL DETECTED] Added {signal_type} order to approved.txt\n"
-                    with open(f"/home/ubuntu/repo/sheep/sheep_actions_{candle_time}.log", "w") as f:
+                    with open(os.path.join(REPO_DIR, "sheep", f"sheep_actions_{candle_time}.log"), "w") as f:
                         f.write(content)
         except Exception as e:
             content += f"Could not read magic_lines.log.\n"
 
-        with open("/home/ubuntu/repo/sheep.log", "w") as f:
+        with open(os.path.join(REPO_DIR, "sheep.log"), "w") as f:
             f.write(content)
         
         print(f"Updated sheep file at {current_time} - Candles: {candles_count}, Old: {candles_old_count}, Latest M15: {latest_m15}, Chart: {chart_status}")
@@ -376,19 +395,22 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
+    # Copy wdsettings from repo to wine directory
+    copy_wdsettings()
+    
     print("Sheep service started. Press Ctrl+C to stop.")
     
     while running:
         # Check settings file for disabled status
         try:
-            settings_file = "/home/ubuntu/repo/settings"
+            settings_file = os.path.join(REPO_DIR, "settings")
             if os.path.exists(settings_file):
                 with open(settings_file, 'r') as f:
                     settings_content = f.read().strip().lower()
                     if 'service: disabled' in settings_content:
                         print("Service disabled, waiting 15 seconds...")
                         content = f"Sheep service is currently DISABLED.\nHeartbeat: {heartbeat}\n"
-                        with open("/home/ubuntu/repo/sheep.log", "w") as f:
+                        with open(os.path.join(REPO_DIR, "sheep.log"), "w") as f:
                             f.write(content)
                         time.sleep(15)
                         continue

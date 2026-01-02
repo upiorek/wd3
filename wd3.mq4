@@ -13,16 +13,62 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.24";
+string version = "3.25";
 
-// Simple risk management
+// Simple risk management (read from wdsettings file)
 double tp = 200;
-double be = tp / 2;
-double sl = tp / 4;
-double bonus = tp / 10;
+double be = 100;
+double sl = 50;
+double bonus = 20;
 
 // Max daily orders
 int maxOrders = 50;
+bool settingsLoaded = false;
+
+void ReadSettings()
+{
+   int fileHandle = FileOpen("wdsettings", FILE_READ|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      while(!FileIsEnding(fileHandle))
+      {
+         string line = FileReadString(fileHandle);
+         line = StringTrimLeft(StringTrimRight(line));
+         
+         // Skip empty lines and comments
+         if(line == "" || StringFind(line, "//") == 0 || StringFind(line, "#") == 0)
+            continue;
+         
+         // Parse key: value format
+         int colonPos = StringFind(line, ":");
+         if(colonPos > 0)
+         {
+            string key = StringTrimLeft(StringTrimRight(StringSubstr(line, 0, colonPos)));
+            string value = StringTrimLeft(StringTrimRight(StringSubstr(line, colonPos + 1)));
+            
+            if(key == "tp")
+               tp = StringToDouble(value);
+            else if(key == "be")
+               be = StringToDouble(value);
+            else if(key == "sl")
+               sl = StringToDouble(value);
+            else if(key == "bonus")
+               bonus = StringToDouble(value);
+            else if(key == "maxOrders")
+               maxOrders = StringToInteger(value);
+         }
+      }
+      FileClose(fileHandle);
+      settingsLoaded = true;
+      Print("Settings loaded from wdsettings: tp=", tp, " be=", be, " sl=", sl, " bonus=", bonus, " maxOrders=", maxOrders);
+   }
+   else
+   {
+      Print("Warning: Could not open wdsettings file, using default values");
+      settingsLoaded = true; // Don't keep trying
+   }
+}
 
 void LogAccountInfo()
 {
@@ -773,6 +819,12 @@ void CheckBreakEvenOrders()
 
 void OnTick()
 {
+   // Load settings from file on first tick
+   if(!settingsLoaded)
+   {
+      ReadSettings();
+   }
+   
    datetime currentTime = TimeCurrent();
    hearbeat++;
    

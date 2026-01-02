@@ -1,0 +1,8 @@
+// Simple risk management
+tp: 200
+be: 100
+sl: 50
+bonus: 20
+
+// Max daily orders
+maxOrders: 50
