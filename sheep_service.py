@@ -20,7 +20,7 @@ running = True
 heartbeat = 1
 
 # Base directory paths
-VERSION = "1.9"
+VERSION = "2.0"
 REPO_DIR = "/home/ubuntu/repo"
 MQL4_FILES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files"
 MQL4_EXPERTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Experts"
@@ -29,6 +29,7 @@ MQL4_EXPERTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader
 CANDLES_DIR = os.path.join(MQL4_FILES_DIR, "candles")
 CANDLES_OLD_DIR = os.path.join(MQL4_FILES_DIR, "candles_old")
 CHARTS_DIR = os.path.join(MQL4_FILES_DIR, "candles", "charts")
+CHARTS_OLD_DIR = os.path.join(MQL4_FILES_DIR, "candles", "charts_old")
 MAGIC_LINES_SCRIPT = os.path.join(REPO_DIR, "aifx", "strategy", "magic_lines.py")
 
 def signal_handler(sig, frame):
@@ -68,6 +69,38 @@ def move_old_candle_files():
         return moved_count
     except Exception as e:
         print(f"Error moving old candle files: {e}")
+        return 0
+
+def move_old_chart_files():
+    """Move chart files from previous day(s) to the old directory."""
+    try:
+        if not os.path.exists(CHARTS_OLD_DIR):
+            os.makedirs(CHARTS_OLD_DIR)
+        
+        if not os.path.exists(CHARTS_DIR):
+            return 0
+        
+        today = datetime.now().date()
+        moved_count = 0
+        
+        for filename in os.listdir(CHARTS_DIR):
+            file_path = os.path.join(CHARTS_DIR, filename)
+            
+            if os.path.isfile(file_path):
+                file_mtime = os.path.getmtime(file_path)
+                file_date = datetime.fromtimestamp(file_mtime).date()
+                
+                if file_date < today:
+                    dest_path = os.path.join(CHARTS_OLD_DIR, filename)
+                    shutil.move(file_path, dest_path)
+                    moved_count += 1
+        
+        if moved_count > 0:
+            print(f"Moved {moved_count} old chart file(s)")
+        
+        return moved_count
+    except Exception as e:
+        print(f"Error moving old chart files: {e}")
         return 0
 
 def move_old_sheep_logs():
@@ -336,7 +369,8 @@ def write_sheep_file():
     global heartbeat
     try:
         # Move old candle files
-        moved_count = move_old_candle_files()
+        moved_candles = move_old_candle_files()
+        moved_charts = move_old_chart_files()
         
         # Count files in both directories
         candles_count = count_files_in_directory(CANDLES_DIR)
@@ -355,8 +389,10 @@ def write_sheep_file():
         content += f"Candles (old): {candles_old_count} files\n"
         content += f"Latest M15: {latest_m15}\n"
         content += f"Chart status: {chart_status}\n"
-        if moved_count > 0:
-            content += f"Moved {moved_count} old file(s) this update\n"
+        if moved_candles > 0:
+            content += f"Moved {moved_candles} old candle file(s) this update\n"
+        if moved_charts > 0:
+            content += f"Moved {moved_charts} old chart file(s) this update\n"
         
         # Add magic_lines.log to the content and check for signals
         try:
@@ -366,6 +402,22 @@ def write_sheep_file():
             
             # If chart was just generated, check for trading signals
             if "GENERATED" in chart_status:
+                # Copy log to the CHARTS_DIR
+                # Use name from "Przetwarzam:" line if available
+                processed_filename = None
+                for line in log_content.splitlines():
+                    if line.startswith("Przetwarzam:"):
+                        processed_filename = line.split("Przetwarzam:")[1].strip()
+                        break
+                if processed_filename:
+                    dest_log_path = os.path.join(CHARTS_DIR, processed_filename.replace('.csv', '_results.log'))
+                    with open(dest_log_path, 'w') as f:
+                        # Write one line, what is after "Wynik: "
+                        for line in log_content.splitlines():
+                            if line.startswith("Wynik:"):
+                                f.write(line.split("Wynik:")[1].strip() + "\n")
+                                break
+
                 min_distance = get_min_distance_from_settings()
                 signal_type, candle_time = check_for_signals(log_content, latest_m15, min_distance)
                 if signal_type:

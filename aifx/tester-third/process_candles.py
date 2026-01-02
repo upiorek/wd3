@@ -105,7 +105,6 @@ def process_file(file_path, revert=False):
                     else:
                         result = magic_lines.process_single_file(str(temp_path), output_dir=str(file_path.parent / "charts"))
 
-
                         # save result data to txt file next to charts
                         with open(result_txt_path, 'w') as result_f:
                             result_f.write(result or "No result\n")
