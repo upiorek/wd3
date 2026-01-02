@@ -496,49 +496,28 @@ def main():
         total_trades = len(mod_files)
         print(f"Total Trades:      {total_trades:3d}")
         print(f"{'-'*50}")
-        
-        print(f"TP (Take Profit):  {results['TP']:3d} trades")
-        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['TP'], key=lambda x: x[1], reverse=True):
-            order_prefix = f"{order} " if order else ""
-            print(f"  - {filepath}:{line_num}: {order_prefix}{gain_loss:+.2f} ({result_time})")
-            # find chart file and print its path (remove _mod from name)
-            chart_name = f"{Path(filepath).stem.replace('_mod', '')}.png"
-            chart_path = Path(filepath).parent / "charts" / chart_name
-            if chart_path.exists():
-                print(f"    Start: {chart_path}")
-            # find chart at restult time if available
-            if result_time:
-                # convert result_time to restult_name
-                restult_name = result_time.replace(":", "-").replace(" ", "-").replace(".", "-").replace("2025", "25").replace("2026", "26")
-                chart_name_time = f"{restult_name}.png"
-                chart_path_time = Path(filepath).parent / "charts" / chart_name_time
-                if chart_path_time.exists():
-                    print(f"    End: {chart_path_time}")
-        
-        print(f"Profiting (open):  {results['Profiting']:3d} trades")
-        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['Profiting'], key=lambda x: x[1], reverse=True):
-            time_suffix = f" [{result_time}]" if result_time else ""
-            order_prefix = f"{order} " if order else ""
-            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")
-            
-        print(f"BE (Break Even):   {results['BE']:3d} trades")
-        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['BE'], key=lambda x: x[1], reverse=True):
-            time_suffix = f" [{result_time}]" if result_time else ""
-            order_prefix = f"{order} " if order else ""
-            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")      
 
-        print(f"Losing (open):     {results['Losing']:3d} trades")
-        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['Losing'], key=lambda x: x[1]):
-            time_suffix = f" [{result_time}]" if result_time else ""
-            order_prefix = f"{order} " if order else ""
-            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")
-            
-        print(f"SL (Stop Loss):    {results['SL']:3d} trades")
-        for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category['SL'], key=lambda x: x[1]):
-            time_suffix = f" [{result_time}]" if result_time else ""
-            order_prefix = f"{order} " if order else ""
-            print(f"  - {filepath}:{line_num}{time_suffix}: {order_prefix}{gain_loss:+.2f}")        
-                
+        categories = ['TP', 'Profiting', 'BE', 'Losing', 'SL']
+        for category in categories:            
+            print(f"{category}: {results[category]:3d} trades")
+
+            for filepath, gain_loss, line_num, result_time, order in sorted(files_by_category[category], key=lambda x: x[1], reverse=True):
+                order_prefix = f"{order} " if order else ""
+                print(f"  - {filepath}:{line_num}: {order_prefix}{gain_loss:+.2f} ({result_time})")
+                # find chart file and print its path (remove _mod from name)
+                chart_name = f"{Path(filepath).stem.replace('_mod', '')}.png"
+                chart_path = Path(filepath).parent / "charts" / chart_name
+                if chart_path.exists():
+                    print(f"    Start: {chart_path}")
+                # find chart at restult time if available
+                if result_time:
+                    # convert result_time to restult_name
+                    restult_name = result_time.replace(":", "-").replace(" ", "-").replace(".", "-").replace("2025", "25").replace("2026", "26")
+                    chart_name_time = f"{restult_name}.png"
+                    chart_path_time = Path(filepath).parent / "charts" / chart_name_time
+                    if chart_path_time.exists():
+                        print(f"    End: {chart_path_time}")
+        
         print(f"{'-'*50}")
         print(f"Bad Luck Trades:   {bad_luck_count:3d} trades")
         if bad_luck_files:
