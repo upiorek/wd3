@@ -412,6 +412,7 @@ def write_sheep_file():
                 content += f"\ndecisionner\n{decision}\n"
                 # Write last decision to the decision.log
                 with open(os.path.join(REPO_DIR, "decision.log"), "w") as decision_file:
+                    decision += f"for andle Time: {candle_time}\n"
                     decision_file.write(decision)
 
                 signal_type = check_for_signals(candle_time, decision)
