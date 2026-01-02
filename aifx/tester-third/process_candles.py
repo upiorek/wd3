@@ -103,7 +103,9 @@ def process_file(file_path, revert=False):
                         with open(result_txt_path, 'r') as result_f:
                             result = result_f.read().strip()
                     else:
-                        result = magic_lines.process_single_file(str(temp_path), output_dir=str(file_path.parent / "charts"))
+                        result = magic_lines.process_single_file(
+                            str(temp_path), 
+                            output_dir=str(file_path.parent / "charts"))
 
                         # save result data to txt file next to charts
                         with open(result_txt_path, 'w') as result_f:
@@ -113,11 +115,20 @@ def process_file(file_path, revert=False):
                         chart_path = file_path.parent / "charts" / f"{temp_path.stem}.png"
                         if chart_path.exists():
                             new_chart_path = file_path.parent / "charts" / f"{file_path.stem}.png"
+                            if new_chart_path.exists():
+                                new_chart_path.unlink()
                             chart_path.rename(new_chart_path)
 
                     temp_path.unlink()
 
+                    # decision
                     order_type = decissioner.decision(result)
+
+                    # create file with decision if doesn't exist
+                    decision_txt_path = file_path.parent / "charts" / f"{file_path.stem}_decision.txt"
+                    with open(decision_txt_path, 'w') as decision_f:
+                        decision_f.write(order_type)
+
                     processed_lines.append(f"{ohlc_line} {order_type}\n")
                     continue
             
