@@ -649,6 +649,8 @@ def process_single_file(csv_filepath, output_dir='charts'):
     # Sprawdź przecięcia ostatniej świeczki
     last_candle = lookback_df_full.iloc[-1]
     crossed_lines = check_crossings(last_candle, detected_lines, lookback_df_for_lines)
+
+    slope = detected_lines[0].slope
     
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
@@ -665,6 +667,7 @@ def process_single_file(csv_filepath, output_dir='charts'):
         ret = crossed_lines[0] + " | " 
         # offset z dokładnością do 2 miejsca po przecinku
         ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in crossed_lines[1:]])
+        ret += " | SLOPE: {:.4f}".format(slope)
         return ret
     else:
         return "NONE"

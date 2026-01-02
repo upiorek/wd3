@@ -36,4 +36,6 @@ def decision(result: str | None) -> str:
     if  "D" in line_id and direction == "DOWN":
         return "SELL"
     
+    # TODO add SL / TP levels
+    
     return "NONE"
