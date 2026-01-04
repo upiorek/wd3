@@ -19,7 +19,7 @@ ALGO = "magic_lines"
 from aifx.strategy import magic_lines as magic_lines
 from aifx.strategy import decissioner as decissioner
 
-def process_file(file_path, revert=False):
+def process_file(file_path, percentage=.0, revert=False):
     """Process or revert a CSV file - simulates order-maker logic."""
     with open(file_path, 'r') as f:
         lines = f.readlines()
@@ -147,9 +147,9 @@ def process_file(file_path, revert=False):
             f.writelines(processed_lines)
     
     if ALGO == "magic_lines":
-        print(f"{action}: {file_path.name} -> {new_path.name} {order_type}")
+        print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name} {order_type}")
     else:
-        print(f"{action}: {file_path.name} -> {new_path.name}")
+        print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
 
 def main():
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
@@ -229,7 +229,8 @@ def main():
             # In normal mode: process all files
             if compare_mode:
                 if csv_file.stem in order_files:
-                    process_file(csv_file, revert)
+                    percentage = (processed_count + 1) * 100 / len(csv_files) 
+                    process_file(csv_file, percentage, revert)
                     processed_count += 1
                 else:
                     # Only delete source files if we're actively matching
@@ -241,7 +242,8 @@ def main():
                 if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
                     continue
 
-                process_file(csv_file, revert)
+                percentage = (processed_count + 1) * 100 / len(csv_files) 
+                process_file(csv_file, percentage, revert)
                 processed_count += 1
         
         # Remove skipped files (only in compare mode)
