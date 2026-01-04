@@ -5,7 +5,8 @@
 
 string version = "1.0";
 
-input bool show_lines = false;
+input bool show_lines = false;    
+input double minDistance = 1500; // set to 0 to disable
 
 string WD_LINE_PREFIX = "WD_LINE_";
 
@@ -219,6 +220,44 @@ void ApplyBlackOnWhiteTheme()
     ChartRedraw(chartId);
 }
 
+bool GetClosestOrderForSymbol(string symbol, double referencePrice, double &closestPrice, double &closestDistance)
+{
+    closestPrice = 0.0;
+    closestDistance = 0.0;
+
+    double bestDistance = -1.0;
+    double bestPrice = 0.0;
+
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != symbol)
+            continue;
+
+        int type = OrderType();
+        if(type != OP_BUY && type != OP_SELL && type != OP_BUYLIMIT && type != OP_SELLLIMIT && type != OP_BUYSTOP && type != OP_SELLSTOP)
+            continue;
+
+        double price = OrderOpenPrice();
+        double distance = MathAbs(referencePrice - price);
+
+        if(bestDistance < 0.0 || distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestPrice = price;
+        }
+    }
+
+    if(bestDistance < 0.0)
+        return false;
+
+    closestPrice = bestPrice;
+    closestDistance = bestDistance;
+    return true;
+}
+
 int OnInit()
 {   
     Print("version: " + version);
@@ -261,8 +300,28 @@ void OnTick()
         DeleteWdLines();
     }
 
+    // get price of closest order and do not open new one if current price is closer than 150
+    double closestPrice = 0.0;
+    double closestDistance = 0.0;
+    double currentPrice = (Ask + Bid) / 2.0;
+
+    bool hasClosest = GetClosestOrderForSymbol(Symbol(), currentPrice, closestPrice, closestDistance);
+
+
     if(decision == "BUY" || decision == "SELL")
     {
+        if(hasClosest && closestDistance < minDistance)
+        {
+            PrintFormat(
+                "Skipping new order: closest existing order is %.0f points away (threshold=%d). current=%.*f closest=%.*f",
+                closestDistance / Point, 
+                minDistance,
+                Digits, currentPrice,
+                Digits, closestPrice
+            );
+            return;
+        }
+
         double lotSize = 0.01;
         int slippage = 300;
         int takeProfit = 20000;
@@ -316,4 +375,5 @@ void OnTick()
             );
         }
     }
+
 }
