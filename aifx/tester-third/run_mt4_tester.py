@@ -522,6 +522,7 @@ def main():
         print("  python run_mt4_tester.py                    # Uses mt4_test_config.ini")
         print("  python run_mt4_tester.py order-maker        # Uses mt4_order_config.ini")
         print("  python run_mt4_tester.py candle-maker       # Uses mt4_test_config.ini")
+        print("  python run_mt4_tester.py wd_tester          # Uses wd_tester_config.ini")
         print("  python run_mt4_tester.py custom_config.ini  # Uses specified file")
         print("  python run_mt4_tester.py --clean            # Clean local results only")
         print("  python run_mt4_tester.py order-maker --clean # Run with local cleanup")
@@ -535,6 +536,18 @@ def main():
     
     # Clean up previous test data
     cleanup_mt4_data()
+
+    # for wd_tester, copy additional files
+    if config['expert'] == 'wd_tester':
+        print("\nCopying additional WD tester files...")
+        source_folder = CURRENT_DIR / "mt4_test_results" / "m15_candles" / "charts"
+        source_files  = list(source_folder.glob("*_decision.txt")) + list(source_folder.glob("*_result.txt"))
+        dest_folder = MT4_TERMINAL_PATH / "tester" / "files" / "wd_tester"
+        dest_folder.mkdir(parents=True, exist_ok=True)
+        for file in source_files:
+            dest = dest_folder / file.name
+            shutil.copy2(file, dest)
+            print('.', end='')
     
     # Prepare expert advisor
     print("\nPreparing Expert Advisor...")

@@ -129,6 +129,10 @@ def process_file(file_path, revert=False):
                     with open(decision_txt_path, 'w') as decision_f:
                         decision_f.write(order_type)
 
+                    # skip the "log: ..." part if present
+                    if order_type.startswith("log:"):
+                        order_type = order_type.split('\n', 1)[1]
+
                     processed_lines.append(f"{ohlc_line} {order_type}\n")
                     continue
             
