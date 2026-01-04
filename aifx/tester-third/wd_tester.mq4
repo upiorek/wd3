@@ -5,6 +5,28 @@
 
 string version = "1.0";
 
+string ReadAllText(string filepath)
+{
+    int fileHandle = FileOpen(filepath, FILE_READ|FILE_TXT);
+    if(fileHandle == INVALID_HANDLE)
+    {
+        int err = GetLastError();
+        Print("Failed to open file: ", filepath, " Error: ", err);
+        return "";
+    }
+
+    string content = "";
+    while(!FileIsEnding(fileHandle))
+    {
+        content += FileReadString(fileHandle);
+    }
+    FileClose(fileHandle);
+
+    StringTrimLeft(content);
+    StringTrimRight(content);
+    return content;
+}
+
 void ApplyBlackOnWhiteTheme()
 {
     long chartId = 0;
@@ -25,7 +47,7 @@ void ApplyBlackOnWhiteTheme()
 int OnInit()
 {   
    Print("version: " + version);
-      ApplyBlackOnWhiteTheme();
+    ApplyBlackOnWhiteTheme();
    return(INIT_SUCCEEDED);
 }
 
@@ -43,28 +65,16 @@ void OnTick()
     StringReplace(timeStr, ".", "-");
     StringReplace(timeStr, ":", "-");
     StringReplace(timeStr, " ", "-");
-    string filename = "wd_tester/" + timeStr + "_decision.txt";
 
-    string content = "";
-    int fileHandle = FileOpen(filename, FILE_READ|FILE_TXT);
-    if(fileHandle != INVALID_HANDLE)
-    {
-        while(!FileIsEnding(fileHandle))
-        {
-            content += FileReadString(fileHandle);
-        }
-        Print("File content: ", content);
-        FileClose(fileHandle);
-    }
-    else
-    {
-        Print("Failed to open file: ", filename);
-    }
+    string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
+    string decision = ReadAllText(decision_filename);
+    Print("Decision file content: ", decision);
 
-    int hourNow = TimeHour(TimeCurrent());
-    bool allowNewOrders = (hourNow >= 6 && hourNow < 22);
+    string result_filename = "wd_tester/" + timeStr + "_result.txt";
+    string result = ReadAllText(result_filename);
+    Print("Result file content: ", result);
 
-    if(content == "BUY" || content == "SELL")
+    if(decision == "BUY" || decision == "SELL")
     {
         double lotSize = 0.01;
         int slippage = 300;
@@ -80,7 +90,7 @@ void OnTick()
         double slDistance = MathMax(stopLoss * Point, minStopDistance);
         double tpDistance = MathMax(takeProfit * Point, minStopDistance);
         
-        if(content == "BUY")
+        if(decision == "BUY")
         {
             tp = NormalizeDouble(Bid + tpDistance, Digits);
             sl = NormalizeDouble(Bid - slDistance, Digits);
@@ -89,7 +99,7 @@ void OnTick()
             ticket = OrderSend(Symbol(), OP_BUY, lotSize, NormalizeDouble(Ask, Digits), 
                 slippage, sl, tp, "WD Tester Buy", 0, 0, clrGreen);
         }
-        else if(content == "SELL")
+        else if(decision == "SELL")
         {
             tp = NormalizeDouble(Ask - tpDistance, Digits);
             sl = NormalizeDouble(Ask + slDistance, Digits);
@@ -109,7 +119,7 @@ void OnTick()
             PrintFormat(
                 "Order failed. Error: %d | side=%s Bid=%.*f Ask=%.*f SL=%.*f TP=%.*f stopLevelPoints=%d freezeLevelPoints=%d",
                 err,
-                content,
+                decision,
                 Digits, Bid,
                 Digits, Ask,
                 Digits, sl,
