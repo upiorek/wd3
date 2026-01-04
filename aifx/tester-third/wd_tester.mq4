@@ -7,6 +7,9 @@ string version = "1.0";
 
 input bool show_lines = false;    
 input double minDistance = 1500; // set to 0 to disable
+input bool close_all_on_sl = true;
+
+datetime g_lastHistoryCheck = 0;
 
 string WD_LINE_PREFIX = "WD_LINE_";
 
@@ -258,11 +261,98 @@ bool GetClosestOrderForSymbol(string symbol, double referencePrice, double &clos
     return true;
 }
 
+bool IsOrderClosedByStopLoss(int type, double stopLossPrice, double closePrice)
+{
+    if(stopLossPrice <= 0.0)
+        return false;
+
+    double tol = 2 * Point;
+    if(type == OP_BUY)
+        return (closePrice <= stopLossPrice + tol);
+    if(type == OP_SELL)
+        return (closePrice >= stopLossPrice - tol);
+
+    return false;
+}
+
+bool DetectNewStopLossClose(datetime &sinceTime, int &slTicket)
+{
+    slTicket = -1;
+    datetime newest = sinceTime;
+    bool found = false;
+
+    int total = OrdersHistoryTotal();
+    for(int i = total - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+            continue;
+
+        datetime ct = OrderCloseTime();
+        if(ct <= 0)
+            continue;
+        if(ct <= sinceTime)
+            continue;
+
+        if(ct > newest)
+            newest = ct;
+
+        int type = OrderType();
+        if(type != OP_BUY && type != OP_SELL)
+            continue;
+
+        double sl = OrderStopLoss();
+        double cp = OrderClosePrice();
+        if(IsOrderClosedByStopLoss(type, sl, cp))
+        {
+            slTicket = OrderTicket();
+            found = true;
+            // keep scanning to advance newest
+        }
+    }
+
+    sinceTime = newest;
+    return found;
+}
+
+void CloseAllOrders()
+{
+    RefreshRates();
+
+    int total = OrdersTotal();
+    for(int i = total - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+
+        int type = OrderType();
+        int ticket = OrderTicket();
+        double lots = OrderLots();
+
+        bool ok = false;
+        ResetLastError();
+
+        if(type == OP_BUY)
+            ok = OrderClose(ticket, lots, Bid, 300, clrWhite);
+        else if(type == OP_SELL)
+            ok = OrderClose(ticket, lots, Ask, 300, clrWhite);
+        else
+            ok = OrderDelete(ticket);
+
+        if(!ok)
+        {
+            int err = GetLastError();
+            PrintFormat("Failed to close/delete order. ticket=%d type=%d err=%d", ticket, type, err);
+        }
+    }
+}
+
 int OnInit()
 {   
     Print("version: " + version);
     Print("show_lines: ", show_lines);
     ApplyBlackOnWhiteTheme();
+
+    g_lastHistoryCheck = TimeCurrent();
 
     return(INIT_SUCCEEDED);
 }
@@ -274,6 +364,15 @@ void OnDeinit(const int reason)
 void OnTick()
 {
     RefreshRates();
+
+    int slTicket = -1;
+    if(close_all_on_sl && DetectNewStopLossClose(g_lastHistoryCheck, slTicket))
+    {
+        PrintFormat("Detected SL close (ticket=%d). Closing all orders.", slTicket);
+        CloseAllOrders();
+        return;
+    }
+
     datetime currentTime = Time[0];
     string timeStr = TimeToString(currentTime, TIME_DATE|TIME_MINUTES);
     StringReplace(timeStr, "2025", "25");
@@ -310,10 +409,10 @@ void OnTick()
 
     if(decision == "BUY" || decision == "SELL")
     {
-        if(hasClosest && closestDistance < minDistance)
+        if(minDistance > 0.0 && hasClosest && closestDistance < (minDistance * Point))
         {
             PrintFormat(
-                "Skipping new order: closest existing order is %.0f points away (threshold=%d). current=%.*f closest=%.*f",
+                "Skipping new order: closest existing order is %.0f points away (threshold=%.0f). current=%.*f closest=%.*f",
                 closestDistance / Point, 
                 minDistance,
                 Digits, currentPrice,
