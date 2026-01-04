@@ -67,18 +67,27 @@ def decision(result: str | None) -> str:
     d0_offset = offsets.get("D0")
     a0_offset = offsets.get("A0")
 
-    if "A" in line_id and direction == "UP":
-        # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
-        if d0_offset is not None and d0_offset > 0:
-            return "log: do not buy below D0\nNONE"
-        return "BUY"
+    if "A" in line_id:
+        if direction == "UP":
+            # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
+            if d0_offset is not None and d0_offset > 0:
+                return "log: do not buy below D0\nNONE"
+            return "BUY"
+        elif direction == "DOWN":
+            return "log: bad direction\nNONE"
 
-    if "D" in line_id and direction == "DOWN":
-        # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
-        if a0_offset is not None and a0_offset < 0:
-            return "log: do not sell above A0\nNONE"
-        return "SELL"
-    
-    
-    
-    return "NONE"
+    if "D" in line_id:
+        if direction == "DOWN":
+            # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
+            if a0_offset is not None and a0_offset < 0:
+                return "log: do not sell above A0\nNONE"
+            return "SELL"
+        elif direction == "UP":
+            return "log: bad direction\nNONE"
+        
+    return f"log: bad line id: {line_id}\nNONE"
+
+if __name__ == '__main__':  
+    # Example usage
+    example_result = "CROSSED AR1 DOWN | D0: -95.57 | DR1: -273.62 | DS1: 420.07 | A0: 147.94 | AR1: 18.28 | AS1: 683.76 | SLOPE: -0.5746 | BASE: 24793.88"
+    print(decision(example_result))
