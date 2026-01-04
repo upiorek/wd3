@@ -646,9 +646,45 @@ def process_single_file(csv_filepath, output_dir='charts'):
     if not detected_lines:
         return "NONE"
     
-    # Sprawdź przecięcia ostatniej świeczki
+    # Sprawdź przecięcia ostatniej świeczki + policz offsety dla wszystkich linii
     last_candle = lookback_df_full.iloc[-1]
-    crossed_lines = check_crossings(last_candle, detected_lines, lookback_df_for_lines)
+    base_price = float(last_candle['Close'])
+    last_candle_low = float(last_candle['Low'])
+    last_candle_high = float(last_candle['High'])
+    last_candle_direction = 'UP' if last_candle['Close'] > last_candle['Open'] else 'DOWN'
+    last_candle_idx = len(lookback_df_for_lines)
+
+    crossed = False
+    crossed_id = ""
+    line_offsets = []
+    for line_info in detected_lines:
+        slope = line_info.slope
+        intercept = line_info.intercept
+        line_type = 'ascending' if slope > 0 else 'descending'
+        line_value = slope * last_candle_idx + intercept
+        line_offset = line_value - base_price
+        level = line_info.level - 1
+
+        line_id = "A" if line_type == 'ascending' else "D"
+        if level == 0:
+            line_id += "0"  # Główna linia
+        else:
+            if line_type == 'ascending':
+                if line_info.offset > 0:
+                    line_id += f"S{level}"
+                else:
+                    line_id += f"R{level}"
+            else:
+                if line_info.offset < 0:
+                    line_id += f"R{level}"
+                else:
+                    line_id += f"S{level}"
+
+        if last_candle_low <= line_value <= last_candle_high:
+            crossed = True
+            crossed_id = line_id if crossed_id == "" else (crossed_id + " " + line_id)
+
+        line_offsets.append((line_id, line_offset))
 
     slope = detected_lines[0].slope
     
@@ -663,14 +699,13 @@ def process_single_file(csv_filepath, output_dir='charts'):
         plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath, 
                    lookback_start_dt, lookback_end_dt)
     
-    if crossed_lines:
-        ret = crossed_lines[0] + " | " 
-        # offset z dokładnością do 2 miejsca po przecinku
-        ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in crossed_lines[1:]])
-        ret += " | SLOPE: {:.4f}".format(slope)
-        return ret
-    else:
-        return "NONE"
+    prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
+    ret = prefix + " | "
+    # offset z dokładnością do 2 miejsca po przecinku
+    ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in line_offsets])
+    ret += " | SLOPE: {:.4f}".format(slope)
+    ret += " | BASE: {:.2f}".format(base_price)
+    return ret
 
 
 def process_all_files(input_dir, output_file='support_lines_results.txt', output_charts_dir='charts'):
