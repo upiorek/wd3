@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import importlib.util
 import shutil
+import argparse
 
 # Prefer importing via the aifx package (works well with VS Code/Pylance).
 # When launched from inside aifx/tester-third, ensure repo root is on sys.path.
@@ -152,9 +153,30 @@ def process_file(file_path, percentage=.0, revert=False):
         print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
 
 def main():
-    revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
-    compare_mode = len(sys.argv) > 1 and sys.argv[1] == "--compare"
-    test_mode = len(sys.argv) > 1 and sys.argv[1] == "--test"
+    parser = argparse.ArgumentParser(description="Process or revert MT4 candle CSV files.")
+    parser.add_argument(
+        "--input-dir",
+        help=(
+            "Directory containing candle CSV files to process. "
+            "Overrides the default auto-detected directories."
+        ),
+    )
+    parser.add_argument("--revert", action="store_true", help="Revert *_mod.csv back to original format")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Only process candles that have matching order files in mt4_test_results/m15_orders",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Use test-mode default directories (mt4_test_results/m15_tests or m15_tests)",
+    )
+    args = parser.parse_args()
+
+    revert = args.revert
+    compare_mode = args.compare
+    test_mode = args.test
 
     def _clean_charts_dir(charts_dir: Path) -> None:
         if not charts_dir.exists():
@@ -171,25 +193,38 @@ def main():
             except Exception as e:
                 print(f"Warning: could not remove {p}: {e}")
     
-    # Check for candles in mt4_test_results first, then fall back to m15_candles or m15_tests
-    if test_mode:
-        test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_tests"
-        original_dir = Path(__file__).parent / "m15_tests"
+    # Determine input directory.
+    # If --input-dir is supplied, it takes precedence.
+    # Otherwise, check for candles in mt4_test_results first, then fall back to m15_candles or m15_tests.
+    if args.input_dir:
+        candles_dir = Path(args.input_dir).expanduser()
+        if not candles_dir.is_absolute():
+            candles_dir = (Path.cwd() / candles_dir)
+        candles_dir = candles_dir.resolve()
+        if not candles_dir.exists() or not candles_dir.is_dir():
+            print(f"Directory not found: {candles_dir}")
+            return
+        print(f"Using --input-dir: {candles_dir}")
     else:
-        test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles"
-        original_dir = Path(__file__).parent / "m15_candles"
+        if test_mode:
+            test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_tests"
+            original_dir = Path(__file__).parent / "m15_tests"
+        else:
+            test_results_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles"
+            original_dir = Path(__file__).parent / "m15_candles"
+
+        if test_results_dir.exists():
+            candles_dir = test_results_dir
+            print(f"Using MT4 test results: {candles_dir}")
+        elif original_dir.exists():
+            candles_dir = original_dir
+            print(f"Using original candles: {candles_dir}")
+        else:
+            print(f"Directory not found: {test_results_dir}")
+            print(f"Directory not found: {original_dir}")
+            return
+
     orders_dir = Path(__file__).parent / "mt4_test_results" / "m15_orders"
-    
-    if test_results_dir.exists():
-        candles_dir = test_results_dir
-        print(f"Using MT4 test results: {candles_dir}")
-    elif original_dir.exists():
-        candles_dir = original_dir
-        print(f"Using original candles: {candles_dir}")
-    else:
-        print(f"Directory not found: {test_results_dir}")
-        print(f"Directory not found: {original_dir}")
-        return
     
     pattern = "*_mod.csv" if revert else "*.csv"
     csv_files = sorted([f for f in candles_dir.glob(pattern) 
@@ -260,8 +295,12 @@ def main():
         if compare_mode:
             print(f"Removed: {skipped_count} files")
     else:
+        processed_count = 0
         for csv_file in csv_files:
-            process_file(csv_file, revert)
+            percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
+            process_file(csv_file, percentage, revert=True)
+            processed_count += 1
+        
         # delete "charts" directory
         charts_dir = candles_dir / "charts"
         if charts_dir.exists() and charts_dir.is_dir():
