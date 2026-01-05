@@ -6,6 +6,7 @@ Each file named as YY-MM-DD-HH-MM.csv
 
 import os
 import sys
+import argparse
 
 def divide_monthly_file(monthly_file):
     """Divide a monthly CSV file into individual row files with 300 previous rows."""
@@ -109,13 +110,19 @@ def process_all_monthly_files(data_dir):
     print(f"\nTotal individual files created: {total_created}")
 
 if __name__ == "__main__":
-    # Check for cleanup flag
-    cleanup = False
-    if len(sys.argv) > 1 and sys.argv[1] in ['--cleanup', '-c', 'cleanup']:
-        cleanup = True
+    parser = argparse.ArgumentParser(description='Divide monthly CSV files into individual files per row')
+    parser.add_argument('--cleanup', '-c', action='store_true',
+                        help='Remove individual CSV files')
+    parser.add_argument('--data-dir', '-d', type=str, default=os.path.dirname(os.path.abspath(__file__)),
+                        help='Path to the data directory (default: current script directory)')
+    
+    args = parser.parse_args()
+    
+    cleanup = args.cleanup
+    if cleanup:
         print("Cleanup mode: Will remove individual CSV files\n")
     
-    data_dir = "/home/ubuntu/repo/aifx/data"
+    data_dir = args.data_dir
     
     if not os.path.exists(data_dir):
         print(f"Error: Data directory not found: {data_dir}")

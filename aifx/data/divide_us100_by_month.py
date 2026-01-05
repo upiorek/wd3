@@ -5,6 +5,7 @@ Divide US100.f15.csv file by month and store in monthly folders
 
 import os
 import sys
+import argparse
 from collections import defaultdict
 
 def divide_csv_by_month(input_file, base_dir="."):
@@ -56,14 +57,20 @@ def divide_csv_by_month(input_file, base_dir="."):
     print(f"\nTotal rows written: {total_written}")
 
 if __name__ == "__main__":
-    # Check for cleanup flag
-    cleanup = False
-    if len(sys.argv) > 1 and sys.argv[1] in ['--cleanup', '-c', 'cleanup']:
-        cleanup = True
+    parser = argparse.ArgumentParser(description='Divide US100.f15.csv file by month and store in monthly folders')
+    parser.add_argument('--cleanup', '-c', action='store_true', 
+                        help='Remove existing monthly CSV files before processing')
+    parser.add_argument('--data-dir', '-d', type=str, default=os.path.dirname(os.path.abspath(__file__)),
+                        help='Path to the data directory (default: current script directory)')
+    
+    args = parser.parse_args()
+    
+    cleanup = args.cleanup
+    if cleanup:
         print("Cleanup mode: Will remove existing monthly CSV files before processing\n")
     
     # Run from the data directory
-    data_dir = "/home/ubuntu/repo/aifx/data"
+    data_dir = args.data_dir
     input_file = os.path.join(data_dir, "US100.f15.csv_data")
     
     if not os.path.exists(input_file):
