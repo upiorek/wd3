@@ -9,10 +9,13 @@ aifx/tests/test_charts/*
 aifx/tests/support_charts/*
 aifx/tests/test_charts_mixed/*
 aifx/tests/test_charts_legend/*
+
 aifx/tester-third/__pycache__/*
 aifx/tester-third/mt4_test_results/logs/*
 aifx/tester-third/*.ex4
 aifx/tester-third/mt4_test_results/*
+aifx/tester-third/analyze.log
+aifx/tester-third/m15_candles/*
 
 .vscode/settings.json
 test_charts_mixed/*
@@ -23,7 +26,7 @@ aifx/strategy/__pycache__/*
 aifx/strategy/support_charts/*
 aifx/strategy/tests/golden_test_output/*
 aifx/strategy/support_lines_results.txt
-aifx/tester-third/analyze.log
+
 
 magic_lines.log
 decision.log
