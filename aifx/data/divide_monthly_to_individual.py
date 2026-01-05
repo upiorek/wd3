@@ -8,24 +8,56 @@ import os
 import sys
 import argparse
 
-def divide_monthly_file(monthly_file):
+def divide_monthly_file(monthly_file, data_dir):
     """Divide a monthly CSV file into individual row files with 300 previous rows."""
     
     folder = os.path.dirname(monthly_file)
+    filename = os.path.basename(monthly_file)
     print(f"Processing {monthly_file}...")
     
     # Read all lines into memory first
     with open(monthly_file, 'r') as f:
         all_lines = [line.strip() for line in f if line.strip()]
     
+    # Try to load previous month's data (needed for first 300 rows of any month)
+    previous_month_lines = []
+    # Extract year and month from filename like US100.f15_YYYY.MM.csv
+    try:
+        year_month_part = filename.split('_')[1].replace('.csv', '')  # YYYY.MM
+        year, month = map(int, year_month_part.split('.'))
+           
+        # Calculate previous month
+        if month == 1:
+            prev_year, prev_month = year - 1, 12
+        else:
+            prev_year, prev_month = year, month - 1
+            
+        prev_folder = os.path.join(data_dir, f"{prev_year:04d}.{prev_month:02d}")
+        prev_file = os.path.join(prev_folder, f"US100.f15_{prev_year:04d}.{prev_month:02d}.csv")
+        
+        if os.path.exists(prev_file):
+            print(f"  Loading previous month data from {prev_file}")
+            with open(prev_file, 'r') as f:
+                previous_month_lines = [line.strip() for line in f if line.strip()]
+        else:
+            print(f"  Warning: Previous month file not found: {prev_file}")
+    except Exception as e:
+        print(f"  Warning: Could not load previous month data: {e}")
+    
     created_count = 0
     skipped_count = 0
     
     for i, line in enumerate(all_lines):
-        # Only create file if there are at least 300 previous rows
-        if i < 300:
-            skipped_count += 1
-            continue
+        # Check if we have enough previous rows (from current or previous month)
+        needed_rows = 300
+        available_in_current = i
+        
+        if available_in_current < needed_rows:
+            needed_from_previous = needed_rows - available_in_current
+            if len(previous_month_lines) < needed_from_previous:
+                # Still not enough data even with previous month
+                skipped_count += 1
+                continue
             
         try:
             # Parse date and time: YYYY.MM.DD HH:MM;...
@@ -42,13 +74,20 @@ def divide_monthly_file(monthly_file):
             hour, minute = time_part.split(':')
             
             # Create filename: YYYY-MM-DD-HH-MM-m15.csv
-            filename = f"{year}-{month}-{day}-{hour}-{minute}-m15.csv"
+            output_filename = f"{year}-{month}-{day}-{hour}-{minute}-m15.csv"
             
             # Write 300 previous rows plus current row to file
-            output_path = os.path.join(folder, filename)
+            output_path = os.path.join(folder, output_filename)
             with open(output_path, 'w') as out_f:
-                # Write 300 previous rows
-                previous_rows = all_lines[i-300:i]
+                # Determine where to get the 300 previous rows
+                if i >= 300:
+                    # All 300 rows from current month
+                    previous_rows = all_lines[i-300:i]
+                else:
+                    # Need to combine previous month and current month
+                    needed_from_previous = 300 - i
+                    previous_rows = previous_month_lines[-needed_from_previous:] + all_lines[:i]
+                
                 for prev_line in previous_rows:
                     out_f.write(prev_line + '\n')
                 
@@ -61,7 +100,10 @@ def divide_monthly_file(monthly_file):
             print(f"Error processing line {i}: {e}")
             continue
     
-    print(f"Created {created_count} individual files in {folder} (skipped {skipped_count} files without 300 previous rows)")
+    print(f"Created {created_count} individual files in {folder}")
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} files without 300 previous rows")
+
     return created_count
 
 def cleanup_individual_files(data_dir):
@@ -104,7 +146,7 @@ def process_all_monthly_files(data_dir):
         for filename in os.listdir(folder_path):
             if filename.startswith("US100.f15_") and filename.endswith(".csv"):
                 monthly_file = os.path.join(folder_path, filename)
-                count = divide_monthly_file(monthly_file)
+                count = divide_monthly_file(monthly_file, data_dir)
                 total_created += count
     
     print(f"\nTotal individual files created: {total_created}")
