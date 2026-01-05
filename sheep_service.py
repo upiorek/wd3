@@ -392,7 +392,7 @@ def write_sheep_file():
             
             debug_content = f"\nDebug Info:\n"
             candle_time = latest_m15.replace("-m15.csv", "") if latest_m15 != "N/A" else "unknown"
-            debug_content += f"Candle Time: {candle_time}\n"
+            debug_content += f"\nCandle Time: {candle_time}\n"
 
             decision = None
             # If chart was just generated, check for trading signals
