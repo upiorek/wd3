@@ -8,6 +8,7 @@ string version = "1.0";
 input bool show_lines = false;    
 input double minDistance = 1500; // set to 0 to disable
 input bool close_all_on_sl = true;
+input bool close_opposite_on_flip = true;
 
 datetime g_lastHistoryCheck = 0;
 
@@ -314,6 +315,74 @@ bool DetectNewStopLossClose(datetime &sinceTime, int &slTicket)
     return found;
 }
 
+bool IsBuySideOrderType(int type)
+{
+    return (type == OP_BUY || type == OP_BUYLIMIT || type == OP_BUYSTOP);
+}
+
+bool IsSellSideOrderType(int type)
+{
+    return (type == OP_SELL || type == OP_SELLLIMIT || type == OP_SELLSTOP);
+}
+
+bool HasOrdersForSymbolSide(string symbol, bool sellSide)
+{
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != symbol)
+            continue;
+
+        int type = OrderType();
+        if(sellSide && IsSellSideOrderType(type))
+            return true;
+        if(!sellSide && IsBuySideOrderType(type))
+            return true;
+    }
+    return false;
+}
+
+void CloseOrdersForSymbolSide(string symbol, bool sellSide)
+{
+    RefreshRates();
+
+    int total = OrdersTotal();
+    for(int i = total - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != symbol)
+            continue;
+
+        int type = OrderType();
+        if(sellSide && !IsSellSideOrderType(type))
+            continue;
+        if(!sellSide && !IsBuySideOrderType(type))
+            continue;
+
+        int ticket = OrderTicket();
+        double lots = OrderLots();
+
+        bool ok = false;
+        ResetLastError();
+
+        if(type == OP_BUY)
+            ok = OrderClose(ticket, lots, Bid, 300, clrWhite);
+        else if(type == OP_SELL)
+            ok = OrderClose(ticket, lots, Ask, 300, clrWhite);
+        else
+            ok = OrderDelete(ticket);
+
+        if(!ok)
+        {
+            int err = GetLastError();
+            PrintFormat("Failed to close/delete order. ticket=%d type=%d err=%d", ticket, type, err);
+        }
+    }
+}
+
 void CloseAllOrders()
 {
     RefreshRates();
@@ -409,6 +478,19 @@ void OnTick()
 
     if(decision == "BUY" || decision == "SELL")
     {
+        if(close_opposite_on_flip && decision == "BUY" && HasOrdersForSymbolSide(Symbol(), true))
+        {
+            Print("BUY signal while SELL orders exist: closing SELL side and skipping.");
+            CloseOrdersForSymbolSide(Symbol(), true);
+            return;
+        }
+        if(close_opposite_on_flip && decision == "SELL" && HasOrdersForSymbolSide(Symbol(), false))
+        {
+            Print("SELL signal while BUY orders exist: closing BUY side and skipping.");
+            CloseOrdersForSymbolSide(Symbol(), false);
+            return;
+        }
+
         if(minDistance > 0.0 && hasClosest && closestDistance < (minDistance * Point))
         {
             PrintFormat(
