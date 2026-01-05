@@ -8,6 +8,18 @@ import os
 import sys
 import argparse
 
+
+OUTPUT_HEADER = "Time;Open;High;Low;Close"
+
+
+def _is_header_row(line: str) -> bool:
+    return line.strip().lower().startswith("time;open;high;low;close")
+
+
+def _to_ohlc5(line: str) -> str:
+    parts = [p.strip() for p in line.strip().split(';')]
+    return ';'.join(parts[:5])
+
 def divide_monthly_file(monthly_file, data_dir):
     """Divide a monthly CSV file into individual row files with 300 previous rows."""
     
@@ -17,7 +29,7 @@ def divide_monthly_file(monthly_file, data_dir):
     
     # Read all lines into memory first
     with open(monthly_file, 'r') as f:
-        all_lines = [line.strip() for line in f if line.strip()]
+        all_lines = [line.strip() for line in f if line.strip() and not _is_header_row(line)]
     
     # Try to load previous month's data (needed for first 300 rows of any month)
     previous_month_lines = []
@@ -38,7 +50,7 @@ def divide_monthly_file(monthly_file, data_dir):
         if os.path.exists(prev_file):
             print(f"  Loading previous month data from {prev_file}")
             with open(prev_file, 'r') as f:
-                previous_month_lines = [line.strip() for line in f if line.strip()]
+                previous_month_lines = [line.strip() for line in f if line.strip() and not _is_header_row(line)]
         else:
             print(f"  Warning: Previous month file not found: {prev_file}")
     except Exception as e:
@@ -79,6 +91,7 @@ def divide_monthly_file(monthly_file, data_dir):
             # Write 300 previous rows plus current row to file
             output_path = os.path.join(folder, output_filename)
             with open(output_path, 'w') as out_f:
+                out_f.write(OUTPUT_HEADER + '\n')
                 # Determine where to get the 300 previous rows
                 if i >= 300:
                     # All 300 rows from current month
@@ -89,10 +102,10 @@ def divide_monthly_file(monthly_file, data_dir):
                     previous_rows = previous_month_lines[-needed_from_previous:] + all_lines[:i]
                 
                 for prev_line in previous_rows:
-                    out_f.write(prev_line + '\n')
+                    out_f.write(_to_ohlc5(prev_line) + '\n')
                 
                 # Write current line
-                out_f.write(line + '\n')
+                out_f.write(_to_ohlc5(line) + '\n')
             
             created_count += 1
             
