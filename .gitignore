@@ -31,3 +31,4 @@ sheep.log
 sheep/*.log
 sheep_old/*.log
 
+aifx/data/**/*.csv
