@@ -27,10 +27,14 @@ def divide_monthly_file(monthly_file):
             continue
             
         try:
-            # Parse date and time from first two columns: YYYY.MM.DD,HH:MM
-            parts = line.split(',')
-            date_part = parts[0]  # YYYY.MM.DD
-            time_part = parts[1]  # HH:MM
+            # Parse date and time: YYYY.MM.DD HH:MM;...
+            parts = line.split(';')
+            datetime_part = parts[0]  # "YYYY.MM.DD HH:MM"
+            
+            # Split date and time
+            datetime_split = datetime_part.split(' ')
+            date_part = datetime_split[0]  # YYYY.MM.DD
+            time_part = datetime_split[1]  # HH:MM
             
             # Extract components
             year, month, day = date_part.split('.')

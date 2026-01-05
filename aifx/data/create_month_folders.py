@@ -21,8 +21,9 @@ def get_months_from_data(data_file):
                 continue
             
             try:
-                # Parse date from first column: YYYY.MM.DD,HH:MM,...
-                date_part = line.split(',')[0]  # Get YYYY.MM.DD
+                # Parse date from first column: YYYY.MM.DD HH:MM;...
+                datetime_part = line.split(';')[0]  # Get "YYYY.MM.DD HH:MM"
+                date_part = datetime_part.split(' ')[0]  # Get YYYY.MM.DD
                 year_month = '.'.join(date_part.split('.')[:2])  # Get YYYY.MM
                 months.add(year_month)
             except Exception as e:

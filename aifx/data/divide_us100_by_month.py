@@ -21,9 +21,10 @@ def divide_csv_by_month(input_file, base_dir="."):
             if not line:
                 continue
             
-            # Parse date from first column: YYYY.MM.DD,HH:MM,...
+            # Parse date from first column: YYYY.MM.DD HH:MM;...
             try:
-                date_part = line.split(',')[0]  # Get YYYY.MM.DD
+                datetime_part = line.split(';')[0]  # Get "YYYY.MM.DD HH:MM"
+                date_part = datetime_part.split(' ')[0]  # Get YYYY.MM.DD
                 year_month = '.'.join(date_part.split('.')[:2])  # Get YYYY.MM
                 
                 monthly_data[year_month].append(line)
