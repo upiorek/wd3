@@ -35,3 +35,6 @@ sheep/*.log
 sheep_old/*.log
 
 aifx/data/**/*.csv
+aifx/data/**/*_decision.txt
+aifx/data/**/*_result.txt
+aifx/data/**/*.png
