@@ -135,6 +135,7 @@ def process_all_monthly_files(data_dir):
     """Process all monthly CSV files in the data directory."""
     
     total_created = 0
+    processed_monthly_files = []
     
     for folder_name in sorted(os.listdir(data_dir)):
         folder_path = os.path.join(data_dir, folder_name)
@@ -148,8 +149,24 @@ def process_all_monthly_files(data_dir):
                 monthly_file = os.path.join(folder_path, filename)
                 count = divide_monthly_file(monthly_file, data_dir)
                 total_created += count
-    
+                processed_monthly_files.append(monthly_file)
+
+    # Delete monthly source files after processing all months to save space.
+    deleted_count = 0
+    failed_deletions = 0
+    for monthly_file in processed_monthly_files:
+        try:
+            os.remove(monthly_file)
+            deleted_count += 1
+        except Exception as e:
+            failed_deletions += 1
+            print(f"Warning: Could not delete monthly file {monthly_file}: {e}")
+
     print(f"\nTotal individual files created: {total_created}")
+    if processed_monthly_files:
+        print(f"Monthly files deleted: {deleted_count}")
+        if failed_deletions:
+            print(f"Monthly files failed to delete: {failed_deletions}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Divide monthly CSV files into individual files per row')
