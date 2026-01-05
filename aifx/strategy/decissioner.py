@@ -62,6 +62,8 @@ def decision(result: str | None) -> str:
     
     line_id = parts[1]
     direction = parts[2]
+    if direction not in ("UP", "DOWN"):
+        return f"log: invalid direction: {direction}\nNONE"
 
     offsets = _parse_line_offsets(result)
     d0_offset = offsets.get("D0")
@@ -89,5 +91,5 @@ def decision(result: str | None) -> str:
 
 if __name__ == '__main__':  
     # Example usage
-    example_result = "CROSSED AR1 DOWN | D0: -95.57 | DR1: -273.62 | DS1: 420.07 | A0: 147.94 | AR1: 18.28 | AS1: 683.76 | SLOPE: -0.5746 | BASE: 24793.88"
+    example_result = "CROSSED DS1 DS2 DOWN | D0: -46.56 | DR1: -166.39 | DR2: -293.96 | DS1: -6.40 | DS2: 70.88 | A0: 935.41 | AR1: 400.80 | AS1: 1383.09 | SLOPE: -3.0436 | BASE: 21222.78"
     print(decision(example_result))
