@@ -173,6 +173,11 @@ def main():
         help="Use test-mode default directories (mt4_test_results/m15_tests or m15_tests)",
     )
     parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Delete all *_mod.csv files and remove the charts folder in the selected candles directory, then exit",
+    )
+    parser.add_argument(
         "--no-images",
         action="store_true",
         help="Do not generate PNG chart images (still writes *_result.txt and *_decision.txt)",
@@ -183,6 +188,7 @@ def main():
     compare_mode = args.compare
     test_mode = args.test
     no_images = args.no_images
+    cleanup = args.cleanup
 
     # magic_lines uses a module-level flag to decide whether to write PNGs.
     # Keep the default behavior unless the user explicitly disables it.
@@ -236,6 +242,30 @@ def main():
             return
 
     orders_dir = Path(__file__).parent / "mt4_test_results" / "m15_orders"
+
+    if cleanup:
+        mod_files = sorted(candles_dir.glob("*_mod.csv"))
+        removed_mod = 0
+        for mod_file in mod_files:
+            try:
+                mod_file.unlink()
+                removed_mod += 1
+            except Exception as e:
+                print(f"Warning: could not remove {mod_file}: {e}")
+
+        charts_dir = candles_dir / "charts"
+        removed_charts = False
+        if charts_dir.exists() and charts_dir.is_dir():
+            try:
+                shutil.rmtree(charts_dir)
+                removed_charts = True
+            except Exception as e:
+                print(f"Warning: could not remove charts directory {charts_dir}: {e}")
+
+        print(f"Cleanup complete in: {candles_dir}")
+        print(f"Removed *_mod.csv: {removed_mod}")
+        print(f"Removed charts folder: {removed_charts}")
+        return
     
     pattern = "*_mod.csv" if revert else "*.csv"
     csv_files = sorted([f for f in candles_dir.glob(pattern) 
