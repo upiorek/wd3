@@ -172,11 +172,22 @@ def main():
         action="store_true",
         help="Use test-mode default directories (mt4_test_results/m15_tests or m15_tests)",
     )
+    parser.add_argument(
+        "--no-images",
+        action="store_true",
+        help="Do not generate PNG chart images (still writes *_result.txt and *_decision.txt)",
+    )
     args = parser.parse_args()
 
     revert = args.revert
     compare_mode = args.compare
     test_mode = args.test
+    no_images = args.no_images
+
+    # magic_lines uses a module-level flag to decide whether to write PNGs.
+    # Keep the default behavior unless the user explicitly disables it.
+    if no_images:
+        magic_lines.DUMP_IMAGES = False
 
     def _clean_charts_dir(charts_dir: Path) -> None:
         if not charts_dir.exists():
@@ -236,11 +247,13 @@ def main():
     # Requested cleanup target: mt4_test_results/m15_candles/charts.
     if test_mode and not revert:
         requested_charts_dir = Path(__file__).parent / "mt4_test_results" / "m15_candles" / "charts"
-        _clean_charts_dir(requested_charts_dir)
-        # Also clean the charts dir for the folder we are actively processing.
-        active_charts_dir = candles_dir / "charts"
-        if active_charts_dir.resolve() != requested_charts_dir.resolve():
-            _clean_charts_dir(active_charts_dir)
+        # If we're not generating images, avoid deleting existing PNGs.
+        if not no_images:
+            _clean_charts_dir(requested_charts_dir)
+            # Also clean the charts dir for the folder we are actively processing.
+            active_charts_dir = candles_dir / "charts"
+            if active_charts_dir.resolve() != requested_charts_dir.resolve():
+                _clean_charts_dir(active_charts_dir)
     
     if not revert:
         # Get list of order files to match (only in compare mode)
