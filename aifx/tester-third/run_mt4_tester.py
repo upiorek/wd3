@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 import configparser
 import calendar
+import re
 
 # Set UTF-8 encoding for console output
 if sys.stdout.encoding != 'utf-8':
@@ -638,6 +639,77 @@ def copy_results():
         print("No result files found to copy")
         assert(False), "No result files were copied!"
 
+
+def _find_report_path(config: dict) -> Path | None:
+    report_name = config.get('report')
+    if not report_name:
+        return None
+
+    results_folder = CURRENT_DIR / "mt4_test_results"
+    candidate_paths = [
+        results_folder / report_name,
+        MT4_TERMINAL_PATH / report_name,
+        MT4_TERMINAL_PATH / "tester" / "reports" / report_name,
+        MT4_TERMINAL_PATH / "tester" / report_name,
+    ]
+    for p in candidate_paths:
+        if p.exists() and p.is_file():
+            return p
+    return None
+
+
+def _extract_report_result(report_html: str) -> str | None:
+    # MT4 reports usually contain a row like: Total net profit ... <td>123.45</td>
+    patterns = [
+        r"Total\s+net\s+profit\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
+        r"Total\s+net\s+profit\s*[:=\-]?\s*([^<\r\n]+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, report_html, flags=re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def write_wd_summary(config: dict) -> None:
+    if config.get('expert') != 'wd_tester':
+        return
+
+    # Prefer explicit CLI month; otherwise derive from from_date.
+    month_num = MONTH
+    if month_num is None:
+        try:
+            month_num = int(str(config.get('from_date', '')).split('.')[1])
+        except Exception:
+            month_num = 0
+
+    report_path = _find_report_path(config)
+    result = None
+    if report_path:
+        try:
+            report_html = report_path.read_text(encoding='utf-8', errors='ignore')
+            result = _extract_report_result(report_html)
+        except Exception:
+            result = None
+
+    if not report_path:
+        result_str = "NO_REPORT"
+    elif not result:
+        result_str = "UNKNOWN"
+    else:
+        result_str = result
+
+    summary_line = f"{month_num}: {result_str}"
+    print(f"\nWD summary: {summary_line}")
+
+    try:
+        out_path = (CURRENT_DIR / "mt4_test_results" / "wd_summary.txt")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, 'a', encoding='utf-8') as f:
+            f.write(summary_line + "\n")
+    except Exception as e:
+        print(f"Warning: could not write wd_summary.txt: {e}")
+
 def main():
     print("=" * 60)
     print("MT4 STRATEGY TESTER RUNNER")
@@ -768,6 +840,9 @@ def main():
     # Copy results
     print("\n" + "=" * 60)
     copy_results()
+
+    # For wd_tester, summarize the report.
+    write_wd_summary(config)
     
     print("\n" + "=" * 60)
     print("COMPLETE!")
