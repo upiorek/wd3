@@ -113,19 +113,25 @@ CLEAN_LOCAL_RESULTS = '--clean' in sys.argv
 if CLEAN_LOCAL_RESULTS:
     sys.argv.remove('--clean')
 
+# Check for --no-copy-data flag (skip copying wd_tester input data)
+NO_COPY_DATA = '--no-copy-data' in sys.argv
+if NO_COPY_DATA:
+    sys.argv.remove('--no-copy-data')
+
 # Check for --help flag
 if '--help' in sys.argv or '-h' in sys.argv:
     print("=" * 60)
     print("MT4 STRATEGY TESTER RUNNER - HELP")
     print("=" * 60)
     print("\nUsage:")
-    print("  python run_mt4_tester.py [EA_NAME] [--clean] [--month N] [--input-dir PATH]")
+    print("  python run_mt4_tester.py [EA_NAME] [--clean] [--month N] [--input-dir PATH] [--no-copy-data]")
     print("\nOptions:")
     print("  EA_NAME            Expert advisor to test (order-maker, candle-maker)")
     print("                     Or a custom .ini config file name")
     print("  --clean            Clean local mt4_test_results folder before running")
     print("  --month N          (wd_tester only) Set test range to month (1-12)")
     print("  --input-dir PATH   (wd_tester only) Copy *_decision.txt and *_result.txt from PATH")
+    print("  --no-copy-data     (wd_tester only) Skip copying/cleaning wd_tester input data")
     print("  --help, -h         Show this help message")
     print("\nExamples:")
     print("  python run_mt4_tester.py")
@@ -144,6 +150,9 @@ if '--help' in sys.argv or '-h' in sys.argv:
 
     print("\n  python run_mt4_tester.py wd_tester --input-dir aifx/data/2025.01/charts")
     print("    → Clean MT4 wd_tester input folder, copy decisions/results from PATH, then run")
+
+    print("\n  python run_mt4_tester.py wd_tester --no-copy-data")
+    print("    → Run wd_tester assuming input data already present in MT4 tester/files/wd_tester")
     print("\nFolders cleaned:")
     print("  - MT4 tester folder (always cleaned before each run)")
     print("  - mt4_test_results folder (only with --clean flag)")
@@ -752,6 +761,10 @@ def main():
     
     config = read_config()
 
+    if NO_COPY_DATA and config.get('expert') != 'wd_tester':
+        print("Error: --no-copy-data is only supported for the wd_tester expert")
+        return 1
+
     if INPUT_DIR is not None and config.get('expert') != 'wd_tester':
         print("Error: --input-dir is only supported for the wd_tester expert")
         return 1
@@ -780,7 +793,7 @@ def main():
     cleanup_mt4_data()
 
     # for wd_tester, copy additional files
-    if config['expert'] == 'wd_tester':
+    if config['expert'] == 'wd_tester' and not NO_COPY_DATA:
         print("\nCopying additional WD tester files...")
 
         if INPUT_DIR is not None:
@@ -822,6 +835,8 @@ def main():
             shutil.copy2(file, dest)
             copied += 1
         print(f"Copied {copied} WD tester input file(s) from: {source_folder}")
+    elif config['expert'] == 'wd_tester' and NO_COPY_DATA:
+        print("\nWD tester: --no-copy-data enabled (skipping input data copy)")
     
     # Prepare expert advisor
     print("\nPreparing Expert Advisor...")
