@@ -5,6 +5,8 @@ from pathlib import Path
 import importlib.util
 import shutil
 import argparse
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Prefer importing via the aifx package (works well with VS Code/Pylance).
 # When launched from inside aifx/tester-third, ensure repo root is on sys.path.
@@ -20,8 +22,13 @@ ALGO = "magic_lines"
 from aifx.strategy import magic_lines as magic_lines
 from aifx.strategy import decissioner as decissioner
 
+PRINT_LOCK = threading.Lock()
+STOP_EVENT = threading.Event()
+
 def process_file(file_path, percentage=.0, revert=False):
     """Process or revert a CSV file - simulates order-maker logic."""
+    if STOP_EVENT.is_set():
+        return
     with open(file_path, 'r') as f:
         lines = f.readlines()
     
@@ -85,6 +92,8 @@ def process_file(file_path, percentage=.0, revert=False):
                     continue
                 
                 elif ALGO == "magic_lines":
+                    if STOP_EVENT.is_set():
+                        return
                     # dump [0:i] lines to temp file
                     temp_lines = []
                     for j in range(i):
@@ -104,6 +113,9 @@ def process_file(file_path, percentage=.0, revert=False):
                         with open(result_txt_path, 'r') as result_f:
                             result = result_f.read().strip()
                     else:
+                        if STOP_EVENT.is_set():
+                            temp_path.unlink(missing_ok=True)
+                            return
                         result = magic_lines.process_single_file(
                             str(temp_path), 
                             output_dir=str(file_path.parent / "charts"))
@@ -147,10 +159,11 @@ def process_file(file_path, percentage=.0, revert=False):
         with open(new_path, 'w') as f:
             f.writelines(processed_lines)
     
-    if ALGO == "magic_lines":
-        print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name} {order_type}")
-    else:
-        print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
+    with PRINT_LOCK:
+        if ALGO == "magic_lines":
+            print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name} {order_type}")
+        else:
+            print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
 
 def main():
     parser = argparse.ArgumentParser(description="Process or revert MT4 candle CSV files.")
@@ -182,6 +195,11 @@ def main():
         action="store_true",
         help="Do not generate PNG chart images (still writes *_result.txt and *_decision.txt)",
     )
+    parser.add_argument(
+        "--mt",
+        action="store_true",
+        help="Process files using multiple threads",
+    )
     args = parser.parse_args()
 
     revert = args.revert
@@ -189,6 +207,9 @@ def main():
     test_mode = args.test
     no_images = args.no_images
     cleanup = args.cleanup
+    mt = args.mt
+
+    mt_workers = (os.cpu_count() or 4) if mt else None
 
     # magic_lines uses a module-level flag to decide whether to write PNGs.
     # Keep the default behavior unless the user explicitly disables it.
@@ -273,6 +294,9 @@ def main():
     
     print(f"Found {len(csv_files)} files\n")
 
+    if mt:
+        print(f"Multithreaded mode: enabled ({mt_workers} threads)\n")
+
     # In test mode, always start with a clean charts folder.
     # Requested cleanup target: mt4_test_results/m15_candles/charts.
     if test_mode and not revert:
@@ -301,28 +325,91 @@ def main():
         processed_count = 0
         skipped_count = 0
         files_to_remove = []
-        
-        for csv_file in csv_files:
-            # In compare mode: only process files that have corresponding order files
-            # In normal mode: process all files
-            if compare_mode:
-                if csv_file.stem in order_files:
+
+        if mt:
+            errors = 0
+            futures = []
+            inflight_limit = max(1, (mt_workers or 1) * 2)
+
+            executor = ThreadPoolExecutor(max_workers=mt_workers)
+            try:
+                file_iter = iter(csv_files)
+
+                def _submit_next() -> bool:
+                    nonlocal processed_count, skipped_count
+                    for csv_file in file_iter:
+                        if STOP_EVENT.is_set():
+                            return False
+                        # In compare mode: only process files that have corresponding order files
+                        # In normal mode: process all files
+                        if compare_mode:
+                            if csv_file.stem in order_files:
+                                percentage = (processed_count + 1) * 100 / len(csv_files)
+                                futures.append(executor.submit(process_file, csv_file, percentage, revert))
+                                processed_count += 1
+                                return True
+                            else:
+                                if not csv_file.stem.endswith('_mod'):
+                                    files_to_remove.append(csv_file)
+                                    skipped_count += 1
+                                continue
+                        else:
+                            if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
+                                continue
+                            percentage = (processed_count + 1) * 100 / len(csv_files)
+                            futures.append(executor.submit(process_file, csv_file, percentage, revert))
+                            processed_count += 1
+                            return True
+                    return False
+
+                while len(futures) < inflight_limit and _submit_next():
+                    pass
+
+                while futures:
+                    done_future = next(as_completed(futures))
+                    futures.remove(done_future)
+                    try:
+                        done_future.result()
+                    except Exception as e:
+                        errors += 1
+                        with PRINT_LOCK:
+                            print(f"Error: {e}")
+
+                    while len(futures) < inflight_limit and _submit_next():
+                        pass
+
+            except KeyboardInterrupt:
+                STOP_EVENT.set()
+                with PRINT_LOCK:
+                    print("\nInterrupted (Ctrl+C). Stopping new work; waiting for in-flight tasks to finish...")
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+
+            if errors:
+                with PRINT_LOCK:
+                    print(f"Warning: {errors} file(s) failed during multithreaded processing")
+        else:
+            for csv_file in csv_files:
+                # In compare mode: only process files that have corresponding order files
+                # In normal mode: process all files
+                if compare_mode:
+                    if csv_file.stem in order_files:
+                        percentage = (processed_count + 1) * 100 / len(csv_files) 
+                        process_file(csv_file, percentage, revert)
+                        processed_count += 1
+                    else:
+                        # Only delete source files if we're actively matching
+                        if not csv_file.stem.endswith('_mod'):
+                            files_to_remove.append(csv_file)
+                            skipped_count += 1
+                else:
+                    # Normal mode: process all files (except _mod and _temp)
+                    if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
+                        continue
+
                     percentage = (processed_count + 1) * 100 / len(csv_files) 
                     process_file(csv_file, percentage, revert)
                     processed_count += 1
-                else:
-                    # Only delete source files if we're actively matching
-                    if not csv_file.stem.endswith('_mod'):
-                        files_to_remove.append(csv_file)
-                        skipped_count += 1
-            else:
-                # Normal mode: process all files (except _mod and _temp)
-                if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
-                    continue
-
-                percentage = (processed_count + 1) * 100 / len(csv_files) 
-                process_file(csv_file, percentage, revert)
-                processed_count += 1
         
         # Remove skipped files (only in compare mode)
         if compare_mode and files_to_remove:
@@ -339,10 +426,57 @@ def main():
             print(f"Removed: {skipped_count} files")
     else:
         processed_count = 0
-        for csv_file in csv_files:
-            percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
-            process_file(csv_file, percentage, revert=True)
-            processed_count += 1
+
+        if mt:
+            futures = []
+            errors = 0
+            inflight_limit = max(1, (mt_workers or 1) * 2)
+
+            executor = ThreadPoolExecutor(max_workers=mt_workers)
+            try:
+                file_iter = iter(csv_files)
+
+                def _submit_next() -> bool:
+                    nonlocal processed_count
+                    for csv_file in file_iter:
+                        if STOP_EVENT.is_set():
+                            return False
+                        percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
+                        futures.append(executor.submit(process_file, csv_file, percentage, True))
+                        processed_count += 1
+                        return True
+                    return False
+
+                while len(futures) < inflight_limit and _submit_next():
+                    pass
+
+                while futures:
+                    done_future = next(as_completed(futures))
+                    futures.remove(done_future)
+                    try:
+                        done_future.result()
+                    except Exception as e:
+                        errors += 1
+                        with PRINT_LOCK:
+                            print(f"Error: {e}")
+                    while len(futures) < inflight_limit and _submit_next():
+                        pass
+
+            except KeyboardInterrupt:
+                STOP_EVENT.set()
+                with PRINT_LOCK:
+                    print("\nInterrupted (Ctrl+C). Stopping new work; waiting for in-flight tasks to finish...")
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+
+            if errors:
+                with PRINT_LOCK:
+                    print(f"Warning: {errors} file(s) failed during multithreaded revert")
+        else:
+            for csv_file in csv_files:
+                percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
+                process_file(csv_file, percentage, revert=True)
+                processed_count += 1
         
         # delete "charts" directory
         charts_dir = candles_dir / "charts"
