@@ -17,6 +17,7 @@ import shutil
 import subprocess
 from pathlib import Path
 import configparser
+import calendar
 
 # Set UTF-8 encoding for console output
 if sys.stdout.encoding != 'utf-8':
@@ -34,6 +35,77 @@ MT4_TERMINAL_PATH_R = Path(r"C:\Users\rrudnick\AppData\Roaming\MetaQuotes\Termin
 MT4_TERMINAL_PATH = MT4_TERMINAL_PATH_P if USER_NAME.lower() == 'prudnick' else MT4_TERMINAL_PATH_R
 
 CURRENT_DIR = Path(__file__).parent
+REPO_ROOT = CURRENT_DIR.parent.parent
+
+# Check for --month flag (wd_tester only). Supports --month N and --month=N
+MONTH = None
+if any(a == '--month' or a.startswith('--month=') for a in sys.argv):
+    i = 1
+    while i < len(sys.argv):
+        a = sys.argv[i]
+        if a.startswith('--month='):
+            if MONTH is not None:
+                print("Error: --month specified more than once")
+                sys.exit(1)
+            raw = a.split('=', 1)[1].strip()
+            if not raw:
+                print("Error: --month requires a value")
+                sys.exit(1)
+            try:
+                MONTH = int(raw)
+            except ValueError:
+                print("Error: --month must be an integer 1..12")
+                sys.exit(1)
+            del sys.argv[i]
+            continue
+        if a == '--month':
+            if MONTH is not None:
+                print("Error: --month specified more than once")
+                sys.exit(1)
+            if i + 1 >= len(sys.argv):
+                print("Error: --month requires a value")
+                sys.exit(1)
+            try:
+                MONTH = int(sys.argv[i + 1])
+            except ValueError:
+                print("Error: --month must be an integer 1..12")
+                sys.exit(1)
+            del sys.argv[i:i + 2]
+            continue
+        i += 1
+
+    if MONTH is not None and not (1 <= MONTH <= 12):
+        print("Error: --month must be in range 1..12")
+        sys.exit(1)
+
+# Check for --input-dir flag (wd_tester only). Supports --input-dir PATH and --input-dir=PATH
+INPUT_DIR = None
+if any(a == '--input-dir' or a.startswith('--input-dir=') for a in sys.argv):
+    i = 1
+    while i < len(sys.argv):
+        a = sys.argv[i]
+        if a.startswith('--input-dir='):
+            if INPUT_DIR is not None:
+                print("Error: --input-dir specified more than once")
+                sys.exit(1)
+            raw = a.split('=', 1)[1].strip()
+            if not raw:
+                print("Error: --input-dir requires a value")
+                sys.exit(1)
+            INPUT_DIR = raw
+            del sys.argv[i]
+            continue
+        if a == '--input-dir':
+            if INPUT_DIR is not None:
+                print("Error: --input-dir specified more than once")
+                sys.exit(1)
+            if i + 1 >= len(sys.argv):
+                print("Error: --input-dir requires a value")
+                sys.exit(1)
+            INPUT_DIR = sys.argv[i + 1]
+            del sys.argv[i:i + 2]
+            continue
+        i += 1
 
 # Check for --clean flag
 CLEAN_LOCAL_RESULTS = '--clean' in sys.argv
@@ -46,11 +118,13 @@ if '--help' in sys.argv or '-h' in sys.argv:
     print("MT4 STRATEGY TESTER RUNNER - HELP")
     print("=" * 60)
     print("\nUsage:")
-    print("  python run_mt4_tester.py [EA_NAME] [--clean]")
+    print("  python run_mt4_tester.py [EA_NAME] [--clean] [--month N] [--input-dir PATH]")
     print("\nOptions:")
     print("  EA_NAME            Expert advisor to test (order-maker, candle-maker)")
     print("                     Or a custom .ini config file name")
     print("  --clean            Clean local mt4_test_results folder before running")
+    print("  --month N          (wd_tester only) Set test range to month (1-12)")
+    print("  --input-dir PATH   (wd_tester only) Copy *_decision.txt and *_result.txt from PATH")
     print("  --help, -h         Show this help message")
     print("\nExamples:")
     print("  python run_mt4_tester.py")
@@ -63,6 +137,12 @@ if '--help' in sys.argv or '-h' in sys.argv:
     print("    → Clean local results, then run order-maker test")
     print("\n  python run_mt4_tester.py custom_config.ini")
     print("    → Run with custom config file")
+
+    print("\n  python run_mt4_tester.py wd_tester --month 1")
+    print("    → Run wd_tester using January date range (config year)")
+
+    print("\n  python run_mt4_tester.py wd_tester --input-dir aifx/data/2025.01/charts")
+    print("    → Clean MT4 wd_tester input folder, copy decisions/results from PATH, then run")
     print("\nFolders cleaned:")
     print("  - MT4 tester folder (always cleaned before each run)")
     print("  - mt4_test_results folder (only with --clean flag)")
@@ -110,6 +190,7 @@ def read_config():
         'optimization': config.get('DEFAULT', 'TestOptimization', fallback='false'),
         'visual': config.get('DEFAULT', 'TestVisualEnable', fallback='false'),
         'shutdown': config.get('DEFAULT', 'TestShutdownTerminal', fallback='true'),
+        'report': config.get('DEFAULT', 'TestReport', fallback='').strip() or None,
     }
     
     return test_config
@@ -140,6 +221,11 @@ def find_mt4_executable():
 def prepare_expert():
     """Copy expert advisor to MT4 Experts folder"""
     config = read_config()
+
+    # For wd_tester, use the fastest modeling mode: Open prices only.
+    # MT4 TestModel values: 0=Every tick, 1=Control points, 2=Open prices only.
+    if config.get('expert') == 'wd_tester':
+        config['model'] = '2'
     expert_name = config['expert']
     
     # Try both .ex4 (compiled) and .mq4 (source)
@@ -289,7 +375,7 @@ def cleanup_local_results():
                 print(f"Warning: Could not delete {file.name}: {e}")
     
     # Clean HTML reports
-    for file in results_folder.glob("*.htm"):
+    for file in results_folder.glob("*.html"):
         try:
             file.unlink()
             cleaned_items += 1
@@ -321,6 +407,14 @@ def run_strategy_tester(config):
         return False
     
     print(f"Found MT4 at: {mt4_exe}")
+
+    # Some MT4 terminals do not create tester/reports automatically.
+    # Ensure it exists so TestReport output can be written.
+    try:
+        reports_dir = MT4_TERMINAL_PATH / "tester" / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"Warning: could not create tester/reports folder: {e}")
     
     # Update the actual config file with proper format
     print(f"Updating configuration file...")
@@ -331,6 +425,13 @@ def run_strategy_tester(config):
     
     # Re-write config file to ensure proper format
     from datetime import datetime
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    def _safe(s: str) -> str:
+        return ''.join(ch if (ch.isalnum() or ch in ('-', '_')) else '_' for ch in str(s))
+
+    report_name = f"{_safe(config['expert'])}_{_safe(config['symbol'])}_{_safe(config['from_date'])}_{_safe(config['to_date'])}_{ts}.html"
+    config['report'] = report_name
     with open(config_file, 'w') as f:
         f.write("; MT4 Strategy Tester Configuration\n")
         f.write("; Generated by run_mt4_tester.py\n")
@@ -349,6 +450,8 @@ def run_strategy_tester(config):
         f.write(f"TestDateEnable=true\n")
         f.write(f"TestFromDate={config['from_date']}\n")
         f.write(f"TestToDate={config['to_date']}\n")
+        # Without TestReport, MT4 may not produce an HTML report in tester/reports.
+        f.write(f"TestReport={report_name}\n")
         f.write(f"TestReplaceReport=true\n")
         f.write(f"TestShutdownTerminal={config['shutdown']}\n")
         f.write(f"TestVisualEnable={config['visual']}\n")
@@ -428,17 +531,64 @@ def copy_results():
     # Copy HTML reports from tester/reports folder
     reports_folder = tester_folder / "reports"
     if reports_folder.exists():
-        for html_file in reports_folder.glob("*.htm"):
+        for html_file in list(reports_folder.glob("*.htm")) + list(reports_folder.glob("*.html")):
             dest = results_folder / html_file.name
             shutil.copy2(html_file, dest)
             print(f"Copied report: {html_file.name}")
             files_copied += 1
-        
+
         for gif_file in reports_folder.glob("*.gif"):
             dest = results_folder / gif_file.name
             shutil.copy2(gif_file, dest)
             print(f"Copied: {gif_file.name}")
             files_copied += 1
+
+    # Some MT4 terminals write TestReport into the terminal data directory root
+    # (not into tester/reports). If TestReport is set, try copying that exact file.
+    report_name = config.get('report')
+    if report_name:
+        candidate_paths = [
+            tester_folder / "reports" / report_name,
+            MT4_TERMINAL_PATH / report_name,
+            tester_folder / report_name,
+        ]
+        copied_report = False
+        for p in candidate_paths:
+            if p.exists() and p.is_file():
+                dest = results_folder / p.name
+                shutil.copy2(p, dest)
+                if not copied_report:
+                    print(f"Copied report: {p.name}")
+                files_copied += 1
+                copied_report = True
+                break
+        if not copied_report:
+            print(f"Warning: TestReport file not found: {report_name}")
+            print("Tried:")
+            for p in candidate_paths:
+                print(f"  - {p}")
+
+        # If MT4 writes the report to the terminal data directory root, it may also
+        # write the associated GIF there (same basename).
+        try:
+            report_path = Path(report_name)
+            gif_name = report_path.with_suffix('.gif').name
+        except Exception:
+            gif_name = None
+
+        if gif_name:
+            gif_candidates = [
+                tester_folder / "reports" / gif_name,
+                MT4_TERMINAL_PATH / gif_name,
+                tester_folder / gif_name,
+            ]
+            for p in gif_candidates:
+                if p.exists() and p.is_file():
+                    dest = results_folder / p.name
+                    shutil.copy2(p, dest)
+                    print(f"Copied: {p.name}")
+                    files_copied += 1
+                    break
     
     # Copy logs
     logs_folder = tester_folder / "logs"
@@ -497,7 +647,7 @@ def main():
     print(f"Config file: {CONFIG_FILE.name}")
     
     # If only --clean flag was provided, just clean and exit
-    if CLEAN_LOCAL_RESULTS and len(sys.argv) == 1:
+    if CLEAN_LOCAL_RESULTS and len(sys.argv) == 1 and MONTH is None and INPUT_DIR is None:
         cleanup_local_results()
         print("\n" + "=" * 60)
         print("LOCAL CLEANUP COMPLETE!")
@@ -529,6 +679,26 @@ def main():
         return 1
     
     config = read_config()
+
+    if INPUT_DIR is not None and config.get('expert') != 'wd_tester':
+        print("Error: --input-dir is only supported for the wd_tester expert")
+        return 1
+
+    if MONTH is not None:
+        if config.get('expert') != 'wd_tester':
+            print("Error: --month is only supported for the wd_tester expert")
+            return 1
+
+        # Use the year from the existing config date range (YYYY.MM.DD)
+        try:
+            year = int(str(config.get('from_date', '')).split('.', 1)[0])
+        except Exception:
+            year = time.localtime().tm_year
+
+        last_day = calendar.monthrange(year, MONTH)[1]
+        config['from_date'] = f"{year}.{MONTH:02d}.01"
+        config['to_date'] = f"{year}.{MONTH:02d}.{last_day:02d}"
+        print(f"WD tester month mode: {config['from_date']} to {config['to_date']} (preparing {CONFIG_FILE.name})")
     
     # Clean local results if flag is set
     if CLEAN_LOCAL_RESULTS:
@@ -540,14 +710,46 @@ def main():
     # for wd_tester, copy additional files
     if config['expert'] == 'wd_tester':
         print("\nCopying additional WD tester files...")
-        source_folder = CURRENT_DIR / "mt4_test_results" / "m15_candles" / "charts"
-        source_files  = list(source_folder.glob("*_decision.txt")) + list(source_folder.glob("*_result.txt"))
+
+        if INPUT_DIR is not None:
+            source_folder = Path(INPUT_DIR).expanduser()
+            if not source_folder.is_absolute():
+                source_folder = (REPO_ROOT / source_folder).resolve()
+        else:
+            source_folder = CURRENT_DIR / "mt4_test_results" / "m15_candles" / "charts"
+
+        if not source_folder.exists() or not source_folder.is_dir():
+            print(f"Error: input directory not found: {source_folder}")
+            return 1
+
+        source_files = list(source_folder.glob("*_decision.txt")) + list(source_folder.glob("*_result.txt"))
+        if not source_files:
+            print(f"Warning: no *_decision.txt or *_result.txt files found in {source_folder}")
+
         dest_folder = MT4_TERMINAL_PATH / "tester" / "files" / "wd_tester"
         dest_folder.mkdir(parents=True, exist_ok=True)
+
+        # Cleanup existing wd_tester input data
+        removed = 0
+        for p in dest_folder.glob("*"):
+            try:
+                if p.is_file():
+                    p.unlink()
+                    removed += 1
+                elif p.is_dir():
+                    shutil.rmtree(p)
+                    removed += 1
+            except Exception as e:
+                print(f"Warning: could not remove {p}: {e}")
+        if removed:
+            print(f"Cleaned MT4 wd_tester input folder: removed {removed} item(s)")
+
+        copied = 0
         for file in source_files:
             dest = dest_folder / file.name
             shutil.copy2(file, dest)
-            print('.', end='')
+            copied += 1
+        print(f"Copied {copied} WD tester input file(s) from: {source_folder}")
     
     # Prepare expert advisor
     print("\nPreparing Expert Advisor...")
