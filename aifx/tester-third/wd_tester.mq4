@@ -5,14 +5,209 @@
 
 string version = "1.0";
 
+//----------------------------------------------------------------------- INPUTS
+
 input bool show_lines = false;    
 input double minDistance = 1500; // set to 0 to disable
-input bool close_all_on_sl = true;
+input bool close_all_on_sl = false;
 input bool close_opposite_on_flip = true;
+input bool check_before_open = true;
 
+// account-currency floating profit threshold to lock +10 points on all open positions
+input double risk_bonus = 5;
+// how many points to lock in once risk_bonus is exceeded
+input double risk_bonus_sl = 2;
+
+input double lotSize = 0.01;
+input int takeProfit = 20000;
+input int stopLoss = 10000;
+
+//-----------------------------------------------------------------------
+
+int slippage = 300;
+
+// used by close_all_on_sl
 datetime g_lastHistoryCheck = 0;
 
 string WD_LINE_PREFIX = "WD_LINE_";
+string WD_STATS_LABEL = "WD_STATS";
+
+bool _ExtractBaseFromResult(string result, double &basePrice)
+{
+    basePrice = 0.0;
+    if(result == "")
+        return false;
+
+    string parts[];
+    int n = StringSplit(result, '|', parts);
+    if(n <= 0)
+        return false;
+
+    for(int i = 0; i < n; i++)
+    {
+        string token = StringTrimLeft(StringTrimRight(parts[i]));
+        if(StringFind(token, "BASE:") == 0)
+        {
+            string baseStr = StringTrimLeft(StringTrimRight(StringSubstr(token, 5)));
+            basePrice = StrToDouble(baseStr);
+            return (basePrice != 0.0);
+        }
+    }
+
+    return false;
+}
+
+bool _ExtractCrossHeader(string result, string &firstLineId, string &direction)
+{
+    firstLineId = "";
+    direction = "";
+    if(result == "")
+        return false;
+
+    int pipePos = StringFind(result, "|");
+    string header = pipePos >= 0 ? StringSubstr(result, 0, pipePos) : result;
+    header = StringTrimLeft(StringTrimRight(header));
+
+    if(StringFind(header, "CROSSED") != 0)
+        return false;
+
+    string tokens[];
+    int nt = StringSplit(header, ' ', tokens);
+    if(nt < 3)
+        return false;
+
+    // Format: CROSSED <IDs...> <UP|DOWN>
+    firstLineId = StringTrimLeft(StringTrimRight(tokens[1]));
+    direction = StringTrimLeft(StringTrimRight(tokens[nt - 1]));
+    return (firstLineId != "" && (direction == "UP" || direction == "DOWN"));
+}
+
+bool _ExtractOffsetFromResult(string result, string key, double &offset)
+{
+    offset = 0.0;
+    if(result == "")
+        return false;
+
+    string parts[];
+    int n = StringSplit(result, '|', parts);
+    if(n <= 0)
+        return false;
+
+    for(int i = 0; i < n; i++)
+    {
+        string token = StringTrimLeft(StringTrimRight(parts[i]));
+        if(StringFind(token, key + ":") == 0)
+        {
+            string valStr = StringTrimLeft(StringTrimRight(StringSubstr(token, StringLen(key) + 1)));
+            offset = StrToDouble(valStr);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CheckDecisionAgainstResultAndPrice(string decision, string result, string &reason)
+{
+    reason = "";
+
+    string lineId = "";
+    string dir = "";
+    if(!_ExtractCrossHeader(result, lineId, dir))
+    {
+        reason = "result header is not CROSSED";
+        return false;
+    }
+
+    // Validate BASE (detect stale/misaligned files).
+    double base = 0.0;
+    if(!_ExtractBaseFromResult(result, base))
+    {
+        reason = "result missing BASE";
+        return false;
+    }
+
+    double tol = 5 * Point;
+    // BASE comes from the last closed candle in the python pipeline.
+    if(MathAbs(base - Close[1]) > tol)
+    {
+        reason = StringFormat("BASE mismatch (base=%.2f close1=%.*f)", base, Digits, Close[1]);
+        return false;
+    }
+
+    // Validate decision matches result direction + line family.
+    if(decision == "BUY")
+    {
+        if(dir != "UP")
+        {
+            reason = "BUY but result direction is not UP";
+            return false;
+        }
+        if(StringLen(lineId) < 1 || StringSubstr(lineId, 0, 1) != "A")
+        {
+            reason = "BUY but crossed line is not A*";
+            return false;
+        }
+
+        double d0 = 0.0;
+        bool hasD0 = _ExtractOffsetFromResult(result, "D0", d0);
+
+        // Gap/price validation: current price must still be on the valid side.
+        if(hasD0)
+        {
+            double d0Price = base + d0;
+            double currentPrice = (Ask + Bid) / 2.0;
+            if(currentPrice < d0Price - tol)
+            {
+                reason = StringFormat("BUY invalidated by gap: current below D0 (current=%.*f D0=%.*f)", Digits, currentPrice, Digits, d0Price);
+                return false;
+            }
+        }
+
+        // Original decisioner rule.
+        if(hasD0 && d0 > 0.0)
+        {
+            reason = "BUY blocked: base below D0 (D0 offset > 0)";
+            return false;
+        }
+    }
+    else if(decision == "SELL")
+    {
+        if(dir != "DOWN")
+        {
+            reason = "SELL but result direction is not DOWN";
+            return false;
+        }
+        if(StringLen(lineId) < 1 || StringSubstr(lineId, 0, 1) != "D")
+        {
+            reason = "SELL but crossed line is not D*";
+            return false;
+        }
+
+        double a0 = 0.0;
+        bool hasA0 = _ExtractOffsetFromResult(result, "A0", a0);
+
+        // Gap/price validation: current price must still be on the valid side.
+        if(hasA0)
+        {
+            double a0Price = base + a0;
+            double currentPrice = (Ask + Bid) / 2.0;
+            if(currentPrice > a0Price + tol)
+            {
+                reason = StringFormat("SELL invalidated by gap: current above A0 (current=%.*f A0=%.*f)", Digits, currentPrice, Digits, a0Price);
+                return false;
+            }
+        }
+
+        // Original decisioner rule.
+        if(hasA0 && a0 < 0.0)
+        {
+            reason = "SELL blocked: base above A0 (A0 offset < 0)";
+            return false;
+        }
+    }
+
+    return true;
+}
 
 string ReadAllText(string filepath)
 {
@@ -344,6 +539,322 @@ bool HasOrdersForSymbolSide(string symbol, bool sellSide)
     return false;
 }
 
+double GetTotalOpenPositionsProfit()
+{
+    double totalProfit = 0.0;
+
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+
+        int type = OrderType();
+        if(type != OP_BUY && type != OP_SELL)
+            continue;
+
+        totalProfit += (OrderProfit() + OrderSwap() + OrderCommission());
+    }
+
+    return totalProfit;
+}
+
+bool TrySetOrderStopLossToBonus(int ticket, double bonusPoints)
+{
+    if(!OrderSelect(ticket, SELECT_BY_TICKET, MODE_TRADES))
+        return false;
+
+    int type = OrderType();
+    if(type != OP_BUY && type != OP_SELL)
+        return false;
+
+    string sym = OrderSymbol();
+    double bid = MarketInfo(sym, MODE_BID);
+    double ask = MarketInfo(sym, MODE_ASK);
+    int digits = (int)MarketInfo(sym, MODE_DIGITS);
+    double point = MarketInfo(sym, MODE_POINT);
+
+    int stopLevelPoints = (int)MarketInfo(sym, MODE_STOPLEVEL);
+    int freezeLevelPoints = (int)MarketInfo(sym, MODE_FREEZELEVEL);
+    double minStopDistance = MathMax(stopLevelPoints, freezeLevelPoints) * point;
+
+    double desiredSL = 0.0;
+    if(type == OP_BUY)
+        desiredSL = NormalizeDouble(OrderOpenPrice() + bonusPoints * point, digits);
+    else
+        desiredSL = NormalizeDouble(OrderOpenPrice() - bonusPoints * point, digits);
+
+    // Only tighten (never loosen) SL.
+    double currentSL = OrderStopLoss();
+    if(type == OP_BUY && currentSL > 0.0 && currentSL >= desiredSL)
+        return true;
+    if(type == OP_SELL && currentSL > 0.0 && currentSL <= desiredSL)
+        return true;
+
+    // Ensure broker stop/freeze distance allows this SL.
+    if(type == OP_BUY)
+    {
+        if(bid - desiredSL < minStopDistance)
+            return false;
+    }
+    else
+    {
+        if(desiredSL - ask < minStopDistance)
+            return false;
+    }
+
+    ResetLastError();
+    bool ok = OrderModify(ticket, OrderOpenPrice(), desiredSL, OrderTakeProfit(), 0, clrNONE);
+    if(!ok)
+    {
+        int err = GetLastError();
+        PrintFormat(
+            "Failed to set bonus SL. ticket=%d sym=%s type=%d desiredSL=%.*f err=%d",
+            ticket,
+            sym,
+            type,
+            digits,
+            desiredSL,
+            err
+        );
+        return false;
+    }
+
+    return true;
+}
+
+bool TrySetOrderStopLossToPrice(int ticket, double desiredSL)
+{
+    if(!OrderSelect(ticket, SELECT_BY_TICKET, MODE_TRADES))
+        return false;
+
+    int type = OrderType();
+    if(type != OP_BUY && type != OP_SELL)
+        return false;
+
+    string sym = OrderSymbol();
+    double bid = MarketInfo(sym, MODE_BID);
+    double ask = MarketInfo(sym, MODE_ASK);
+    int digits = (int)MarketInfo(sym, MODE_DIGITS);
+    double point = MarketInfo(sym, MODE_POINT);
+
+    desiredSL = NormalizeDouble(desiredSL, digits);
+
+    // Only tighten (never loosen) SL.
+    double currentSL = OrderStopLoss();
+    if(type == OP_BUY && currentSL > 0.0 && currentSL >= desiredSL)
+        return true;
+    if(type == OP_SELL && currentSL > 0.0 && currentSL <= desiredSL)
+        return true;
+
+    int stopLevelPoints = (int)MarketInfo(sym, MODE_STOPLEVEL);
+    int freezeLevelPoints = (int)MarketInfo(sym, MODE_FREEZELEVEL);
+    double minStopDistance = MathMax(stopLevelPoints, freezeLevelPoints) * point;
+
+    // Ensure broker stop/freeze distance allows this SL.
+    if(type == OP_BUY)
+    {
+        if(bid - desiredSL < minStopDistance)
+            return false;
+    }
+    else
+    {
+        if(desiredSL - ask < minStopDistance)
+            return false;
+    }
+
+    ResetLastError();
+    bool ok = OrderModify(ticket, OrderOpenPrice(), desiredSL, OrderTakeProfit(), 0, clrNONE);
+    if(!ok)
+    {
+        int err = GetLastError();
+        PrintFormat(
+            "Failed to set basket bonus SL. ticket=%d sym=%s type=%d desiredSL=%.*f err=%d",
+            ticket,
+            sym,
+            type,
+            digits,
+            desiredSL,
+            err
+        );
+        return false;
+    }
+
+    return true;
+}
+
+bool GetWdTesterBasketAvgOpenPriceForChartSymbol(bool buySide, double &avgOpenPrice, double &totalLots)
+{
+    avgOpenPrice = 0.0;
+    totalLots = 0.0;
+
+    double weighted = 0.0;
+
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int type = OrderType();
+        if(buySide && type != OP_BUY)
+            continue;
+        if(!buySide && type != OP_SELL)
+            continue;
+
+        string c = OrderComment();
+        if(StringFind(c, "WD Tester") != 0)
+            continue;
+
+        double lots = OrderLots();
+        totalLots += lots;
+        weighted += lots * OrderOpenPrice();
+    }
+
+    if(totalLots <= 0.0)
+        return false;
+
+    avgOpenPrice = weighted / totalLots;
+    return true;
+}
+
+void ApplyRiskBonusProtection()
+{
+    if(risk_bonus <= 0.0)
+        return;
+
+    int posCount = 0;
+    double posLots = 0.0;
+    double totalProfit = 0.0;
+    GetWdTesterOpenStatsForChartSymbol(posCount, posLots, totalProfit);
+
+    if(totalProfit <= risk_bonus)
+        return;
+
+    // Once total floating profit exceeds risk_bonus, lock risk_bonus_sl points using ONE SL price for the whole basket.
+    // (Same SL price for all orders, per side.)
+
+    double buyAvg = 0.0, buyLots = 0.0;
+    bool hasBuy = GetWdTesterBasketAvgOpenPriceForChartSymbol(true, buyAvg, buyLots);
+    if(hasBuy)
+    {
+        double desiredBuySL = buyAvg + (risk_bonus_sl * Point);
+
+        int total = OrdersTotal();
+        for(int i = total - 1; i >= 0; i--)
+        {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+                continue;
+            if(OrderSymbol() != Symbol())
+                continue;
+            if(OrderType() != OP_BUY)
+                continue;
+            if(StringFind(OrderComment(), "WD Tester") != 0)
+                continue;
+
+            TrySetOrderStopLossToPrice(OrderTicket(), desiredBuySL);
+        }
+    }
+
+    double sellAvg = 0.0, sellLots = 0.0;
+    bool hasSell = GetWdTesterBasketAvgOpenPriceForChartSymbol(false, sellAvg, sellLots);
+    if(hasSell)
+    {
+        double desiredSellSL = sellAvg - (risk_bonus_sl * Point);
+
+        int total = OrdersTotal();
+        for(int i = total - 1; i >= 0; i--)
+        {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+                continue;
+            if(OrderSymbol() != Symbol())
+                continue;
+            if(OrderType() != OP_SELL)
+                continue;
+            if(StringFind(OrderComment(), "WD Tester") != 0)
+                continue;
+
+            TrySetOrderStopLossToPrice(OrderTicket(), desiredSellSL);
+        }
+    }
+}
+
+void GetWdTesterOpenStatsForChartSymbol(int &positionsCount, double &totalLots, double &totalProfit)
+{
+    positionsCount = 0;
+    totalLots = 0.0;
+    totalProfit = 0.0;
+
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int type = OrderType();
+        if(type != OP_BUY && type != OP_SELL)
+            continue;
+
+        string c = OrderComment();
+        if(StringFind(c, "WD Tester") != 0)
+            continue;
+
+        positionsCount++;
+        totalLots += OrderLots();
+        totalProfit += (OrderProfit() + OrderSwap() + OrderCommission());
+    }
+}
+
+void UpsertTesterStatsLabel(string text)
+{
+    if(ObjectFind(0, WD_STATS_LABEL) < 0)
+    {
+        ObjectCreate(0, WD_STATS_LABEL, OBJ_LABEL, 0, 0, 0);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_XDISTANCE, 10);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_YDISTANCE, 10);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_BACK, false);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_FONTSIZE, 10);
+        ObjectSetString(0, WD_STATS_LABEL, OBJPROP_FONT, "Consolas");
+        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_COLOR, clrBlack);
+    }
+
+    ObjectSetString(0, WD_STATS_LABEL, OBJPROP_TEXT, text);
+    ChartRedraw(0);
+}
+
+void DeleteTesterStatsLabel()
+{
+    if(ObjectFind(0, WD_STATS_LABEL) >= 0)
+        ObjectDelete(0, WD_STATS_LABEL);
+}
+
+void UpdateTesterStatsOverlay()
+{
+    // Only show in Strategy Tester (visual mode uses a real chart; non-visual/optimization has no visible chart anyway).
+    if(!IsTesting() && !IsVisualMode())
+        return;
+
+    int cnt = 0;
+    double lots = 0.0;
+    double profit = 0.0;
+    GetWdTesterOpenStatsForChartSymbol(cnt, lots, profit);
+
+    string text = "WD Tester\n";
+    text += "Open positions: " + IntegerToString(cnt) + " (Lots: " + DoubleToStr(lots, 2) + ")\n";
+    text += "Open profit: " + DoubleToStr(profit, 2);
+
+    UpsertTesterStatsLabel(text);
+}
+
 void CloseOrdersForSymbolSide(string symbol, bool sellSide)
 {
     RefreshRates();
@@ -421,6 +932,9 @@ int OnInit()
     Print("show_lines: ", show_lines);
     ApplyBlackOnWhiteTheme();
 
+    // Create stats overlay early so it is visible immediately in visual tester.
+    UpdateTesterStatsOverlay();
+
     g_lastHistoryCheck = TimeCurrent();
 
     return(INIT_SUCCEEDED);
@@ -428,11 +942,16 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
+    DeleteTesterStatsLabel();
 }
 
 void OnTick()
 {
     RefreshRates();
+
+    UpdateTesterStatsOverlay();
+
+    ApplyRiskBonusProtection();
 
     int slTicket = -1;
     if(close_all_on_sl && DetectNewStopLossClose(g_lastHistoryCheck, slTicket))
@@ -457,6 +976,16 @@ void OnTick()
     string result_filename = "wd_tester/" + timeStr + "_result.txt";
     string result = ReadAllText(result_filename);
     Print("Result file content: ", result);
+
+    if(check_before_open && (decision == "BUY" || decision == "SELL"))
+    {
+        string reason = "";
+        if(!CheckDecisionAgainstResultAndPrice(decision, result, reason))
+        {
+            PrintFormat("Skipping %s: check_before_open failed: %s", decision, reason);
+            return;
+        }
+    }
 
     if (show_lines == true)
     {
@@ -503,10 +1032,6 @@ void OnTick()
             return;
         }
 
-        double lotSize = 0.01;
-        int slippage = 300;
-        int takeProfit = 20000;
-        int stopLoss = 5000;
         
         double tp = 0, sl = 0;
         int ticket = 0;
