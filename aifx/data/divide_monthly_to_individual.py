@@ -85,8 +85,8 @@ def divide_monthly_file(monthly_file, data_dir):
             year, month, day = date_part.split('.')
             hour, minute = time_part.split(':')
             
-            # Create filename: YYYY-MM-DD-HH-MM-m15.csv
-            output_filename = f"{year}-{month}-{day}-{hour}-{minute}-m15.csv"
+            # Create filename: YY-MM-DD-HH-MM.csv
+            output_filename = f"{year[2:]}-{month}-{day}-{hour}-{minute}.csv"
             
             # Write 300 previous rows plus current row to file
             output_path = os.path.join(folder, output_filename)
