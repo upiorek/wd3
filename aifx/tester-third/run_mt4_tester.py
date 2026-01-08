@@ -342,6 +342,26 @@ def cleanup_mt4_data():
     
     return True
 
+
+def cleanup_wd_tester_ini() -> int:
+    """Remove wd_tester.ini to avoid stale Strategy Tester input overrides."""
+    deleted = 0
+    candidates = [
+        MT4_TERMINAL_PATH / "tester" / "wd_tester.ini",
+        MT4_TERMINAL_PATH / "config" / "wd_tester.ini",
+    ]
+
+    for p in candidates:
+        try:
+            if p.exists() and p.is_file():
+                p.unlink()
+                deleted += 1
+                print(f"Removed: {p}")
+        except Exception as e:
+            print(f"Warning: could not remove {p}: {e}")
+
+    return deleted
+
 def cleanup_local_results():
     """Clean up local mt4_test_results folder - only the relevant subfolder"""
     print("\nCleaning up local test results...")
@@ -795,6 +815,13 @@ def main():
     
     # Clean up previous test data
     cleanup_mt4_data()
+
+    # For wd_tester, remove any cached tester input overrides
+    if config.get('expert') == 'wd_tester':
+        print("\nRemoving cached wd_tester.ini (if any)...")
+        removed = cleanup_wd_tester_ini()
+        if removed == 0:
+            print("✓ No wd_tester.ini found")
 
     # for wd_tester, copy additional files
     if config['expert'] == 'wd_tester' and not NO_COPY_DATA:
