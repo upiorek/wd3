@@ -438,6 +438,28 @@ def cleanup_local_results():
     
     return True
 
+
+def cleanup_local_logs_folder() -> int:
+    """Remove all items in local mt4_test_results/logs (keeps the folder)."""
+    logs_folder = CURRENT_DIR / "mt4_test_results" / "logs"
+
+    if not logs_folder.exists():
+        return 0
+
+    removed = 0
+    for p in logs_folder.glob("*"):
+        try:
+            if p.is_file() or p.is_symlink():
+                p.unlink()
+                removed += 1
+            elif p.is_dir():
+                shutil.rmtree(p)
+                removed += 1
+        except Exception as e:
+            print(f"Warning: could not remove {p}: {e}")
+
+    return removed
+
 def run_strategy_tester(config):
     """Run MT4 strategy tester"""
     mt4_exe = find_mt4_executable()
@@ -794,6 +816,15 @@ def main():
         return 1
     
     config = read_config()
+
+    # For wd_tester, always clear local copied logs before the run.
+    if config.get('expert') == 'wd_tester':
+        print("\nCleaning local mt4_test_results/logs before wd_tester run...")
+        removed = cleanup_local_logs_folder()
+        if removed:
+            print(f"✓ Removed {removed} item(s) from local logs folder")
+        else:
+            print("✓ No local logs to remove")
 
     if NO_COPY_DATA and config.get('expert') != 'wd_tester':
         print("Error: --no-copy-data is only supported for the wd_tester expert")
