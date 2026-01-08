@@ -194,6 +194,7 @@ def read_config():
         'expert': config.get('DEFAULT', 'TestExpert', fallback='candle-maker'),
         'symbol': config.get('DEFAULT', 'TestSymbol', fallback='US100.f'),
         'period': config.get('DEFAULT', 'TestPeriod', fallback='M15'),
+        'spread': config.get('DEFAULT', 'TestSpread', fallback='0'),
         'from_date': config.get('DEFAULT', 'TestFromDate', fallback='2025.11.07'),
         'to_date': config.get('DEFAULT', 'TestToDate', fallback='2025.11.11'),
         'model': config.get('DEFAULT', 'TestModel', fallback='0'),
@@ -455,7 +456,7 @@ def run_strategy_tester(config):
         f.write(f"TestSymbol={config['symbol']}\n")
         f.write(f"TestPeriod={config['period']}\n")
         f.write(f"TestModel={config['model']}\n")
-        f.write(f"TestSpread=0\n")
+        f.write(f"TestSpread={config['spread']}\n")
         f.write(f"TestOptimization={config['optimization']}\n")
         f.write(f"TestDateEnable=true\n")
         f.write(f"TestFromDate={config['from_date']}\n")
