@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
 Convert CSV format from:
-  2024.11.18 15:15;20579.36;20586.14;20555.08;20557.86
+  2023.09.20;12:00;15405.87;15405.87;15397.63;15402.90;887
 To:
-  2024.11.18,15:15,20579.36,20586.14,20555.08,20557.86,0
+  2026.01.02 21:30;25430.50;25438.98;25391.24;25392.48
 """
 
 import os
 import sys
 
 def convert_csv_format(input_file, output_file=None):
-    """Convert CSV from semicolon-separated to comma-separated format."""
+    """Convert CSV from comma-separated to semicolon-separated format."""
     
     if output_file is None:
         output_file = input_file.replace('.csv', '_converted.csv')
@@ -28,30 +28,23 @@ def convert_csv_format(input_file, output_file=None):
                 continue
             
             try:
-                # Parse: YYYY.MM.DD HH:MM;open;high;low;close
+                # Parse: YYYY.MM.DD;HH:MM;open;high;low;close;volume
                 parts = line.split(';')
                 
-                if len(parts) < 5:
+                if len(parts) < 6:
                     print(f"Warning: Line {line_num} has insufficient columns, skipping")
                     continue
                 
-                datetime_part = parts[0]  # "YYYY.MM.DD HH:MM"
-                open_price = parts[1]
-                high_price = parts[2]
-                low_price = parts[3]
-                close_price = parts[4]
+                date = parts[0]           # "YYYY.MM.DD"
+                time = parts[1]           # "HH:MM"
+                open_price = parts[2]
+                high_price = parts[3]
+                low_price = parts[4]
+                close_price = parts[5]
+                # volume = parts[6] if len(parts) > 6 else None  # Ignored
                 
-                # Split date and time
-                date_time_split = datetime_part.split(' ')
-                if len(date_time_split) != 2:
-                    print(f"Warning: Line {line_num} has invalid date/time format, skipping")
-                    continue
-                
-                date = date_time_split[0]
-                time = date_time_split[1]
-                
-                # Create new format: YYYY.MM.DD,HH:MM,open,high,low,close,volume (volume=0)
-                new_line = f"{date},{time},{open_price},{high_price},{low_price},{close_price},0\n"
+                # Create new format: YYYY.MM.DD HH:MM;open;high;low;close
+                new_line = f"{date} {time};{open_price};{high_price};{low_price};{close_price}\n"
                 outf.write(new_line)
                 
                 converted_count += 1
