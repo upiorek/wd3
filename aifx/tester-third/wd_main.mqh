@@ -7,7 +7,9 @@ input double lotSize = 0.01;
 input int takeProfit = 200 * 100;
 input int stopLoss = 50 * 100;
 
-void ExecuteWdDecision(string decision, double lotSize, int takeProfit, int stopLoss, int slippage)
+input int slippage = 300;
+
+void ExecuteWdDecision(string decision)
 {
     if(decision == "BUY" || decision == "SELL")
     {        

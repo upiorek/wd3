@@ -13,8 +13,6 @@ input bool show_lines = true;
 
 //-----------------------------------------------------------------------
 
-int slippage = 300;
-
 string WD_LINE_PREFIX = "WD_LINE_";
 string WD_STATS_LABEL = "WD_STATS";
 
@@ -350,5 +348,5 @@ void OnTick()
         DeleteWdLines();
     }
 
-    ExecuteWdDecision(decision, lotSize, takeProfit, stopLoss, slippage);
+    ExecuteWdDecision(decision);
 }
