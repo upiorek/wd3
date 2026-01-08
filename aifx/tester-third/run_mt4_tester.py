@@ -670,9 +670,12 @@ def _find_report_path(config: dict) -> Path | None:
 
 def _extract_report_result(report_html: str) -> str | None:
     # MT4 reports usually contain a row like: Total net profit ... <td>123.45</td>
+    # Also supports Polish: Całkowity zysk netto (with potential encoding issues)
     patterns = [
         r"Total\s+net\s+profit\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
         r"Total\s+net\s+profit\s*[:=\-]?\s*([^<\r\n]+)",
+        r"Ca[^\s]*kowity\s+zysk\s+netto\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
+        r"Ca[^\s]*kowity\s+zysk\s+netto\s*[:=\-]?\s*([^<\r\n]+)",
     ]
     for pat in patterns:
         m = re.search(pat, report_html, flags=re.IGNORECASE)
@@ -710,7 +713,7 @@ def write_wd_summary(config: dict) -> None:
         result_str = result
 
     summary_line = f"{month_num}: {result_str}"
-    print(f"\nWD summary: {summary_line}")
+    print(f"\nWD summary for month {summary_line}")
 
     try:
         out_path = (CURRENT_DIR / "mt4_test_results" / "wd_summary.txt")
