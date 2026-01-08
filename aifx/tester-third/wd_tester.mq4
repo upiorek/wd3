@@ -3,6 +3,7 @@
 #property link      ""
 #property strict
 
+#include "wd_tester_hash.mqh"
 #include "wd_main.mqh"
 
 string version = "1.1";
@@ -302,7 +303,9 @@ void UpdateTesterStatsOverlay()
 int OnInit()
 {   
     Print("version: " + version);
+    Print("git hash: " + WD_GIT_HASH);
     Print("show_lines: ", show_lines);
+
     ApplyBlackOnWhiteTheme();
 
     // Create stats overlay early so it is visible immediately in visual tester.

@@ -479,6 +479,99 @@ def cleanup_local_html_gif_reports() -> int:
 
     return removed
 
+
+def update_wd_tester_hash_mqh() -> bool:
+    """Fill aifx/tester-third/wd_tester_hash.mqh with the latest git commit hash."""
+    mqh_path = CURRENT_DIR / "wd_tester_hash.mqh"
+
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%H"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            print(f"Warning: could not read git hash (git log failed): {stderr or 'unknown error'}")
+            return False
+
+        git_hash = (result.stdout or "").strip()
+        if not git_hash:
+            print("Warning: git log returned empty hash")
+            return False
+
+        content = (
+            "// Auto-generated before test run\n"
+            "#property strict\n\n"
+            f"string WD_GIT_HASH = \"{git_hash}\";\n"
+        )
+        mqh_path.write_text(content, encoding="utf-8")
+        print(f"✓ Updated wd_tester hash: {git_hash[:7]} -> {mqh_path}")
+        return True
+    except Exception as e:
+        print(f"Warning: could not update {mqh_path}: {e}")
+        return False
+
+
+def _get_current_git_hash() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%H"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        if result.returncode != 0:
+            return None
+        git_hash = (result.stdout or "").strip()
+        return git_hash or None
+    except Exception:
+        return None
+
+
+def verify_wd_tester_git_hash_from_latest_log() -> bool:
+    """Validate wd_tester log git hash matches current repo HEAD."""
+    current_hash = _get_current_git_hash()
+    if not current_hash:
+        print("ERROR: could not determine current git commit (HEAD)")
+        return False
+
+    logs_dir = CURRENT_DIR / "mt4_test_results" / "logs"
+    log_files = list(logs_dir.glob("*.log")) if logs_dir.exists() else []
+    if not log_files:
+        print(f"ERROR: no local log files found in {logs_dir}")
+        return False
+
+    latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
+
+    try:
+        data = latest_log.read_bytes()
+    except Exception as e:
+        print(f"ERROR: could not read latest log file {latest_log}: {e}")
+        return False
+
+    text = data.decode("utf-8", errors="ignore")
+    if not text:
+        text = data.decode("latin-1", errors="ignore")
+
+    # Example line: "wd_tester ...: git hash: <40-hex>"
+    matches = re.findall(r"git\s+hash\s*:\s*([0-9a-fA-F]{7,40})", text)
+    if not matches:
+        print(f"ERROR: could not find 'git hash:' in latest log: {latest_log}")
+        return False
+
+    log_hash = matches[-1].lower()
+    if log_hash != current_hash.lower():
+        print("ERROR: git commit mismatch between repo and latest MT4 log")
+        print(f"  Repo HEAD : {current_hash}")
+        print(f"  Log hash  : {log_hash}")
+        print(f"  Log file  : {latest_log}")
+        return False
+
+    print(f"✓ Verified git hash in latest log matches HEAD: {current_hash[:7]}")
+    return True
+
 def run_strategy_tester(config):
     """Run MT4 strategy tester"""
     mt4_exe = find_mt4_executable()
@@ -557,14 +650,16 @@ def run_strategy_tester(config):
     try:
         # Start MT4 with config file
         process = subprocess.Popen(cmd, cwd=str(mt4_exe.parent))
-        print(f"MT4 started with PID: {process.pid}")
-        
+        print(f"MT4 started with PID: {process.pid}")        
+
         print("\n✓ MT4 launched successfully with test configuration!")
+        """
         print("\nMT4 will automatically:")
         print(f"  1. Load the {config['expert']} EA")
         print("  2. Configure the Strategy Tester")
         print("  3. Start the backtest")
         print("  4. Generate a report when complete")
+        """
         
         if config['shutdown'].lower() == 'true':
             print("\nWaiting for MT4 to complete testing and shutdown...")
@@ -572,9 +667,9 @@ def run_strategy_tester(config):
             
             # Wait for process to complete
             process.wait()
-            print("\n✓ MT4 has shut down - testing complete!")
+            print("✓ MT4 has shut down - testing complete!")
         else:
-            print("\nMT4 is running. Close it manually when done.")
+            print("MT4 is running. Close it manually when done.")
             process.wait()
         
         return True
@@ -838,6 +933,9 @@ def main():
 
     # For wd_tester, always clear local copied logs before the run.
     if config.get('expert') == 'wd_tester':
+        print("\nUpdating wd_tester_hash.mqh with latest git commit...")
+        update_wd_tester_hash_mqh()
+
         print("\nCleaning local mt4_test_results/logs before wd_tester run...")
         removed = cleanup_local_logs_folder()
         if removed:
@@ -953,6 +1051,13 @@ def main():
     # Copy results
     print("\n" + "=" * 60)
     copy_results()
+
+    # For wd_tester, ensure we didn't run with a different git commit than current.
+    # This checks the latest copied MT4 log in mt4_test_results/logs/*.log.
+    if config.get('expert') == 'wd_tester':
+        print("\nVerifying git commit against latest copied MT4 log...")
+        if not verify_wd_tester_git_hash_from_latest_log():
+            return 1
 
     # For wd_tester, summarize the report.
     write_wd_summary(config)
