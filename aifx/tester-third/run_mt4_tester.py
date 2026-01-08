@@ -460,6 +460,25 @@ def cleanup_local_logs_folder() -> int:
 
     return removed
 
+
+def cleanup_local_html_gif_reports() -> int:
+    """Remove local *.html/*.htm and *.gif files in mt4_test_results root."""
+    results_folder = CURRENT_DIR / "mt4_test_results"
+    if not results_folder.exists():
+        return 0
+
+    removed = 0
+    for pat in ("*.html", "*.htm", "*.gif"):
+        for p in results_folder.glob(pat):
+            try:
+                if p.is_file() or p.is_symlink():
+                    p.unlink()
+                    removed += 1
+            except Exception as e:
+                print(f"Warning: could not remove {p}: {e}")
+
+    return removed
+
 def run_strategy_tester(config):
     """Run MT4 strategy tester"""
     mt4_exe = find_mt4_executable()
@@ -825,6 +844,13 @@ def main():
             print(f"✓ Removed {removed} item(s) from local logs folder")
         else:
             print("✓ No local logs to remove")
+
+        print("Cleaning old local HTML/GIF reports before wd_tester run...")
+        removed_reports = cleanup_local_html_gif_reports()
+        if removed_reports:
+            print(f"✓ Removed {removed_reports} report file(s) (*.html/*.htm/*.gif)")
+        else:
+            print("✓ No report files to remove")
 
     if NO_COPY_DATA and config.get('expert') != 'wd_tester':
         print("Error: --no-copy-data is only supported for the wd_tester expert")
