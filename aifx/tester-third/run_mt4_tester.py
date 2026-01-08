@@ -266,6 +266,16 @@ def prepare_expert():
             if file_type == "source":
                 print("Note: MT4 will compile the .mq4 file automatically")
     
+    # Copy include files (.mqh) to Experts folder
+    for mqh_file in CURRENT_DIR.glob("*.mqh"):
+        experts_folder = MT4_TERMINAL_PATH / "MQL4" / "Experts"
+        if not experts_folder.exists():
+            experts_folder.mkdir(parents=True, exist_ok=True)
+        
+        dest = experts_folder / mqh_file.name
+        shutil.copy2(mqh_file, dest)
+        print(f"Copied include file: {mqh_file.name}")
+    
     if not copied:
         print(f"Warning: No {expert_name}.ex4 or {expert_name}.mq4 found")
         print("Make sure the EA is available in the current directory")
