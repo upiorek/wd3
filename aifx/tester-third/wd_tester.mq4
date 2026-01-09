@@ -313,11 +313,6 @@ void PrintErrorIfBothBuyAndSellOpen()
         if(OrderSymbol() != Symbol())
             continue;
 
-        // Only consider orders opened by WD logic.
-        string c = OrderComment();
-        if(StringFind(c, "WD ") != 0 && StringFind(c, "WD Tester") != 0)
-            continue;
-
         int type = OrderType();
         if(type == OP_BUY)
             hasBuy = true;
@@ -390,7 +385,7 @@ void OnTick()
     }
 
     PrintErrorIfBothBuyAndSellOpen();
-    
+
 //-----------------------------------------------------------------------
     int ticket = ExecuteWdDecision(decision);
     Print("new order ticket: ", ticket);
