@@ -18,7 +18,8 @@ bool CheckBE_enabled = true;
 input int BEBonus = 25 * 100;
 
 // weak closed on flip
-input bool weak_closed_on_flip_enabled = false;
+input bool weak_closed_on_flip_enabled = true;
+input bool weak_closed_on_flip_min_opp_enabled = true;
 
 //-----------------------------------------------------------------------
 
@@ -107,9 +108,32 @@ bool CheckWeakClosedOnFlip(string decision)
     // If we already have opposite WD trades open, do not open a new one.
     // Instead, close the worst-performing opposite order.
     // "Worst" = lowest (profit+swap+commission).
+
     int total = OrdersTotal();
+    if(total < 2)
+        return false;
+
     bool wantBuy = (decision == "BUY");
     int oppositeType = wantBuy ? OP_SELL : OP_BUY;
+
+    if(weak_closed_on_flip_min_opp_enabled)
+    {
+        int howManyOppositeType = 0;
+        for(int i = total - 1; i >= 0; i--)
+        {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+                continue;
+            if(OrderSymbol() != Symbol())
+                continue;
+            if(OrderType() != oppositeType)
+                continue;
+
+            howManyOppositeType++;
+        }
+
+        if(howManyOppositeType < 3)
+            return false;
+    }
 
     int worstTicket = -1;
     double worstProfit = 0.0;
