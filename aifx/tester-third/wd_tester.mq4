@@ -328,7 +328,9 @@ void PrintErrorIfBothBuyAndSellOpen()
 
     if(isConflict && !wasConflict)
     {
-        Print("ERROR: Both BUY and SELL orders are open at the same time for ", Symbol());
+        // TODO uncomment
+        // Print("ERROR: Both BUY and SELL orders are open at the same time for ", Symbol());
+        Print("WARNING: Both BUY and SELL orders are open at the same time for ", Symbol());
     }
 
     wasConflict = isConflict;
