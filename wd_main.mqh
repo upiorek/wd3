@@ -96,16 +96,20 @@ void CheckBE()
     }
 }
 
-void ExecuteWdDecision(string decision)
+int ExecuteWdDecision(string decision)
 {
-    if(decision != "BUY" && decision != "SELL") return;
+    if(decision != "BUY" && decision != "SELL")
+        return 0;
     
     bool isBuy = (decision == "BUY");
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double price = NormalizeDouble(isBuy ? Ask : Bid, Digits);
     
     if(HasSimilarOpenOrder_enabled)
-        if(HasSimilarOpenOrder(cmd, price)) return;
+    {
+        if(HasSimilarOpenOrder(cmd, price))
+            return 0;
+    }
     
     int stopLevelPoints = (int)MarketInfo(Symbol(), MODE_STOPLEVEL);
     int freezeLevelPoints = (int)MarketInfo(Symbol(), MODE_FREEZELEVEL);
@@ -129,5 +133,6 @@ void ExecuteWdDecision(string decision)
         Print("ERROR: Order failed: ", decision, " Error=", GetLastError(), 
               " Price=", price, " SL=", sl, " TP=", tp);
     }
+    return ticket;
 }
 
