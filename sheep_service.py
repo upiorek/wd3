@@ -321,7 +321,7 @@ def write_sheep_file():
                 content += f"\ndecisionner\n{decision}\n"
                 # Write last decision to the decision.log
                 with open(os.path.join(REPO_DIR, "decision.log"), "w") as decision_file:
-                    decision += f"for candle Time: {candle_time}\n"
+                    decision += f"\nfor candle time: {candle_time}\n"
                     decision_file.write(decision)
 
                 signal_type = check_for_signals(candle_time, decision)
@@ -337,6 +337,11 @@ def write_sheep_file():
             content += f"Could not read magic_lines.log.\n"
 
         #content += debug_content
+	
+        with open(os.path.join(REPO_DIR, 'decision.log'), 'r') as log_file:
+            log_content = log_file.read()
+        content += "\ndecisioner:\n" + log_content
+            
         with open(os.path.join(REPO_DIR, "sheep.log"), "w") as f:
             f.write(content)
         
