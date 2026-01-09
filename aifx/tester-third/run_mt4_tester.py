@@ -1045,16 +1045,7 @@ def main():
             print("\nRemoved old wd_main.mqh from current folder")
         except Exception as e:
             print(f"Warning: could not remove old wd_main.mqh: {e}")
-    
-    # Remove old wd_tester_hash.mqh if exists
-    old_hash_mqh = CURRENT_DIR / "wd_tester_hash.mqh"
-    if old_hash_mqh.exists():
-        try:
-            old_hash_mqh.unlink()
-            print("Removed old wd_tester_hash.mqh from current folder")
-        except Exception as e:
-            print(f"Warning: could not remove old wd_tester_hash.mqh: {e}")        
-    
+
     # Copy wd_main.mqh from repo folder to current folder
     if config.get('expert') == 'wd_tester':
         print("\nCopying wd_main.mqh to current folder...")
