@@ -33,8 +33,8 @@ void LogAccountInfo()
                       "Current Profit: " + DoubleToString(AccountProfit(), 2) + " | " +
                       "Active Orders: " + IntegerToString(OrdersTotal()) +
                       "\n" + 
-                      "sl: " + IntegerToString(stopLoss) + " / be: " + IntegerToString(takeProfit/2) +
-		      " / tp: " + IntegerToString(takeProfit) + " / bonus: " + IntegerToString(BEBonus) + "\n";
+                      "sl: " + IntegerToString(stopLoss/100) + " / be: " + IntegerToString(takeProfit/2/100) +
+		      " / tp: " + IntegerToString(takeProfit/100) + " / bonus: " + IntegerToString(BEBonus/100) + "\n";
 
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
@@ -92,7 +92,6 @@ int ReadOrderFromFile()
           return ParseOrder(fileContent);
    }
 
-   Print("ERROR");
    return -1;
 }
 
@@ -689,7 +688,7 @@ void OnTick()
    Logs();
    OrderFiles();
 
-   string decision = "";
+   string decision = "NONE";
    if (decisionType == OP_BUY)
        decision = "BUY";
    if (decisionType == OP_SELL)
@@ -698,7 +697,8 @@ void OnTick()
 // Main logic for every tick
 //----------------------------------------------------------------------- 
     int ticket = ExecuteWdDecision(decision);
-    Print("new order ticket: ", ticket);
+    if (ticket > 0)
+        Print("new order ticket: ", ticket);
 
     CheckBE();
 //-----------------------------------------------------------------------
