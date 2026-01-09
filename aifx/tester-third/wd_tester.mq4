@@ -6,7 +6,7 @@
 #include "wd_tester_hash.mqh"
 #include "wd_main.mqh"
 
-string version = "1.1";
+string version = "1.2";
 
 //----------------------------------------------------------------------- INPUTS
 
@@ -352,4 +352,5 @@ void OnTick()
     }
 
     ExecuteWdDecision(decision);
+    CheckBE();
 }

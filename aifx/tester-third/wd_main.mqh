@@ -7,11 +7,15 @@
 input double lotSize = 0.01;
 input int takeProfit = 200 * 100;
 input int stopLoss = 50 * 100;
-input int slippage = 300;
+input int slippage = 3 * 100;
 
 //--- HasSimilarOpenOrder:
 bool HasSimilarOpenOrder_enabled = true;
 input int minDistance = 15;
+
+//--- CheckBE:
+bool CheckBE_enabled = true;
+input int BEBonus = 25 * 100;
 
 //-----------------------------------------------------------------------
 
@@ -33,6 +37,58 @@ bool HasSimilarOpenOrder(int orderType, double price)
         }
     }
     return false;
+}
+
+void CheckBE()
+{
+    if(CheckBE_enabled == false)
+        return;
+
+    double halfTP = takeProfit / 2.0;
+    
+    for(int i = OrdersTotal() - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+        
+        // Calculate current profit in points
+        double currentPrice = OrderType() == OP_BUY ? Bid : Ask;
+        double profitPoints = MathAbs(currentPrice - OrderOpenPrice()) / Point;
+        
+        // Check if profit is positive and > takeProfit/2
+        bool isProfitable = (OrderType() == OP_BUY && currentPrice > OrderOpenPrice()) ||
+                           (OrderType() == OP_SELL && currentPrice < OrderOpenPrice());
+        
+        if(isProfitable && profitPoints > halfTP)
+        {
+            // Calculate new SL at BE + bonus
+            double newSL = NormalizeDouble(
+                OrderType() == OP_BUY ? OrderOpenPrice() + BEBonus * Point : OrderOpenPrice() - BEBonus * Point,
+                Digits
+            );
+            
+            // Only modify if SL hasn't been moved to BE yet
+            // For BUY: new SL should be higher than current SL
+            // For SELL: new SL should be lower than current SL
+            bool shouldModify = (OrderType() == OP_BUY && (OrderStopLoss() < OrderOpenPrice() || OrderStopLoss() == 0)) ||
+                               (OrderType() == OP_SELL && (OrderStopLoss() > OrderOpenPrice() || OrderStopLoss() == 0));
+            
+            if(shouldModify)
+            {
+                ResetLastError();
+                if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
+                {
+                    Print("Break-even set: Ticket=", OrderTicket(), " Type=", OrderType() == OP_BUY ? "BUY" : "SELL",
+                          " New SL=", newSL, " (BE+", BEBonus * Point, ")");
+                }
+                else
+                {
+                    Print("ERROR: Break-even failed: Ticket=", OrderTicket(), " Error=", GetLastError());
+                }
+            }
+        }
+    }
 }
 
 void ExecuteWdDecision(string decision)
@@ -65,7 +121,7 @@ void ExecuteWdDecision(string decision)
     }
     else
     {
-        Print("Order failed: ", decision, " Error=", GetLastError(), 
+        Print("ERROR: Order failed: ", decision, " Error=", GetLastError(), 
               " Price=", price, " SL=", sl, " TP=", tp);
     }
 }
