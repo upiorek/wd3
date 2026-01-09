@@ -11,7 +11,7 @@ input int slippage = 3 * 100;
 
 //--- HasSimilarOpenOrder:
 bool HasSimilarOpenOrder_enabled = true;
-input int minDistance = 15;
+input int minDistance = 15; // * 100; ?
 
 //--- CheckBE:
 bool CheckBE_enabled = true;
