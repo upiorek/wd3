@@ -2,6 +2,8 @@
 //|                                                         WD3.mq4 |
 //+------------------------------------------------------------------+
 
+//#include "wd_main.mqh"
+
 // Global variables
 datetime lastLogTime = 0;
 datetime lastFileCheck = 0;
@@ -13,7 +15,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.3";
+string version = "3.4";
 
 // Simple risk management (read from wdsettings file)
 double tp = 200;
@@ -22,6 +24,8 @@ double sl = 50;
 double bonus = 20;
 
 bool settingsLoaded = false;
+
+//-----------------------------------------------------------------------
 
 void ReadSettings()
 {
@@ -757,22 +761,15 @@ void CheckBreakEvenOrders()
    }
 }
 
-void OnTick()
+void Logs()
 {
-   // Load settings from file on first tick
-   if(!settingsLoaded)
-   {
-      ReadSettings();
-   }
-   
-   datetime currentTime = TimeCurrent();
-   hearbeat++;
-   
    // Log M1 candles (check on every tick for new candle)
    LogM1Candles();
    
    // Log M15 candles (check on every tick for new candle)
    LogM15Candles();
+   
+   datetime currentTime = TimeCurrent();
    
    // Log account info
    if(currentTime - lastLogTime >= 1)
@@ -781,7 +778,7 @@ void OnTick()
       LogAllOrders();
       lastLogTime = currentTime;
    }
-   
+
    // Log market data
    if(currentTime - lastMarketLogTime >= 1)
    {
@@ -795,6 +792,11 @@ void OnTick()
       LogOrderHistory();
       lastHistoryLogTime = currentTime;
    }
+}
+
+void OrderFiles()
+{
+   datetime currentTime = TimeCurrent();
    
    // Check for dropped orders
    if(currentTime - lastDroppedCheck >= 1)
@@ -816,12 +818,27 @@ void OnTick()
       ReadAndSendOrderFromFile();
       lastFileCheck = currentTime;
    }
+}
+
+void OnTick()
+{
+   // Load settings from file on first tick
+   if(!settingsLoaded)
+      ReadSettings();   
+      
+   Logs();
+   OrderFiles();
+
+// Main logic for every tick
+//-----------------------------------------------------------------------
 
    // Check for BE
    CheckBreakEvenOrders();
 
+//-----------------------------------------------------------------------
+
+   hearbeat++;
+   datetime currentTime = TimeCurrent();
    if(currentTime - lastFileCheck >= 30)
-   {
-      Print("WD: " + version + " heartbeat: " + hearbeat);
-   }
+      Print("WD: " + version + " heartbeat: " + IntegerToString(hearbeat));
 }
