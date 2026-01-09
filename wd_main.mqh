@@ -18,8 +18,12 @@ bool CheckBE_enabled = true;
 input int BEBonus = 25 * 100;
 
 // weak closed on flip
-input bool weak_closed_on_flip_enabled = true;
-input bool weak_closed_on_flip_min_opp_enabled = true;
+bool weak_closed_on_flip_enabled = true;
+bool weak_closed_on_flip_min_opp_enabled = true;
+
+//--- CheckSetupTP:
+bool CheckSetupTP_enabled = false;
+input int setupTP = 500 * 100;
 
 //-----------------------------------------------------------------------
 
@@ -42,13 +46,68 @@ bool HasSimilarOpenOrder(int orderType, double price)
         if(priceDiff <= minDistance)
         {
             HasSimilarOpenOrderDropped++;
-            string order = OP_BUY ? "BUY" : "SELL";
+            string order = orderType == OP_BUY ? "BUY" : "SELL";
             Print("Duplicate order skipped (", HasSimilarOpenOrderDropped, "): ",
-            order, " at ", price, " diff ", priceDiff);
+                order, " at ", price, " diff ", priceDiff);
             return true;
         }
     }
     return false;
+}
+
+void CheckSetupTP()
+{
+    if (CheckSetupTP_enabled == false)
+        return;
+    
+    int profitPoints = 0;
+    int orderCount = 0;
+    
+    for(int i = OrdersTotal() - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+
+        double currentPrice = OrderType() == OP_BUY ? Bid : Ask;
+        profitPoints += (int)(MathAbs(currentPrice - OrderOpenPrice()) / Point);
+        orderCount++;
+    }
+   
+    if(profitPoints > setupTP)
+    {
+        Print("Setup TP reached! Total profit: ", profitPoints, 
+              " > ", setupTP, " - Closing all ", orderCount, " orders");
+        
+        int closedCount = 0;
+        int failedCount = 0;
+        
+        for(int i = OrdersTotal() - 1; i >= 0; i--)
+        {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+            if(OrderSymbol() != Symbol()) continue;
+            if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+            
+            RefreshRates();
+            double closePrice = (OrderType() == OP_BUY) ? Bid : Ask;
+            double lots = OrderLots();
+            int ticket = OrderTicket();
+            
+            ResetLastError();
+            if(OrderClose(ticket, lots, closePrice, slippage, clrYellow))
+            {
+                closedCount++;
+                Print("Closed order #", ticket, " | Type: ", OrderType() == OP_BUY ? "BUY" : "SELL");
+            }
+            else
+            {
+                failedCount++;
+                Print("ERROR: Failed to close order #", ticket, " | Error: ", GetLastError());
+            }
+        }
+        
+        Print("Setup TP complete: Closed ", closedCount, " orders | Failed: ", failedCount);
+    }
 }
 
 void CheckBE()

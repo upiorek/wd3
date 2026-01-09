@@ -394,6 +394,7 @@ void OnTick()
         Print("new order ticket: ", ticket);
 
     CheckBE();
+    CheckSetupTP();
 //-----------------------------------------------------------------------
 
 }
