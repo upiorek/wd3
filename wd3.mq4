@@ -2,7 +2,7 @@
 //|                                                         WD3.mq4 |
 //+------------------------------------------------------------------+
 
-//#include "wd_main.mqh"
+#include "wd_main.mqh"
 
 // Global variables
 datetime lastLogTime = 0;
@@ -15,60 +15,9 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.4";
-
-// Simple risk management (read from wdsettings file)
-double tp = 200;
-double be = 100;
-double sl = 50;
-double bonus = 20;
-
-bool settingsLoaded = false;
+string version = "3.5";
 
 //-----------------------------------------------------------------------
-
-void ReadSettings()
-{
-   int fileHandle = FileOpen("wdsettings", FILE_READ|FILE_TXT);
-   
-   if(fileHandle != INVALID_HANDLE)
-   {
-      while(!FileIsEnding(fileHandle))
-      {
-         string line = FileReadString(fileHandle);
-         line = StringTrimLeft(StringTrimRight(line));
-         
-         // Skip empty lines and comments
-         if(line == "" || StringFind(line, "//") == 0 || StringFind(line, "#") == 0)
-            continue;
-         
-         // Parse key: value format
-         int colonPos = StringFind(line, ":");
-         if(colonPos > 0)
-         {
-            string key = StringTrimLeft(StringTrimRight(StringSubstr(line, 0, colonPos)));
-            string value = StringTrimLeft(StringTrimRight(StringSubstr(line, colonPos + 1)));
-            
-            if(key == "tp")
-               tp = StringToDouble(value);
-            else if(key == "be")
-               be = StringToDouble(value);
-            else if(key == "sl")
-               sl = StringToDouble(value);
-            else if(key == "bonus")
-               bonus = StringToDouble(value);
-         }
-      }
-      FileClose(fileHandle);
-      settingsLoaded = true;
-      Print("Settings loaded from wdsettings: tp=", tp, " be=", be, " sl=", sl, " bonus=", bonus);
-   }
-   else
-   {
-      Print("Warning: Could not open wdsettings file, using default values");
-      settingsLoaded = true; // Don't keep trying
-   }
-}
 
 void LogAccountInfo()
 {
@@ -84,7 +33,8 @@ void LogAccountInfo()
                       "Current Profit: " + DoubleToString(AccountProfit(), 2) + " | " +
                       "Active Orders: " + IntegerToString(OrdersTotal()) +
                       "\n" + 
-                      "sl: " + DoubleToString(sl, 0) + " / be: " + DoubleToString(be, 0) + " / tp: " + DoubleToString(tp, 0) + " / bonus: " + DoubleToString(bonus, 0) + "\n";
+                      "sl: " + IntegerToString(stopLoss) + " / be: " + IntegerToString(takeProfit/2) +
+		      " / tp: " + IntegerToString(takeProfit) + " / bonus: " + IntegerToString(BEBonus) + "\n";
 
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
@@ -124,7 +74,7 @@ void LogMarketData()
    }
 }
 
-void ReadAndSendOrderFromFile()
+int ReadOrderFromFile()
 {
    int fileHandle = FileOpen("approved.txt", FILE_READ|FILE_TXT);
    
@@ -138,11 +88,15 @@ void ReadAndSendOrderFromFile()
       }
       FileClose(fileHandle);
 
-      if(fileContent != "") ParseAndSendOrder(fileContent);
+      if(fileContent != "")
+          return ParseOrder(fileContent);
    }
+
+   Print("ERROR");
+   return -1;
 }
 
-void ParseAndSendOrder(string orderData)
+int ParseOrder(string orderData)
 {
    string lines[];
    int linesCount = StringSplit(orderData, '\n', lines);
@@ -157,50 +111,21 @@ void ParseAndSendOrder(string orderData)
       
       if(partsCount >= 6)
       {
-         string symbol = parts[0];
+         //string symbol = parts[0];
          int orderType = GetOrderType(parts[1]);
-         double lots = StringToDouble(parts[2]);
-         double price = StringToDouble(parts[3]);
-         double stopLoss = StringToDouble(parts[4]);
-         double takeProfit = StringToDouble(parts[5]);
+         //double lots = StringToDouble(parts[2]);
+         //double price = StringToDouble(parts[3]);
+         //double stopLoss = StringToDouble(parts[4]);
+         //double takeProfit = StringToDouble(parts[5]);
 
-         if(symbol != "" && lots > 0 && orderType >= 0)
-         {            
-            if((orderType == OP_BUY || orderType == OP_SELL) && price == 0.0)
-            {
-               price = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
-            }
-            
-            // Calculate SL and TP based on globals if not provided
-            if((orderType == OP_BUY || orderType == OP_SELL) && stopLoss == 0.0 && takeProfit == 0.0)
-            {
-               if(orderType == OP_BUY)
-               {
-                  stopLoss = price - sl;
-                  takeProfit = price + tp;
-               }
-               else if(orderType == OP_SELL)
-               {
-                  stopLoss = price + sl;
-                  takeProfit = price - tp;
-               }
-               Print("Using calculated SL/TP - SL: ", DoubleToString(stopLoss, 2), " TP: ", DoubleToString(takeProfit, 2));
-            }
-            
-            int ticket = OrderSend(symbol, orderType, lots, price, 3, stopLoss, takeProfit, "wd", 0, 0, clrNONE);
-            
-            if(ticket > 0)
-            {
-               Print("Order sent successfully! Ticket: ", ticket, " Symbol: ", symbol);
-               ClearApprovedFile();
-            }
-            else
-            {
-               Print("Error sending order: ", GetLastError());
-            }
-         }
+         ClearApprovedFile();
+
+	 return orderType;
       }
    }
+
+   Print("ERROR");
+   return -1;
 }
 
 int GetOrderType(string typeStr)
@@ -300,7 +225,7 @@ void CheckAndCancelDroppedOrders()
          line = StringTrimLeft(StringTrimRight(line));
          if(line != "")
          {
-            int ticket = StringToInteger(line);
+            int ticket = (int)StringToInteger(line);
             if(ticket > 0)
             {
                // Check if this ticket is an open order
@@ -339,7 +264,7 @@ void CheckAndCancelDroppedOrders()
       // Cancel the found orders
       for(int j = 0; j < cancelCount; j++)
       {
-         int ticketToCancel = StringToInteger(ticketsToCancel[j]);
+         int ticketToCancel = (int)StringToInteger(ticketsToCancel[j]);
          if(OrderSelect(ticketToCancel, SELECT_BY_TICKET))
          {
             bool closed = false;
@@ -498,7 +423,7 @@ void CheckAndModifyOrders()
             
             if(partsCount >= 3)
             {
-               int ticket = StringToInteger(parts[0]);
+               int ticket = (int)StringToInteger(parts[0]);
                double newStopLoss = StringToDouble(parts[1]);
                double newTakeProfit = StringToDouble(parts[2]);
                
@@ -698,69 +623,6 @@ void LogM15Candles()
    lastM15CandleTime = currentCandleTime;
 }
 
-void CheckBreakEvenOrders()
-{
-   for(int i = 0; i < OrdersTotal(); i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         // Only process BUY and SELL orders
-         if(OrderType() != OP_BUY && OrderType() != OP_SELL)
-            continue;
-            
-         double currentPrice;
-         double profitPoints;
-         double newStopLoss;
-	 bool modified;
-         
-         if(OrderType() == OP_BUY)
-         {
-            currentPrice = MarketInfo(OrderSymbol(), MODE_BID);
-            profitPoints = currentPrice - OrderOpenPrice();
-            newStopLoss = OrderOpenPrice() + bonus;
-            
-            // Check if profit has reached BE threshold and SL hasn't been moved to bonus yet
-            if(profitPoints >= be && OrderStopLoss() < newStopLoss)
-            {
-               modified = OrderModify(OrderTicket(), OrderOpenPrice(), newStopLoss, OrderTakeProfit(), OrderExpiration(), clrBlue);
-               if(modified)
-               {
-                  Print("BE triggered for BUY order ", OrderTicket(), 
-                        " - SL moved to bonus: ", DoubleToString(newStopLoss, 5),
-                        " (Profit: ", DoubleToString(profitPoints, 2), ")");
-               }
-               else
-               {
-                  Print("Failed to modify BUY order ", OrderTicket(), " Error: ", GetLastError());
-               }
-            }
-         }
-         else if(OrderType() == OP_SELL)
-         {
-            currentPrice = MarketInfo(OrderSymbol(), MODE_ASK);
-            profitPoints = OrderOpenPrice() - currentPrice;
-            newStopLoss = OrderOpenPrice() - bonus;
-            
-            // Check if profit has reached BE threshold and SL hasn't been moved to bonus yet
-            if(profitPoints >= be && (OrderStopLoss() == 0 || OrderStopLoss() > newStopLoss))
-            {
-               modified = OrderModify(OrderTicket(), OrderOpenPrice(), newStopLoss, OrderTakeProfit(), OrderExpiration(), clrRed);
-               if(modified)
-               {
-                  Print("BE triggered for SELL order ", OrderTicket(), 
-                        " - SL moved to bonus: ", DoubleToString(newStopLoss, 5),
-                        " (Profit: ", DoubleToString(profitPoints, 2), ")");
-               }
-               else
-               {
-                  Print("Failed to modify SELL order ", OrderTicket(), " Error: ", GetLastError());
-               }
-            }
-         }
-      }
-   }
-}
-
 void Logs()
 {
    // Log M1 candles (check on every tick for new candle)
@@ -794,6 +656,7 @@ void Logs()
    }
 }
 
+int decisionType = -1;
 void OrderFiles()
 {
    datetime currentTime = TimeCurrent();
@@ -813,28 +676,31 @@ void OrderFiles()
    }
    
    // Check for new orders
+   decisionType = -1;   
    if(currentTime - lastFileCheck >= 5)
    {
-      ReadAndSendOrderFromFile();
+      decisionType = ReadOrderFromFile();
       lastFileCheck = currentTime;
    }
 }
 
 void OnTick()
 {
-   // Load settings from file on first tick
-   if(!settingsLoaded)
-      ReadSettings();   
-      
    Logs();
    OrderFiles();
 
+   string decision = "";
+   if (decisionType == OP_BUY)
+       decision = "BUY";
+   if (decisionType == OP_SELL)
+       decision = "SELL";
+
 // Main logic for every tick
-//-----------------------------------------------------------------------
+//----------------------------------------------------------------------- 
+    int ticket = ExecuteWdDecision(decision);
+    Print("new order ticket: ", ticket);
 
-   // Check for BE
-   CheckBreakEvenOrders();
-
+    CheckBE();
 //-----------------------------------------------------------------------
 
    hearbeat++;
