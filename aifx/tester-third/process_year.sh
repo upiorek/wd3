@@ -1,7 +1,7 @@
 
 
 for month in 01 02 03 04 05 06 07 08 09 10 11 12; do
-    python3 process_candles.py --input-dir ../data/2025.${month} &
+    python3 process_candles.py --input-dir ../data/2025.${month} --mt &
 done
 
 # wait for all background processes to finish
