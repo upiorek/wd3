@@ -889,6 +889,29 @@ def _extract_report_result(report_html: str) -> str | None:
     return None
 
 
+def _extract_report_closed_orders(report_html: str) -> int | None:
+    # MT4 reports typically expose the number of executed trades as "Total trades".
+    # In many setups this corresponds to the number of closed orders in the report period.
+    patterns = [
+        r"Total\s+trades\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
+        r"Total\s+trades\s*[:=\-]?\s*([^<\r\n]+)",
+        r"Liczba\s+transakcji\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
+        r"Liczba\s+transakcji\s*[:=\-]?\s*([^<\r\n]+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, report_html, flags=re.IGNORECASE)
+        if not m:
+            continue
+        raw = m.group(1).strip()
+        digits = re.sub(r"[^0-9]", "", raw)
+        if digits:
+            try:
+                return int(digits)
+            except Exception:
+                return None
+    return None
+
+
 def write_wd_summary(config: dict) -> None:
     if config.get('expert') != 'wd_tester':
         return
@@ -906,12 +929,15 @@ def write_wd_summary(config: dict) -> None:
 
     report_path = _find_report_path(config)
     result = None
+    closed_orders: int | None = None
     if report_path:
         try:
             report_html = report_path.read_text(encoding='utf-8', errors='ignore')
             result = _extract_report_result(report_html)
+            closed_orders = _extract_report_closed_orders(report_html)
         except Exception:
             result = None
+            closed_orders = None
 
     if not report_path:
         result_str = "NO_REPORT"
@@ -920,7 +946,17 @@ def write_wd_summary(config: dict) -> None:
     else:
         result_str = result.replace('.', ',')
 
-    summary_line = f"{month_num}: {result_str}"
+    # pad result_str to at least 8 characters
+    result_str = result_str.ljust(8)
+
+    if not report_path:
+        closed_str = "NO_REPORT"
+    elif closed_orders is None:
+        closed_str = "UNKNOWN"
+    else:
+        closed_str = str(closed_orders)
+
+    summary_line = f"{month_num}: {result_str} | closed_orders: {closed_str}"
     print(f"\nWD summary for month {summary_line}")
 
     try:
