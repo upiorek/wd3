@@ -895,8 +895,8 @@ def _extract_report_closed_orders(report_html: str) -> int | None:
     patterns = [
         r"Total\s+trades\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
         r"Total\s+trades\s*[:=\-]?\s*([^<\r\n]+)",
-        r"Liczba\s+transakcji\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
-        r"Liczba\s+transakcji\s*[:=\-]?\s*([^<\r\n]+)",
+        r"Transakcji\s+w\s+sumie\s*</td>\s*<td[^>]*>\s*([^<\r\n]+)",
+        r"Transakcji\s+w\s+sumie\s*[:=\-]?\s*([^<\r\n]+)",
     ]
     for pat in patterns:
         m = re.search(pat, report_html, flags=re.IGNORECASE)
@@ -909,6 +909,7 @@ def _extract_report_closed_orders(report_html: str) -> int | None:
                 return int(digits)
             except Exception:
                 return None
+    
     return None
 
 
@@ -932,10 +933,27 @@ def write_wd_summary(config: dict) -> None:
     closed_orders: int | None = None
     if report_path:
         try:
-            report_html = report_path.read_text(encoding='utf-8', errors='ignore')
-            result = _extract_report_result(report_html)
-            closed_orders = _extract_report_closed_orders(report_html)
-        except Exception:
+            # Try multiple encodings for Polish reports
+            report_html = None
+            used_encoding = None
+            for enc in ['utf-8', 'windows-1250', 'latin-1', 'iso-8859-2']:
+                try:
+                    report_html = report_path.read_text(encoding=enc, errors='ignore')
+                    if report_html:
+                        used_encoding = enc
+                        break
+                except Exception:
+                    continue
+            
+            if report_html:
+                print(f"\nDEBUG: Reading report with encoding: {used_encoding}")
+                print(f"DEBUG: Report size: {len(report_html)} chars")
+                result = _extract_report_result(report_html)
+                print(f"DEBUG: Extracted result: {result}")
+                closed_orders = _extract_report_closed_orders(report_html)
+                print(f"DEBUG: Extracted closed_orders: {closed_orders}")
+        except Exception as e:
+            print(f"DEBUG: Exception reading report: {e}")
             result = None
             closed_orders = None
 
