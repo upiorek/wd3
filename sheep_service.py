@@ -22,7 +22,7 @@ running = True
 heartbeat = 1
 
 # Base directory paths
-VERSION = "2.1"
+VERSION = "2.2"
 REPO_DIR = "/home/ubuntu/repo"
 MQL4_FILES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files"
 MQL4_EXPERTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Experts"
@@ -152,23 +152,6 @@ def count_files_in_directory(directory):
         return 0
     return len([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
 
-def get_min_distance_from_settings():
-    """Read min_distance value from settings file."""
-    try:
-        settings_file = os.path.join(REPO_DIR, "settings")
-        if os.path.exists(settings_file):
-            with open(settings_file, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith('min_distance:'):
-                        value = line.split(':', 1)[1].strip()
-                        return float(value)
-        # Default value if not found in settings
-        return 15.0
-    except Exception as e:
-        print(f"Error reading min_distance from settings: {e}")
-        return 15.0
-
 def get_latest_m15_file():
     """Get the name of the latest m15 file in the candles directory."""
     try:
@@ -289,16 +272,6 @@ def get_existing_orders(symbol="US100.f", order_type=None):
         print(f"Error reading existing orders: {e}")
         return []
 
-# Minimum orders distance is configurable from settings file
-def is_price_too_close(current_price, existing_orders, min_distance):
-    """Check if current price is too close to any existing order of the same type."""
-    for order in existing_orders:
-        price_diff = abs(current_price - order['open_price'])
-        if price_diff < min_distance:
-            print(f"Price {current_price} is too close to existing order at {order['open_price']} (diff: {price_diff:.2f}, min: {min_distance})")
-            return True
-    return False
-
 def write_order_to_approved(order_type, candle_time):
     """Write order to approved.txt file."""
     approved_file = os.path.join(MQL4_FILES_DIR, "approved.txt")
@@ -308,13 +281,6 @@ def write_order_to_approved(order_type, candle_time):
     if current_price is None:
         print("Cannot get current market price, skipping order")
         return None
-    
-    existing_orders = get_existing_orders("US100.f", order_type)
-    
-    min_distance = get_min_distance_from_settings()
-    if is_price_too_close(current_price, existing_orders, min_distance):
-        print(f"Skipping {order_type} order - price too close to existing {order_type} order(s)")
-        return f"SKIPPED_{order_type} for {candle_time}"
 
     try:
         with open(approved_file, 'a') as f:
@@ -419,7 +385,7 @@ def write_sheep_file():
                 if signal_type:
                     if signal_type.startswith("SKIPPED_"):
                         order_type = signal_type.replace("SKIPPED_", "")
-                        content += f"\n[SIGNAL SKIPPED] {order_type} order too close to existing order\n"
+                        content += f"\n[SIGNAL SKIPPED] {order_type}\n"
                     else:
                         content += f"\n[SIGNAL DETECTED] Added {signal_type} order to approved.txt\n"
                     with open(os.path.join(REPO_DIR, "sheep", f"sheep_actions_{candle_time}.log"), "w") as f:

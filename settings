@@ -1,9 +1,4 @@
-# sheep service configuration version 1.8
+# sheep service configuration version 2.2
 # ---
 # service: enabled or disabled
 service: enabled
-
-# livermoore
-# ---
-# min_distance: value in points
-min_distance: 15
