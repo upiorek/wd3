@@ -1036,7 +1036,36 @@ def main():
         print(f"Copied {copied} WD tester input file(s) from: {source_folder}")
     elif config['expert'] == 'wd_tester' and NO_COPY_DATA:
         print("\nWD tester: --no-copy-data enabled (skipping input data copy)")
+        
+    # Remove old wd_main.mqh if exists
+    old_mqh = CURRENT_DIR / "wd_main.mqh"
+    if old_mqh.exists():
+        try:
+            old_mqh.unlink()
+            print("\nRemoved old wd_main.mqh from current folder")
+        except Exception as e:
+            print(f"Warning: could not remove old wd_main.mqh: {e}")
     
+    # Remove old wd_tester_hash.mqh if exists
+    old_hash_mqh = CURRENT_DIR / "wd_tester_hash.mqh"
+    if old_hash_mqh.exists():
+        try:
+            old_hash_mqh.unlink()
+            print("Removed old wd_tester_hash.mqh from current folder")
+        except Exception as e:
+            print(f"Warning: could not remove old wd_tester_hash.mqh: {e}")        
+    
+    # Copy wd_main.mqh from repo folder to current folder
+    if config.get('expert') == 'wd_tester':
+        print("\nCopying wd_main.mqh to current folder...")
+        source_mqh = REPO_ROOT / "wd_main.mqh"
+        dest_mqh = CURRENT_DIR / "wd_main.mqh"
+        try:
+            shutil.copy2(source_mqh, dest_mqh)
+            print(f"✓ Copied wd_main.mqh to {dest_mqh}")
+        except Exception as e:
+            print(f"Warning: could not copy wd_main.mqh: {e}")
+            
     # Prepare expert advisor
     print("\nPreparing Expert Advisor...")
     if not prepare_expert():

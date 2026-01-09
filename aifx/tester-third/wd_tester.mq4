@@ -311,6 +311,9 @@ int OnInit()
     // Create stats overlay early so it is visible immediately in visual tester.
     UpdateTesterStatsOverlay();
 
+    string wd_main_version = GetVersion();
+    Print(wd_main_version);
+
     return(INIT_SUCCEEDED);
 }
 
@@ -351,6 +354,9 @@ void OnTick()
         DeleteWdLines();
     }
 
+//-----------------------------------------------------------------------
     ExecuteWdDecision(decision);
-    CheckBE();
+    CheckBE();    
+//-----------------------------------------------------------------------
+
 }

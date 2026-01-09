@@ -19,6 +19,11 @@ input int BEBonus = 25 * 100;
 
 //-----------------------------------------------------------------------
 
+string GetVersion()
+{
+    return "wd main version 1.2";
+}
+
 int HasSimilarOpenOrderDropped = 0 ;
 bool HasSimilarOpenOrder(int orderType, double price)
 {
