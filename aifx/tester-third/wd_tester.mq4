@@ -300,6 +300,45 @@ void UpdateTesterStatsOverlay()
     UpsertTesterStatsLabel(text);
 }
 
+void PrintErrorIfBothBuyAndSellOpen()
+{
+    bool hasBuy = false;
+    bool hasSell = false;
+
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        // Only consider orders opened by WD logic.
+        string c = OrderComment();
+        if(StringFind(c, "WD ") != 0 && StringFind(c, "WD Tester") != 0)
+            continue;
+
+        int type = OrderType();
+        if(type == OP_BUY)
+            hasBuy = true;
+        else if(type == OP_SELL)
+            hasSell = true;
+
+        if(hasBuy && hasSell)
+            break;
+    }
+
+    static bool wasConflict = false;
+    bool isConflict = (hasBuy && hasSell);
+
+    if(isConflict && !wasConflict)
+    {
+        Print("ERROR: Both BUY and SELL orders are open at the same time for ", Symbol());
+    }
+
+    wasConflict = isConflict;
+}
+
 int OnInit()
 {   
     Print("version: " + version);
@@ -344,16 +383,14 @@ void OnTick()
     string result = ReadAllText(result_filename);
     Print("Result file content: ", result);
 
+    DeleteWdLines();
     if (show_lines == true)
     {
-        DeleteWdLines();
         DrawLinesFromResult(result);
     }
-    else
-    {
-        DeleteWdLines();
-    }
 
+    PrintErrorIfBothBuyAndSellOpen();
+    
 //-----------------------------------------------------------------------
     ExecuteWdDecision(decision);
     CheckBE();    
