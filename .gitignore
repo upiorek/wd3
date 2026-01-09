@@ -38,3 +38,4 @@ aifx/data/**/*.csv
 aifx/data/**/*_decision.txt
 aifx/data/**/*_result.txt
 aifx/data/**/*.png
+aifx/tester-third/wd_main.mqh
