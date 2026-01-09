@@ -23,7 +23,7 @@ string ReadAllText(string filepath)
     if(fileHandle == INVALID_HANDLE)
     {
         int err = GetLastError();
-        Print("Failed to open file: ", filepath, " Error: ", err);
+        Print("ERROR: Failed to open file: ", filepath, " Error: ", err);
         return "";
     }
 

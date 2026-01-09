@@ -572,6 +572,45 @@ def verify_wd_tester_git_hash_from_latest_log() -> bool:
     print(f"✓ Verified git hash in latest log matches HEAD: {current_hash[:7]}")
     return True
 
+
+def fail_if_error_messages_in_latest_log() -> bool:
+    """Fail the run if the latest copied MT4 log contains any ERROR messages."""
+    logs_dir = CURRENT_DIR / "mt4_test_results" / "logs"
+    log_files = list(logs_dir.glob("*.log")) if logs_dir.exists() else []
+    if not log_files:
+        print(f"ERROR: no local log files found in {logs_dir}")
+        return False
+
+    latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
+
+    try:
+        data = latest_log.read_bytes()
+    except Exception as e:
+        print(f"ERROR: could not read latest log file {latest_log}: {e}")
+        return False
+
+    text = data.decode("utf-8", errors="ignore")
+    if not text:
+        text = data.decode("latin-1", errors="ignore")
+
+    error_lines: list[str] = []
+    for line in text.splitlines():
+        if re.search(r"\bERROR\b", line, flags=re.IGNORECASE):
+            error_lines.append(line.strip())
+
+    if error_lines:
+        print("ERROR: 'ERROR' messages found in latest MT4 log")
+        print(f"  Log file: {latest_log}")
+        print(f"  Count   : {len(error_lines)}")
+        for i, line in enumerate(error_lines[:10], start=1):
+            print(f"  {i:02d}: {line}")
+        if len(error_lines) > 10:
+            print(f"  ... ({len(error_lines) - 10} more)")
+        return False
+
+    print("✓ No 'ERROR' messages found in latest MT4 log")
+    return True
+
 def run_strategy_tester(config):
     """Run MT4 strategy tester"""
     mt4_exe = find_mt4_executable()
@@ -1080,6 +1119,10 @@ def main():
     if config.get('expert') == 'wd_tester':
         print("\nVerifying git commit against latest copied MT4 log...")
         if not verify_wd_tester_git_hash_from_latest_log():
+            return 1
+
+        print("Checking latest copied MT4 log for ERROR messages...")
+        if not fail_if_error_messages_in_latest_log():
             return 1
 
     # For wd_tester, summarize the report.
