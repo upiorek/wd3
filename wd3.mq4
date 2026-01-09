@@ -13,7 +13,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.25";
+string version = "3.3";
 
 // Simple risk management (read from wdsettings file)
 double tp = 200;
@@ -21,8 +21,6 @@ double be = 100;
 double sl = 50;
 double bonus = 20;
 
-// Max daily orders
-int maxOrders = 50;
 bool settingsLoaded = false;
 
 void ReadSettings()
@@ -55,13 +53,11 @@ void ReadSettings()
                sl = StringToDouble(value);
             else if(key == "bonus")
                bonus = StringToDouble(value);
-            else if(key == "maxOrders")
-               maxOrders = StringToInteger(value);
          }
       }
       FileClose(fileHandle);
       settingsLoaded = true;
-      Print("Settings loaded from wdsettings: tp=", tp, " be=", be, " sl=", sl, " bonus=", bonus, " maxOrders=", maxOrders);
+      Print("Settings loaded from wdsettings: tp=", tp, " be=", be, " sl=", sl, " bonus=", bonus);
    }
    else
    {
@@ -76,15 +72,13 @@ void LogAccountInfo()
    
    if(fileHandle != INVALID_HANDLE)
    {
-      int todayOrders = CountOrdersOpenedToday();
-
       string logData = "WD: " + version + " " + "Heartbeat: " + IntegerToString(hearbeat) + " / " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | " +
                       "Balance: " + DoubleToString(AccountBalance(), 2) + " / Equity: " + DoubleToString(AccountEquity(), 2) + " | " +
                       "Margin: " + DoubleToString(AccountMargin(), 2) + " / Free Margin: " + DoubleToString(AccountFreeMargin(), 2) + " | " +
                       "Margin Level: " + DoubleToString(AccountMargin() > 0 ? (AccountEquity() / AccountMargin()) * 100 : 0, 2) + "% | " +
                       "\n" + 
                       "Current Profit: " + DoubleToString(AccountProfit(), 2) + " | " +
-                      "Active Orders: " + IntegerToString(OrdersTotal()) + " / Daily limit: " + IntegerToString(todayOrders) + "/" + IntegerToString(maxOrders) +
+                      "Active Orders: " + IntegerToString(OrdersTotal()) +
                       "\n" + 
                       "sl: " + DoubleToString(sl, 0) + " / be: " + DoubleToString(be, 0) + " / tp: " + DoubleToString(tp, 0) + " / bonus: " + DoubleToString(bonus, 0) + "\n";
 
@@ -124,51 +118,6 @@ void LogMarketData()
    {
       Print("Error opening market log file: ", GetLastError());
    }
-}
-
-int CountOrdersOpenedToday()
-{
-   datetime currentDay = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
-   datetime nextDay = currentDay + 86400; // Add 24 hours
-   
-   int todayOrdersCount = 0;
-   int totalHistoryOrders = OrdersHistoryTotal();
-
-   datetime orderOpenTime;
-
-   // Count closed orders from today
-   for(int i = 0; i < totalHistoryOrders; i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
-      {
-         orderOpenTime = OrderOpenTime();
-         
-         // Check if order was opened today and is BUY or SELL order only
-         if(orderOpenTime >= currentDay && orderOpenTime < nextDay && 
-            (OrderType() == OP_BUY || OrderType() == OP_SELL))
-         {
-            todayOrdersCount++;
-         }
-      }
-   }
-   
-   // Count currently open orders from today
-   for(int j = 0; j < OrdersTotal(); j++)
-   {
-      if(OrderSelect(j, SELECT_BY_POS, MODE_TRADES))
-      {
-         orderOpenTime = OrderOpenTime();
-         
-         // Check if order was opened today and is BUY or SELL order only
-         if(orderOpenTime >= currentDay && orderOpenTime < nextDay && 
-            (OrderType() == OP_BUY || OrderType() == OP_SELL))
-         {
-            todayOrdersCount++;
-         }
-      }
-   }
-   
-   return todayOrdersCount;
 }
 
 void ReadAndSendOrderFromFile()
@@ -212,16 +161,7 @@ void ParseAndSendOrder(string orderData)
          double takeProfit = StringToDouble(parts[5]);
 
          if(symbol != "" && lots > 0 && orderType >= 0)
-         {
-            // Check daily order limit
-            int todayOrders = CountOrdersOpenedToday();
-            if(todayOrders >= maxOrders)
-            {
-               Print("Daily order limit reached (", todayOrders, "/", maxOrders, "). Order not sent.");
-               ClearApprovedFile();
-               continue;
-            }
-            
+         {            
             if((orderType == OP_BUY || orderType == OP_SELL) && price == 0.0)
             {
                price = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
@@ -247,7 +187,7 @@ void ParseAndSendOrder(string orderData)
             
             if(ticket > 0)
             {
-               Print("Order sent successfully! Ticket: ", ticket, " Symbol: ", symbol, " (Today: ", (todayOrders + 1), "/", maxOrders, ")");
+               Print("Order sent successfully! Ticket: ", ticket, " Symbol: ", symbol);
                ClearApprovedFile();
             }
             else
