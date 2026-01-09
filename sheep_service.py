@@ -248,40 +248,10 @@ def get_current_market_price(symbol="US100.f"):
         print(f"Error reading market price: {e}")
         return None
 
-def get_existing_orders(symbol="US100.f", order_type=None):
-    """Get existing open orders from orders_log.txt."""
-    orders = []
-    try:
-        orders_log = os.path.join(MQL4_FILES_DIR, "orders_log.txt")
-        with open(orders_log, 'r') as f:
-            for line in f:
-                if symbol in line and '|' in line:
-                    # Parse line like: "17614451 | BUY | US100.f | 0.01 | 25714.61000 | ..."
-                    parts = [p.strip() for p in line.split('|')]
-                    if len(parts) >= 5:
-                        order_info = {
-                            'type': parts[1],
-                            'symbol': parts[2],
-                            'open_price': float(parts[4])
-                        }
-                        # Filter by order type if specified
-                        if order_type is None or order_info['type'] == order_type:
-                            orders.append(order_info)
-        return orders
-    except Exception as e:
-        print(f"Error reading existing orders: {e}")
-        return []
-
 def write_order_to_approved(order_type, candle_time):
     """Write order to approved.txt file."""
     approved_file = os.path.join(MQL4_FILES_DIR, "approved.txt")
-    
-    # Check current market price and existing orders
-    current_price = get_current_market_price("US100.f")
-    if current_price is None:
-        print("Cannot get current market price, skipping order")
-        return None
-
+ 
     try:
         with open(approved_file, 'a') as f:
             f.write(f"US100.f {order_type} 0.01 0 0 0\n")
