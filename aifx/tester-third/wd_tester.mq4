@@ -392,8 +392,10 @@ void OnTick()
     PrintErrorIfBothBuyAndSellOpen();
     
 //-----------------------------------------------------------------------
-    ExecuteWdDecision(decision);
-    CheckBE();    
+    int ticket = ExecuteWdDecision(decision);
+    Print("new order ticket: ", ticket);
+
+    CheckBE();
 //-----------------------------------------------------------------------
 
 }
