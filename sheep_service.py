@@ -230,24 +230,6 @@ def generate_chart_if_missing(m15_filename):
         print(f"Error generating chart: {e}")
         return f"ERROR: {str(e)}"
 
-def get_current_market_price(symbol="US100.f"):
-    """Get current market price from market_log.txt."""
-    try:
-        market_log = os.path.join(MQL4_FILES_DIR, "market_log.txt")
-        with open(market_log, 'r') as f:
-            for line in f:
-                if symbol in line:
-                    # Parse line like "US100.f: 25696.99 | EURUSD: 1.17505"
-                    parts = line.split('|')
-                    for part in parts:
-                        if symbol in part:
-                            price_str = part.split(':')[1].strip()
-                            return float(price_str)
-        return None
-    except Exception as e:
-        print(f"Error reading market price: {e}")
-        return None
-
 def write_order_to_approved(order_type, candle_time):
     """Write order to approved.txt file."""
     approved_file = os.path.join(MQL4_FILES_DIR, "approved.txt")
@@ -268,7 +250,6 @@ def check_for_signals(candle_time, decision):
         # Check for BUY signal
         if line.find("BUY") != -1:
             return write_order_to_approved("BUY", candle_time)
-        
         # Check for SELL signal
         if line.find("SELL") != -1:
             return write_order_to_approved("SELL", candle_time)
@@ -309,7 +290,13 @@ def write_sheep_file():
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         content = f"Hello Sheep: {VERSION} heartbeat: {heartbeat}\nCurrent time: {current_time}\n"
+        # run echo command and add it to content
+        usage = os.popen("LC_ALL=C top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'").read().strip()
+        memory = os.popen("free -m | awk 'NR==2{printf \"%.2f%%\", $3*100/$2 }'").read().strip()
+        drive = os.popen("df -h / | awk 'NR==2 {printf \"%s/%s (%s)\", $3, $2, $5}'").read().strip()
+        content += f"CPU {usage}% Memory {memory} Drive {drive}\n"
         heartbeat += 1
+        content += f"\n"
         content += f"Candles: {candles_count} files\n"
         content += f"Candles (old): {candles_old_count} files\n"
         content += f"Latest M15: {latest_m15}\n"
@@ -348,7 +335,7 @@ def write_sheep_file():
                 content += f"\ndecisionner\n{decision}\n"
                 # Write last decision to the decision.log
                 with open(os.path.join(REPO_DIR, "decision.log"), "w") as decision_file:
-                    decision += f"for andle Time: {candle_time}\n"
+                    decision += f"for candle Time: {candle_time}\n"
                     decision_file.write(decision)
 
                 signal_type = check_for_signals(candle_time, decision)
