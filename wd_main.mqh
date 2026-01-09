@@ -11,7 +11,7 @@ input int slippage = 3 * 100;
 
 //--- HasSimilarOpenOrder:
 bool HasSimilarOpenOrder_enabled = true;
-input int minDistance = 15; // * 100; ?
+input int minDistance = 10; // prices already * 100
 
 //--- CheckBE:
 bool CheckBE_enabled = true;
@@ -32,15 +32,18 @@ bool HasSimilarOpenOrder(int orderType, double price)
 {
     for(int i = OrdersTotal() - 1; i >= 0; i--)
     {
-        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
-        if(OrderSymbol() != Symbol() || OrderType() != orderType) continue;
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol() || OrderType() != orderType)
+            continue;
         
-        double priceDiff = MathAbs(OrderOpenPrice() - price) / Point;
+        int priceDiff = (int)MathAbs(OrderOpenPrice() - price);
         if(priceDiff <= minDistance)
         {
             HasSimilarOpenOrderDropped++;
-            Print("Duplicate order skipped (", HasSimilarOpenOrderDropped, "): ", orderType == OP_BUY ? "BUY" : "SELL", 
-                  " at ", price, " (diff=", priceDiff, " points)");
+            string order = OP_BUY ? "BUY" : "SELL";
+            Print("Duplicate order skipped (", HasSimilarOpenOrderDropped, "): ",
+            order, " at ", price, " diff ", priceDiff);
             return true;
         }
     }

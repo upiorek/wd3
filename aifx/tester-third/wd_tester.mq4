@@ -390,7 +390,8 @@ void OnTick()
 
 //-----------------------------------------------------------------------
     int ticket = ExecuteWdDecision(decision);
-    Print("new order ticket: ", ticket);
+    if (ticket > 0)
+        Print("new order ticket: ", ticket);
 
     CheckBE();
 //-----------------------------------------------------------------------
