@@ -651,9 +651,9 @@ def run_strategy_tester(config):
         # Start MT4 with config file
         process = subprocess.Popen(cmd, cwd=str(mt4_exe.parent))
         print(f"MT4 started with PID: {process.pid}")        
-
-        print("\n✓ MT4 launched successfully with test configuration!")
         """
+        print("\n✓ MT4 launched successfully with test configuration!")
+        
         print("\nMT4 will automatically:")
         print(f"  1. Load the {config['expert']} EA")
         print("  2. Configure the Strategy Tester")
@@ -862,6 +862,9 @@ def write_wd_summary(config: dict) -> None:
         except Exception:
             month_num = 0
 
+    # add padding to month number
+    month_num = f"{month_num:02d}"
+
     report_path = _find_report_path(config)
     result = None
     if report_path:
@@ -876,7 +879,7 @@ def write_wd_summary(config: dict) -> None:
     elif not result:
         result_str = "UNKNOWN"
     else:
-        result_str = result
+        result_str = result.replace('.', ',')
 
     summary_line = f"{month_num}: {result_str}"
     print(f"\nWD summary for month {summary_line}")

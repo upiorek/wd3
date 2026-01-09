@@ -296,6 +296,8 @@ def main():
 
     if mt:
         print(f"Multithreaded mode: enabled ({mt_workers} threads)\n")
+    if no_images:
+        print("Image generation: disabled\n")
 
     # In test mode, always start with a clean charts folder.
     # Requested cleanup target: mt4_test_results/m15_candles/charts.
