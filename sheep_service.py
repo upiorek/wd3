@@ -256,20 +256,6 @@ def check_for_signals(candle_time, decision):
         
     return None
 
-def copy_wdsettings():
-    """Copy wdsettings from repo to wine directory."""
-    try:
-        source = os.path.join(REPO_DIR, "wdsettings")
-        destination = os.path.join(MQL4_EXPERTS_DIR, "wdsettings")
-        
-        if os.path.exists(source):
-            shutil.copy2(source, destination)
-            print(f"Copied wdsettings from {source} to {destination}")
-        else:
-            print(f"Warning: wdsettings source file not found at {source}")
-    except Exception as e:
-        print(f"Error copying wdsettings: {e}")
-
 def write_sheep_file():
     """Write hello world and current time to the sheep file."""
     global heartbeat
@@ -365,10 +351,7 @@ def main():
     
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    # Copy wdsettings from repo to wine directory
-    copy_wdsettings()
+    signal.signal(signal.SIGTERM, signal_handler)    
     
     print("Sheep service started. Press Ctrl+C to stop.")
     
