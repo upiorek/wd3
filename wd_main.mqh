@@ -17,6 +17,9 @@ input int minDistance = 15; // * 100; ?
 bool CheckBE_enabled = true;
 input int BEBonus = 25 * 100;
 
+// weak closed on flip
+input bool weak_closed_on_flip_enabled = false;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
@@ -96,6 +99,65 @@ void CheckBE()
     }
 }
 
+bool CheckWeakClosedOnFlip(string decision)
+{
+    // If we already have opposite WD trades open, do not open a new one.
+    // Instead, close the worst-performing opposite order.
+    // "Worst" = lowest (profit+swap+commission).
+    int total = OrdersTotal();
+    bool wantBuy = (decision == "BUY");
+    int oppositeType = wantBuy ? OP_SELL : OP_BUY;
+
+    int worstTicket = -1;
+    double worstProfit = 0.0;
+    bool haveWorst = false;
+
+    for(int i = total - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+        if(OrderType() != oppositeType)
+            continue;
+
+        string c = OrderComment();
+        double p = (OrderProfit() + OrderSwap() + OrderCommission());
+        if(!haveWorst || p < worstProfit)
+        {
+            worstProfit = p;
+            worstTicket = OrderTicket();
+            haveWorst = true;
+        }
+    }
+
+    if(haveWorst && worstTicket > 0)
+    {
+        RefreshRates();
+        if(OrderSelect(worstTicket, SELECT_BY_TICKET))
+        {
+            double closePrice = (OrderType() == OP_BUY) ? Bid : Ask;
+            double lots = OrderLots();
+            ResetLastError();
+            if(OrderClose(worstTicket, lots, closePrice, slippage, clrNONE))
+            {
+                Print("Closed worst ", wantBuy ? "SELL" : "BUY", " instead of opening ", decision,
+                      " Ticket=", worstTicket, " Profit=", DoubleToStr(worstProfit, 2));
+                
+                // closed worst
+                return true;
+            }
+            else
+            {
+                Print("ERROR: Failed to close worst ", wantBuy ? "SELL" : "BUY", " Ticket=", worstTicket,
+                      " Error=", GetLastError());
+            }
+        }
+    }
+
+    return false;
+}
+
 int ExecuteWdDecision(string decision)
 {
     if(decision != "BUY" && decision != "SELL")
@@ -105,11 +167,11 @@ int ExecuteWdDecision(string decision)
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double price = NormalizeDouble(isBuy ? Ask : Bid, Digits);
     
-    if(HasSimilarOpenOrder_enabled)
-    {
-        if(HasSimilarOpenOrder(cmd, price))
-            return 0;
-    }
+    if(HasSimilarOpenOrder_enabled && HasSimilarOpenOrder(cmd, price))
+        return 0;
+
+    if (weak_closed_on_flip_enabled && CheckWeakClosedOnFlip(decision))
+        return 0;
     
     int stopLevelPoints = (int)MarketInfo(Symbol(), MODE_STOPLEVEL);
     int freezeLevelPoints = (int)MarketInfo(Symbol(), MODE_FREEZELEVEL);
@@ -133,6 +195,7 @@ int ExecuteWdDecision(string decision)
         Print("ERROR: Order failed: ", decision, " Error=", GetLastError(), 
               " Price=", price, " SL=", sl, " TP=", tp);
     }
+    
     return ticket;
 }
 
