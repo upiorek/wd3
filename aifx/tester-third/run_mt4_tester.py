@@ -19,6 +19,7 @@ from pathlib import Path
 import configparser
 import calendar
 import re
+import html as html_lib
 
 # Set UTF-8 encoding for console output
 if sys.stdout.encoding != 'utf-8':
@@ -913,6 +914,102 @@ def _extract_report_closed_orders(report_html: str) -> int | None:
     return None
 
 
+def _extract_report_sl_tp_summary(report_html: str) -> dict[str, float | int] | None:
+    """Extract SL/TP counts and profit sums from the trade list table.
+
+    MT4 HTML reports include a second table with columns:
+    #, Time, Type, Order, Size, Price, S/L, T/P, Profit, Balance.
+    We treat rows where Type is "s/l" or "t/p" as SL/TP outcomes.
+    """
+
+    # Locate the trade list header row, then slice out the enclosing table.
+    header_pat = re.compile(
+        r"<tr[^>]*>\s*<td>\#</td>\s*<td>Time</td>\s*<td>Type</td>",
+        flags=re.IGNORECASE,
+    )
+    m = header_pat.search(report_html)
+    if not m:
+        return None
+
+    header_idx = m.start()
+    table_start = report_html.rfind("<table", 0, header_idx)
+    if table_start < 0:
+        return None
+    table_end = report_html.find("</table>", header_idx)
+    if table_end < 0:
+        return None
+    table_html = report_html[table_start:table_end]
+
+    # Iterate all rows and parse cell text.
+    row_pat = re.compile(r"<tr\b[^>]*>.*?</tr>", flags=re.IGNORECASE | re.DOTALL)
+    cell_pat = re.compile(r"<td\b[^>]*>(.*?)</td>", flags=re.IGNORECASE | re.DOTALL)
+
+    def _clean_cell(cell_html: str) -> str:
+        txt = re.sub(r"<[^>]+>", "", cell_html)
+        txt = html_lib.unescape(txt)
+        return txt.strip()
+
+    def _parse_float_maybe(raw: str) -> float | None:
+        if raw is None:
+            return None
+        s = raw.strip()
+        if not s:
+            return None
+        # Accept both 1,23 and 1.23, strip any stray chars.
+        s = s.replace(" ", "")
+        s = s.replace(",", ".")
+        s = re.sub(r"[^0-9+\-.]", "", s)
+        if not s or s in {"+", "-", ".", "+.", "-."}:
+            return None
+        try:
+            return float(s)
+        except Exception:
+            return None
+
+    sl_count = 0
+    tp_count = 0
+    sl_profit = 0.0
+    tp_profit = 0.0
+
+    for row_html in row_pat.findall(table_html):
+        raw_cells = cell_pat.findall(row_html)
+        if not raw_cells:
+            continue
+        cells = [_clean_cell(c) for c in raw_cells]
+
+        # Skip header / malformed rows.
+        if not cells or cells[0] in {"#", "\u00a0"}:
+            continue
+        try:
+            int(cells[0])
+        except Exception:
+            continue
+        if len(cells) < 3:
+            continue
+
+        row_type = cells[2].strip().lower()
+        if row_type not in {"s/l", "t/p"}:
+            continue
+
+        profit_val = _parse_float_maybe(cells[8]) if len(cells) > 8 else None
+
+        if row_type == "s/l":
+            sl_count += 1
+            if profit_val is not None:
+                sl_profit += profit_val
+        else:
+            tp_count += 1
+            if profit_val is not None:
+                tp_profit += profit_val
+
+    return {
+        "sl_count": sl_count,
+        "tp_count": tp_count,
+        "sl_profit": sl_profit,
+        "tp_profit": tp_profit,
+    }
+
+
 def write_wd_summary(config: dict) -> None:
     if config.get('expert') != 'wd_tester':
         return
@@ -931,6 +1028,7 @@ def write_wd_summary(config: dict) -> None:
     report_path = _find_report_path(config)
     result = None
     closed_orders: int | None = None
+    sl_tp: dict[str, float | int] | None = None
     if report_path:
         try:
             # Try multiple encodings for Polish reports
@@ -952,10 +1050,13 @@ def write_wd_summary(config: dict) -> None:
                 print(f"DEBUG: Extracted result: {result}")
                 closed_orders = _extract_report_closed_orders(report_html)
                 print(f"DEBUG: Extracted closed_orders: {closed_orders}")
+                sl_tp = _extract_report_sl_tp_summary(report_html)
+                print(f"DEBUG: Extracted sl/tp summary: {sl_tp}")
         except Exception as e:
             print(f"DEBUG: Exception reading report: {e}")
             result = None
             closed_orders = None
+            sl_tp = None
 
     if not report_path:
         result_str = "NO_REPORT"
@@ -974,7 +1075,26 @@ def write_wd_summary(config: dict) -> None:
     else:
         closed_str = str(closed_orders)
 
-    summary_line = f"{month_num}: {result_str} | closed_orders: {closed_str}"
+    if not report_path:
+        sl_str = "NO_REPORT"
+        tp_str = "NO_REPORT"
+    elif not sl_tp:
+        sl_str = "UNKNOWN"
+        tp_str = "UNKNOWN"
+    else:
+        sl_count = int(sl_tp.get("sl_count", 0))
+        tp_count = int(sl_tp.get("tp_count", 0))
+        sl_profit = float(sl_tp.get("sl_profit", 0.0))
+        tp_profit = float(sl_tp.get("tp_profit", 0.0))
+
+        # Keep numeric formatting consistent with the existing result formatting (comma decimal separator).
+        sl_str = f"{sl_count} ({sl_profit:+.2f})".replace(".", ",")
+        tp_str = f"{tp_count} ({tp_profit:+.2f})".replace(".", ",")
+
+    summary_line = (
+        f"{month_num}: {result_str} | closed_orders: {closed_str}"
+        f" | sl: {sl_str} | tp: {tp_str}"
+    )
     print(f"\nWD summary for month {summary_line}")
 
     try:
