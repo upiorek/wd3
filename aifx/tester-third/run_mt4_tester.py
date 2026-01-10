@@ -1044,16 +1044,10 @@ def write_wd_summary(config: dict) -> None:
                     continue
             
             if report_html:
-                print(f"\nDEBUG: Reading report with encoding: {used_encoding}")
-                print(f"DEBUG: Report size: {len(report_html)} chars")
                 result = _extract_report_result(report_html)
-                print(f"DEBUG: Extracted result: {result}")
                 closed_orders = _extract_report_closed_orders(report_html)
-                print(f"DEBUG: Extracted closed_orders: {closed_orders}")
                 sl_tp = _extract_report_sl_tp_summary(report_html)
-                print(f"DEBUG: Extracted sl/tp summary: {sl_tp}")
         except Exception as e:
-            print(f"DEBUG: Exception reading report: {e}")
             result = None
             closed_orders = None
             sl_tp = None
