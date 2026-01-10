@@ -18,8 +18,9 @@ bool CheckBE_enabled = true;
 input int BEBonus = 25 * 100;
 
 // weak closed on flip
-bool weak_closed_on_flip_enabled = true;
+input bool weak_closed_on_flip_enabled = true;
 bool weak_closed_on_flip_min_opp_enabled = true;
+int weak_closed_on_flip_min_opp = 3;
 
 //--- CheckSetupTP:
 bool CheckSetupTP_enabled = false;
@@ -190,7 +191,7 @@ bool CheckWeakClosedOnFlip(string decision)
             howManyOppositeType++;
         }
 
-        if(howManyOppositeType < 3)
+        if(howManyOppositeType < weak_closed_on_flip_min_opp)
             return false;
     }
 
