@@ -1100,8 +1100,9 @@ def write_wd_summary(config: dict) -> None:
         tp_str = f"{tp_count} ({tp_profit:+.2f})".replace(".", ",")
 
     summary_line = (
-        f"{month_num}: {result_str} | closed_orders: {closed_str}"
-        f" | sl: {sl_str} | tp: {tp_str}"
+        f"{month_num}: {result_str} | closed: {closed_str}"
+        f" | sl: {sl_str} | tp: {tp_str} | win: "
+        f"{(tp_count / (sl_count + tp_count) * 100 if (sl_count + tp_count) > 0 else 0):.2f}%"
     )
     print(f"\nWD summary for month {summary_line}")
 
