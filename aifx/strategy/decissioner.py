@@ -59,34 +59,51 @@ def decision(result: str | None) -> str:
     parts = header.split()
     if not parts:
         return "log: invalid input string\nNONE"
-    
-    line_id = parts[1]
-    direction = parts[2]
+
+    direction = parts[-1]
     if direction not in ("UP", "DOWN"):
         return f"log: invalid direction: {direction}\nNONE"
 
     offsets = _parse_line_offsets(result)
+
+    crossed_ids = parts[1:-1]
+    if not crossed_ids:
+        return "log: no line ids\nNONE"
+
     d0_offset = offsets.get("D0")
     a0_offset = offsets.get("A0")
 
-    if "A" in line_id:
-        if direction == "UP":
-            # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
-            if d0_offset is not None and d0_offset > 0:
-                return "log: do not buy below D0\nNONE"
-            return "BUY"
-        elif direction == "DOWN":
-            return "log: bad direction\nNONE"
+    # Unified logic for both single- and multi-cross:
+    # - If direction is UP and any crossed line is A*, then BUY.
+    # - If direction is DOWN and any crossed line is D*, then SELL.
+    first_letters = [(line_id[:1].upper() if line_id else "") for line_id in crossed_ids]
+    has_a = "A" in first_letters
+    has_d = "D" in first_letters
 
-    if "D" in line_id:
-        if direction == "DOWN":
-            # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
-            if a0_offset is not None and a0_offset < 0:
-                return "log: do not sell above A0\nNONE"
-            return "SELL"
-        elif direction == "UP":
-            return "log: bad direction\nNONE"
-        
+    can_buy = (direction == "UP" and has_a)
+    can_sell = (direction == "DOWN" and has_d)
+
+    if can_buy:
+        # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
+        if d0_offset is not None and d0_offset > 0:
+            return "log: do not buy below D0\nNONE"
+        return "BUY"
+
+    if can_sell:
+        # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
+        if a0_offset is not None and a0_offset < 0:
+            return "log: do not sell above A0\nNONE"
+        return "SELL"
+
+    # No valid lines matched the direction.
+    if len(crossed_ids) > 1:
+        return "log: no valid lines found\nNONE"
+
+    line_id = crossed_ids[0]
+    line_letter = line_id[:1].upper() if line_id else ""
+    if line_letter in ("A", "D"):
+        return "log: bad direction\nNONE"
+
     return f"log: bad line id: {line_id}\nNONE"
 
 if __name__ == '__main__':  
