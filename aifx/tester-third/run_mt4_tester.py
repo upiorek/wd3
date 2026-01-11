@@ -919,15 +919,29 @@ def _extract_report_sl_tp_summary(report_html: str) -> dict[str, float | int] | 
 
     MT4 HTML reports include a second table with columns:
     #, Time, Type, Order, Size, Price, S/L, T/P, Profit, Balance.
+    Polish version: #, Czas, Typ, Zlecenie, Wolumen, Cena, S/L, T/P, Zysk, Saldo.
     We treat rows where Type is "s/l" or "t/p" as SL/TP outcomes.
     """
 
     # Locate the trade list header row, then slice out the enclosing table.
-    header_pat = re.compile(
-        r"<tr[^>]*>\s*<td>\#</td>\s*<td>Time</td>\s*<td>Type</td>",
-        flags=re.IGNORECASE,
-    )
-    m = header_pat.search(report_html)
+    # Support both English and Polish column names.
+    header_patterns = [
+        re.compile(
+            r"<tr[^>]*>\s*<td>\#</td>\s*<td>Time</td>\s*<td>Type</td>",
+            flags=re.IGNORECASE,
+        ),
+        re.compile(
+            r"<tr[^>]*>\s*<td>\#</td>\s*<td>Czas</td>\s*<td>Typ</td>",
+            flags=re.IGNORECASE,
+        ),
+    ]
+    
+    m = None
+    for pat in header_patterns:
+        m = pat.search(report_html)
+        if m:
+            break
+    
     if not m:
         return None
 
