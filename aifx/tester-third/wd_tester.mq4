@@ -246,10 +246,6 @@ void GetWdTesterOpenStatsForChartSymbol(int &positionsCount, double &totalLots, 
         if(type != OP_BUY && type != OP_SELL)
             continue;
 
-        string c = OrderComment();
-        if(StringFind(c, "WD Tester") != 0)
-            continue;
-
         positionsCount++;
         totalLots += OrderLots();
         totalProfit += (OrderProfit() + OrderSwap() + OrderCommission());
@@ -258,21 +254,61 @@ void GetWdTesterOpenStatsForChartSymbol(int &positionsCount, double &totalLots, 
 
 void UpsertTesterStatsLabel(string text)
 {
-    if(ObjectFind(0, WD_STATS_LABEL) < 0)
+    // MT4 label objects don't reliably render multi-line strings.
+    // Split on '\n' and create one OBJ_LABEL per line: WD_STATS_0, WD_STATS_1, ...
+    if(ObjectFind(0, WD_STATS_LABEL) >= 0)
+        ObjectDelete(0, WD_STATS_LABEL);
+
+    string lines[];
+    int n = StringSplit(text, '\n', lines);
+    if(n <= 0)
     {
-        ObjectCreate(0, WD_STATS_LABEL, OBJ_LABEL, 0, 0, 0);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_XDISTANCE, 10);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_YDISTANCE, 10);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_BACK, false);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_HIDDEN, true);
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_FONTSIZE, 10);
-        ObjectSetString(0, WD_STATS_LABEL, OBJPROP_FONT, "Consolas");
-        ObjectSetInteger(0, WD_STATS_LABEL, OBJPROP_COLOR, clrBlack);
+        ArrayResize(lines, 1);
+        lines[0] = text;
+        n = 1;
     }
 
-    ObjectSetString(0, WD_STATS_LABEL, OBJPROP_TEXT, text);
+    int baseX = 5;
+    int baseY = 20;
+    int fontSize = 9;
+    int lineHeight = fontSize + 7;
+
+    for(int i = 0; i < n; i++)
+    {
+        StringReplace(lines[i], "\r", "");
+        string lineText = (lines[i] == "") ? " " : lines[i];
+
+        string name = WD_STATS_LABEL + "_" + IntegerToString(i);
+        if(ObjectFind(0, name) < 0)
+        {
+            ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+            ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+            ObjectSetInteger(0, name, OBJPROP_BACK, false);
+            ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+            ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+            ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+            ObjectSetInteger(0, name, OBJPROP_COLOR, clrBlack);
+        }
+
+        ObjectSetInteger(0, name, OBJPROP_XDISTANCE, baseX);
+        ObjectSetInteger(0, name, OBJPROP_YDISTANCE, baseY + i * lineHeight);
+        ObjectSetString(0, name, OBJPROP_TEXT, lineText);
+    }
+
+    // Delete any leftover WD_STATS_N labels from a previously longer text.
+    int total = ObjectsTotal(0, 0, -1);
+    for(int j = total - 1; j >= 0; j--)
+    {
+        string objName = ObjectName(0, j);
+        if(StringFind(objName, WD_STATS_LABEL + "_") != 0)
+            continue;
+
+        int idx = StrToInteger(StringSubstr(objName, StringLen(WD_STATS_LABEL) + 1));
+        if(idx >= n)
+            ObjectDelete(0, objName);
+    }
+
     ChartRedraw(0);
 }
 
@@ -280,6 +316,14 @@ void DeleteTesterStatsLabel()
 {
     if(ObjectFind(0, WD_STATS_LABEL) >= 0)
         ObjectDelete(0, WD_STATS_LABEL);
+
+    int total = ObjectsTotal(0, 0, -1);
+    for(int i = total - 1; i >= 0; i--)
+    {
+        string name = ObjectName(0, i);
+        if(StringFind(name, WD_STATS_LABEL + "_") == 0)
+            ObjectDelete(0, name);
+    }
 }
 
 void UpdateTesterStatsOverlay()
