@@ -200,7 +200,7 @@ def main():
     parser.add_argument(
         "--no-images",
         action="store_true",
-        help="Do not generate PNG chart images (still writes *_result.txt and *_decision.txt",
+        help="Do not generate PNG chart images (still writes *_result.txt and *_decision.txt)",
     )
     parser.add_argument(
         "--mt",
@@ -210,7 +210,7 @@ def main():
     parser.add_argument(
         "--mt-keep-results",
         action="store_true",
-        help="Process files but keep result TXT and chart PNG files, create decision TXT files only",
+        help="Process files but keep result and chart PNG files, create decision files only",
     )
     args = parser.parse_args()
 
