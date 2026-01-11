@@ -8,6 +8,9 @@ Conventions:
 
 from __future__ import annotations
 
+def version() -> str:
+    """Return module version info."""
+    return "decissioner 1.1"
 
 def _parse_line_offsets(result: str) -> dict[str, float]:
     """Parse `magic_lines.process_single_file()` output into {line_id: offset}.
