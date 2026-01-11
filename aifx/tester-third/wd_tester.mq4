@@ -11,6 +11,7 @@ string version = "1.2";
 //----------------------------------------------------------------------- INPUTS
 
 input bool show_lines = true;
+input bool no_orders = false;
 
 //-----------------------------------------------------------------------
 
@@ -433,9 +434,21 @@ void OnTick()
     PrintErrorIfBothBuyAndSellOpen();
 
 //-----------------------------------------------------------------------
-    int ticket = ExecuteWdDecision(decision);
-    if (ticket > 0)
-        Print("new order ticket: ", ticket);
+    if(!no_orders)
+    {
+        int ticket = ExecuteWdDecision(decision);
+        if (ticket > 0)
+            Print("new order ticket: ", ticket);
+    }
+    else
+    {
+        static bool noOrdersLogged = false;
+        if(!noOrdersLogged)
+        {
+            Print("no_orders=true: skipping new order creation");
+            noOrdersLogged = true;
+        }
+    }
 
     CheckBE();
     CheckSetupTP();
