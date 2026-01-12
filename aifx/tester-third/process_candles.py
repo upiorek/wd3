@@ -425,7 +425,7 @@ def main():
                         continue
 
                     percentage = (processed_count + 1) * 100 / len(csv_files) 
-                    process_file(csv_file, percentage, revert, mt_keep_results)
+                    process_file(csv_file, percentage, revert, keep_results)
                     processed_count += 1
         
         # Remove skipped files (only in compare mode)
