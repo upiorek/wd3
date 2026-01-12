@@ -31,7 +31,7 @@ string ReadAllText(string filepath)
     string content = "";
     while(!FileIsEnding(fileHandle))
     {
-        content += FileReadString(fileHandle);
+        content += FileReadString(fileHandle) + " ";
     }
     FileClose(fileHandle);
 
@@ -419,11 +419,11 @@ void OnTick()
 
     string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
     string decision = ReadAllText(decision_filename);
-    Print("Decision file content: ", decision);
 
     string result_filename = "wd_tester/" + timeStr + "_result.txt";
     string result = ReadAllText(result_filename);
-    Print("Result file content: ", result);
+
+    Print("Decision: " + decision + " Result: " + result);
 
     DeleteWdLines();
     if (show_lines == true)
@@ -431,6 +431,7 @@ void OnTick()
         DrawLinesFromResult(result);
     }
 
+    SetWdCurrentResult(result);
     PrintErrorIfBothBuyAndSellOpen();
 
 //-----------------------------------------------------------------------
