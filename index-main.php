@@ -1144,6 +1144,50 @@ function getLatestM15Chart() {
     return !empty($charts) ? $charts[0] : null;
 }
 
+/**
+ * Get all screenshot files from ~/scrs folder sorted by modification time
+ * @return array Array of screenshot filenames sorted newest first
+ */
+function getAllScreenshots() {
+    $screenshotsDir = '/home/ubuntu/scrs';
+    
+    if (!is_dir($screenshotsDir)) {
+        return array();
+    }
+    
+    // Get all PNG files
+    $screenshotFiles = array();
+    foreach (scandir($screenshotsDir) as $file) {
+        if (preg_match('/\.png$/i', $file)) {
+            $filePath = $screenshotsDir . '/' . $file;
+            $screenshotFiles[] = array(
+                'name' => $file,
+                'modified' => filemtime($filePath)
+            );
+        }
+    }
+    
+    if (empty($screenshotFiles)) {
+        return array();
+    }
+    
+    // Sort by modification time (newest first)
+    usort($screenshotFiles, function($a, $b) {
+        return $b['modified'] - $a['modified'];
+    });
+    
+    return array_map(function($screenshot) { return $screenshot['name']; }, $screenshotFiles);
+}
+
+/**
+ * Get the latest screenshot image path
+ * @return string|null The screenshot filename or null if not found
+ */
+function getLatestScreenshot() {
+    $screenshots = getAllScreenshots();
+    return !empty($screenshots) ? $screenshots[0] : null;
+}
+
 // Unified AJAX handler
 if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
     $action = isset($_GET['ajax']) ? $_GET['ajax'] : $_POST['ajax'];
@@ -1371,6 +1415,42 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 'currentIndex' => $index,
                 'totalCharts' => count($charts),
                 'hasPrev' => $index < count($charts) - 1,
+                'hasNext' => $index > 0
+            ]);
+            break;
+
+        case 'get_screenshot':
+            $index = isset($_GET['index']) ? intval($_GET['index']) : 0;
+            $screenshots = getAllScreenshots();
+            
+            if (empty($screenshots)) {
+                echo json_encode(['success' => false, 'message' => 'No screenshots available']);
+                break;
+            }
+            
+            // Ensure index is within bounds
+            if ($index < 0 || $index >= count($screenshots)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid screenshot index']);
+                break;
+            }
+            
+            $screenshotName = $screenshots[$index];
+            $screenshotPath = '/home/ubuntu/scrs/' . $screenshotName;
+            
+            if (!file_exists($screenshotPath)) {
+                echo json_encode(['success' => false, 'message' => 'Screenshot file not found']);
+                break;
+            }
+            
+            $imageData = base64_encode(file_get_contents($screenshotPath));
+            
+            echo json_encode([
+                'success' => true,
+                'screenshotName' => $screenshotName,
+                'imageData' => $imageData,
+                'currentIndex' => $index,
+                'totalScreenshots' => count($screenshots),
+                'hasPrev' => $index < count($screenshots) - 1,
                 'hasNext' => $index > 0
             ]);
             break;
@@ -2173,6 +2253,39 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 <p class="info-message">Select a CSV file to view candle data.</p>
             </div>
         </div>
+        
+        <hr style="margin: 30px 0;">
+
+        <h2>Desktop Screenshots <span id="screenshot-counter" style="font-size: 0.8em; color: #666;"></span></h2>
+        <div class="content-section chart-section">
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <button onclick="loadPrevScreenshot()" id="prev-screenshot-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Prev</button>
+                <button onclick="loadNextScreenshot()" id="next-screenshot-btn" class="refresh-logs-btn" style="background-color: #6c757d;">Next →</button>
+                <button onclick="loadLatestScreenshot()" class="refresh-logs-btn" style="background-color: #007bff;">Latest</button>
+                <span id="screenshot-counter" style="margin-left: 10px; font-weight: bold;"></span>
+            </div>
+            <div id="screenshot-preview">
+            <?php 
+            $latestScreenshot = getLatestScreenshot();
+            if ($latestScreenshot) {
+                $screenshotPath = '/home/ubuntu/scrs/' . $latestScreenshot;
+                if (file_exists($screenshotPath)) {
+                    // Convert the screenshot to base64 for inline display
+                    $imageData = base64_encode(file_get_contents($screenshotPath));
+                    $src = 'data:image/png;base64,' . $imageData;
+                    echo '<div class="chart-preview-content">';
+                    echo '<h4>' . htmlspecialchars($latestScreenshot) . '</h4>';
+                    echo '<img src="' . $src . '" alt="Desktop Screenshot" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />';
+                    echo '</div>';
+                } else {
+                    echo '<p class="info-message">Screenshot file not found.</p>';
+                }
+            } else {
+                echo '<p class="info-message">No screenshots available.</p>';
+            }
+            ?>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -2803,6 +2916,55 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         function loadLatestChart() {
             loadChart(0);
+        }
+        
+        // Screenshot navigation functions
+        let currentScreenshotIndex = 0;
+        
+        function loadScreenshot(index) {
+            fetch(`index.php?ajax=get_screenshot&index=${index}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        document.getElementById('screenshot-preview').innerHTML = `<p class="error-message">${data.message}</p>`;
+                        return;
+                    }
+                    
+                    currentScreenshotIndex = data.currentIndex;
+                    
+                    // Update preview with new screenshot
+                    const html = `
+                        <div class="chart-preview-content">
+                            <h4>${data.screenshotName}</h4>
+                            <img src="data:image/png;base64,${data.imageData}" alt="Desktop Screenshot" 
+                                 style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />
+                        </div>
+                    `;
+                    document.getElementById('screenshot-preview').innerHTML = html;
+                    
+                    // Update counter
+                    const counterText = `Screenshot ${data.currentIndex + 1} of ${data.totalScreenshots}`;
+                    document.querySelectorAll('#screenshot-counter').forEach(el => el.textContent = counterText);
+                    
+                    // Update button states
+                    document.getElementById('prev-screenshot-btn').disabled = !data.hasPrev;
+                    document.getElementById('next-screenshot-btn').disabled = !data.hasNext;
+                })
+                .catch(error => {
+                    document.getElementById('screenshot-preview').innerHTML = `<p class="error-message">Error loading screenshot: ${error.message}</p>`;
+                });
+        }
+        
+        function loadPrevScreenshot() {
+            loadScreenshot(currentScreenshotIndex + 1);
+        }
+        
+        function loadNextScreenshot() {
+            loadScreenshot(currentScreenshotIndex - 1);
+        }
+        
+        function loadLatestScreenshot() {
+            loadScreenshot(0);
         }
         
         function loadCandleCsvFile() {

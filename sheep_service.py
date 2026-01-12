@@ -256,6 +256,27 @@ def check_for_signals(candle_time, decision):
         
     return None
 
+def capture_screenshot():
+    """Capture a screenshot."""
+    try:
+        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"Capturing screenshot at {current_time}...")
+        result = subprocess.run(
+            ['python3', os.path.join(REPO_DIR, 'capture_screenshot.py')],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            print(f"Screenshot captured successfully: {result.stdout.strip()}")
+        else:
+            print(f"Screenshot capture failed: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        print(f"Screenshot capture timed out")
+    except Exception as e:
+        print(f"Error capturing screenshot: {e}")
+
 def write_sheep_file():
     """Write hello world and current time to the sheep file."""
     global heartbeat
@@ -346,6 +367,9 @@ def write_sheep_file():
             f.write(content)
         
         print(f"Updated sheep file at {current_time} - Candles: {candles_count}, Old: {candles_old_count}, Latest M15: {latest_m15}, Chart: {chart_status}")
+        
+        # Capture screenshot
+        capture_screenshot()
     except Exception as e:
         print(f"Error writing sheep file: {e}")
 
