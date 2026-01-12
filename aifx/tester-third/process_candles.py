@@ -25,7 +25,7 @@ from aifx.strategy import decissioner as decissioner
 PRINT_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
 
-def process_file(file_path, percentage=.0, revert=False, mt_keep_results=False):
+def process_file(file_path, percentage=.0, revert=False, keep_results=False):
     """Process or revert a CSV file - simulates order-maker logic."""
     if STOP_EVENT.is_set():
         return
@@ -113,8 +113,8 @@ def process_file(file_path, percentage=.0, revert=False, mt_keep_results=False):
                         with open(result_txt_path, 'r') as result_f:
                             result = result_f.read().strip()
                     else:
-                        if mt_keep_results:
-                            # Skip files without existing results when --mt-keep-results is set
+                        if keep_results:
+                            # Skip files without existing results when --keep-results is set
                             with PRINT_LOCK:
                                 print(f"Skipping {file_path.name}: no existing result file found")
                             temp_path.unlink(missing_ok=True)
@@ -208,7 +208,7 @@ def main():
         help="Process files using multiple threads",
     )
     parser.add_argument(
-        "--mt-keep-results",
+        "--keep-results",
         action="store_true",
         help="Process files but keep result and chart PNG files, create decision files only",
     )
@@ -220,7 +220,7 @@ def main():
     no_images = args.no_images
     cleanup = args.cleanup
     mt = args.mt
-    mt_keep_results = args.mt_keep_results
+    keep_results = args.keep_results
 
     mt_workers = (os.cpu_count() or 4) if mt else None
 
@@ -311,7 +311,7 @@ def main():
         print(f"Multithreaded mode: enabled ({mt_workers} threads)\n")
     if no_images:
         print("Image generation: disabled\n")
-    if mt_keep_results:
+    if keep_results:
         print("Keep results mode: enabled (only creating decision files)\n")
 
     # In test mode, always start with a clean charts folder.
@@ -362,7 +362,7 @@ def main():
                         if compare_mode:
                             if csv_file.stem in order_files:
                                 percentage = (processed_count + 1) * 100 / len(csv_files)
-                                futures.append(executor.submit(process_file, csv_file, percentage, revert, mt_keep_results))
+                                futures.append(executor.submit(process_file, csv_file, percentage, revert, keep_results))
                                 processed_count += 1
                                 return True
                             else:
@@ -374,7 +374,7 @@ def main():
                             if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
                                 continue
                             percentage = (processed_count + 1) * 100 / len(csv_files)
-                            futures.append(executor.submit(process_file, csv_file, percentage, revert, mt_keep_results))
+                            futures.append(executor.submit(process_file, csv_file, percentage, revert, keep_results))
                             processed_count += 1
                             return True
                     return False
@@ -412,7 +412,7 @@ def main():
                 if compare_mode:
                     if csv_file.stem in order_files:
                         percentage = (processed_count + 1) * 100 / len(csv_files) 
-                        process_file(csv_file, percentage, revert, mt_keep_results)
+                        process_file(csv_file, percentage, revert, keep_results)
                         processed_count += 1
                     else:
                         # Only delete source files if we're actively matching
