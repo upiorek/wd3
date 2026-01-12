@@ -11,7 +11,7 @@ input int slippage = 3 * 100;
 
 //--- HasSimilarOpenOrder:
 bool HasSimilarOpenOrder_enabled = true;
-input int minDistance = 10; // prices already * 100
+input int minDistance = 15; // prices already * 100
 
 //--- CheckBE:
 bool CheckBE_enabled = true;
@@ -20,10 +20,10 @@ input int BEBonus = 25 * 100;
 // weak closed on flip
 input bool weak_closed_on_flip_enabled = true;
 bool weak_closed_on_flip_min_opp_enabled = true;
-int weak_closed_on_flip_min_opp = 3;
+int weak_closed_on_flip_min_opp = 4;
 
 //--- CheckSetupTP:
-bool CheckSetupTP_enabled = false;
+bool CheckSetupTP_enabled = true;
 input int setupTP = 500 * 100;
 
 //-----------------------------------------------------------------------
