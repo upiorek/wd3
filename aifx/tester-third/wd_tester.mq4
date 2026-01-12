@@ -431,7 +431,6 @@ void OnTick()
         DrawLinesFromResult(result);
     }
 
-    SetWdCurrentResult(result);
     PrintErrorIfBothBuyAndSellOpen();
 
 //-----------------------------------------------------------------------
