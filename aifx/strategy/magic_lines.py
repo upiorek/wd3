@@ -143,39 +143,16 @@ def detect_impulses(df) -> list[impulse_point]:
             impulses.append(impulse_curr)
 
     # Lokalna minima/maxima - korpusy świec
-    body_low = []
-    body_high = []
-    for i in range(0, len(df)-1):
-        body_low.append(min(df['Open'].values[i], df['Close'].values[i]))
-        body_high.append(max(df['Open'].values[i], df['Close'].values[i]))
-            
-    minima_idx = argrelextrema(
-        np.array(body_low), 
-        np.less_equal, 
-        order=MINMAX_ORDER)[0]
+    body_low = [min(df['Open'].values[i], df['Close'].values[i]) for i in range(len(df)-1)]
+    body_high = [max(df['Open'].values[i], df['Close'].values[i]) for i in range(len(df)-1)]
     
-    # Odfiltruj plateau - zostaw tylko pierwszy punkt z ciągu równych wartości
-    filtered_minima = []
+    minima_idx = argrelextrema(np.array(body_low), np.less, order=MINMAX_ORDER)[0]
     for idx in minima_idx:
-        if idx == 0 or body_low[idx] < body_low[idx - 1]:
-            filtered_minima.append(idx)
-
-    for idx in filtered_minima:
         impulses.append(impulse_point(idx, body_low[idx], 
                                       strength=BODY_IMPULSE_STRENGTH, type='minimum'))
 
-    maxima_idx = argrelextrema(
-        np.array(body_high), 
-        np.greater_equal, 
-        order=MINMAX_ORDER)[0]
-    
-    # Odfiltruj plateau - zostaw tylko pierwszy punkt z ciągu równych wartości
-    filtered_maxima = []
+    maxima_idx = argrelextrema(np.array(body_high), np.greater, order=MINMAX_ORDER)[0]
     for idx in maxima_idx:
-        if idx == 0 or body_high[idx] > body_high[idx - 1]:
-            filtered_maxima.append(idx)
-    
-    for idx in filtered_maxima:
         impulses.append(impulse_point(idx, body_high[idx], 
                                       strength=BODY_IMPULSE_STRENGTH, type='maximum'))
 
