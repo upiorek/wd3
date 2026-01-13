@@ -1492,6 +1492,43 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             readfile($chartPath);
             exit;
             
+        case 'view_screenshot':
+            // Streams the PNG directly (used for opening in a new tab)
+            $index = isset($_GET['index']) ? intval($_GET['index']) : 0;
+            $screenshots = getAllScreenshots();
+
+            if (empty($screenshots)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'No screenshots available';
+                exit;
+            }
+
+            if ($index < 0 || $index >= count($screenshots)) {
+                http_response_code(400);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Invalid screenshot index';
+                exit;
+            }
+
+            $screenshotName = $screenshots[$index];
+            $screenshotPath = '/home/ubuntu/scrs/' . $screenshotName;
+
+            if (!file_exists($screenshotPath)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Screenshot file not found';
+                exit;
+            }
+
+            header('Content-Type: image/png');
+            header('Content-Disposition: inline; filename="' . basename($screenshotName) . '"');
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            readfile($screenshotPath);
+            exit;
+            
         case 'download_candles_csv':
             if (!isset($_GET['file'])) {
                 echo json_encode(['success' => false, 'message' => 'File parameter required']);
@@ -2207,14 +2244,17 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <h2>M15 Charts <span id="chart-counter" style="font-size: 0.8em; color: #666;"></span></h2>
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
-                <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Prev</button>
-                <button onclick="loadNextChart()" id="next-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">Next →</button>
+                <button onclick="loadPrevChart()" id="prev-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">←</button>
+                <button onclick="loadNextChart()" id="next-chart-btn" class="refresh-logs-btn" style="background-color: #6c757d;">→</button>
                 <button onclick="loadLatestChart()" class="refresh-logs-btn" style="background-color: #007bff;">Latest</button>
                 <span id="chart-counter" style="margin-left: 10px; font-weight: bold;"></span>
             </div>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <a href="index.php?ajax=view_m15_chart&index=0" target="_blank" rel="noopener" id="chart-open-link" class="refresh-logs-btn" style="background-color: #28a745; color: white; text-decoration: none; display: inline-block; margin: 0;">Open</a>
+                <span id="chart-name" style="font-weight: bold; color: #333;"><?php $latestChart = getLatestM15Chart(); echo $latestChart ? htmlspecialchars($latestChart) : ''; ?></span>
+            </div>
             <div id="chart-preview">
             <?php 
-            $latestChart = getLatestM15Chart();
             if ($latestChart) {
                 $chartPath = '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/candles/charts/' . $latestChart;
                 if (file_exists($chartPath)) {
@@ -2222,7 +2262,6 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     $imageData = base64_encode(file_get_contents($chartPath));
                     $src = 'data:image/png;base64,' . $imageData;
                     echo '<div class="chart-preview-content">';
-                    echo '<h4>' . htmlspecialchars($latestChart) . '</h4>';
                     echo '<img src="' . $src . '" alt="M15 Charts" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />';
                     echo '</div>';
                 } else {
@@ -2238,7 +2277,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <hr style="margin: 30px 0;">
         
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-            <h2 id="candles-csv-heading" style="margin: 0;">Candle Data - <?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files</h2>
+            <h2 id="candles-csv-heading" style="margin: 0;">Candle Data (<?php $csvFiles = getCandleCsvFilesList(); echo count($csvFiles); ?> files)</h2>
             <button type="button" id="toggle-candles-btn" onclick="toggleCandlesSection()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
         </div>
         <div id="candles-section" class="content-section candles-csv-section" style="display: none;">
@@ -2278,17 +2317,19 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         
         <hr style="margin: 30px 0;">
 
-        <h2>Desktop Screenshots <span id="screenshot-counter" style="font-size: 0.8em; color: #666;"></span></h2>
+        <h2>Screenshots <span id="screenshot-counter" style="font-size: 0.8em; color: #666;"></span></h2>
         <div class="content-section chart-section">
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
-                <button onclick="loadPrevScreenshot()" id="prev-screenshot-btn" class="refresh-logs-btn" style="background-color: #6c757d;">← Prev</button>
-                <button onclick="loadNextScreenshot()" id="next-screenshot-btn" class="refresh-logs-btn" style="background-color: #6c757d;">Next →</button>
+                <button onclick="loadPrevScreenshot()" id="prev-screenshot-btn" class="refresh-logs-btn" style="background-color: #6c757d;">←</button>
+                <button onclick="loadNextScreenshot()" id="next-screenshot-btn" class="refresh-logs-btn" style="background-color: #6c757d;">→</button>
                 <button onclick="loadLatestScreenshot()" class="refresh-logs-btn" style="background-color: #007bff;">Latest</button>
-                <span id="screenshot-counter" style="margin-left: 10px; font-weight: bold;"></span>
+            </div>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <a href="index.php?ajax=view_screenshot&index=0" target="_blank" rel="noopener" id="screenshot-open-link" class="refresh-logs-btn" style="background-color: #28a745; color: white; text-decoration: none; display: inline-block; margin: 0;">Open</a>
+                <span id="screenshot-name" style="font-weight: bold; color: #333;"><?php $latestScreenshot = getLatestScreenshot(); echo $latestScreenshot ? htmlspecialchars($latestScreenshot) : ''; ?></span>
             </div>
             <div id="screenshot-preview">
             <?php 
-            $latestScreenshot = getLatestScreenshot();
             if ($latestScreenshot) {
                 $screenshotPath = '/home/ubuntu/scrs/' . $latestScreenshot;
                 if (file_exists($screenshotPath)) {
@@ -2296,7 +2337,6 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     $imageData = base64_encode(file_get_contents($screenshotPath));
                     $src = 'data:image/png;base64,' . $imageData;
                     echo '<div class="chart-preview-content">';
-                    echo '<h4>' . htmlspecialchars($latestScreenshot) . '</h4>';
                     echo '<img src="' . $src . '" alt="Desktop Screenshot" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />';
                     echo '</div>';
                 } else {
@@ -2816,7 +2856,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
             utils.request('index.php?ajax=candles_csv_list')
                 .then(data => {
-                    utils.updateElement('candles-csv-heading', `Candle Data - ${data.count} files`);
+                    utils.updateElement('candles-csv-heading', `Candle Data (${data.count})`);
                     select.innerHTML = '<option value="">-- Select a CSV file --</option>';
                     data.files.forEach(file => {
                         const option = new Option(
@@ -2924,17 +2964,23 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     // Update chart display
                     const html = `
                         <div class="chart-preview-content">
-                            <h4>${data.chartName} 
-                                <a href="index.php?ajax=view_m15_chart&index=${data.currentIndex}" target="_blank" rel="noopener" style="
-                                    display: inline-block; padding: 8px 8px; 
-                                    background-color: #007bff; color: white; text-decoration: none; 
-                                    border-radius: 4px; margin-top: 10px; margin-left: 15px;
-                                    ">Open</a></h4>
                             <img src="data:image/png;base64,${data.imageData}" alt="M15 Chart" style="max-width: 100%; 
                                 height: auto; border: 1px solid #ddd; border-radius: 4px;" />
                         </div>
                     `;
                     document.getElementById('chart-preview').innerHTML = html;
+                    
+                    // Update chart name
+                    const chartName = document.getElementById('chart-name');
+                    if (chartName) {
+                        chartName.textContent = data.chartName;
+                    }
+                    
+                    // Update Open link
+                    const openLink = document.getElementById('chart-open-link');
+                    if (openLink) {
+                        openLink.href = `index.php?ajax=view_m15_chart&index=${data.currentIndex}`;
+                    }
                     
                     // Update counter
                     document.getElementById('chart-counter').textContent = `(${data.currentIndex + 1} of ${data.totalCharts})`;
@@ -2977,15 +3023,26 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     // Update preview with new screenshot
                     const html = `
                         <div class="chart-preview-content">
-                            <h4>${data.screenshotName}</h4>
                             <img src="data:image/png;base64,${data.imageData}" alt="Desktop Screenshot" 
                                  style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />
                         </div>
                     `;
                     document.getElementById('screenshot-preview').innerHTML = html;
                     
+                    // Update screenshot name
+                    const screenshotName = document.getElementById('screenshot-name');
+                    if (screenshotName) {
+                        screenshotName.textContent = data.screenshotName;
+                    }
+                    
+                    // Update Open link
+                    const openLink = document.getElementById('screenshot-open-link');
+                    if (openLink) {
+                        openLink.href = `index.php?ajax=view_screenshot&index=${data.currentIndex}`;
+                    }
+                    
                     // Update counter
-                    const counterText = `Screenshot ${data.currentIndex + 1} of ${data.totalScreenshots}`;
+                    const counterText = `(${data.currentIndex + 1} of ${data.totalScreenshots})`;
                     document.querySelectorAll('#screenshot-counter').forEach(el => el.textContent = counterText);
                     
                     // Update button states
