@@ -275,7 +275,7 @@ int ExecuteWdDecision(string decision)
     
     if(ticket > 0)
     {
-        Print("Order opened: ", decision, " Ticket=", ticket);
+        Log("Order opened: " + decision + " Ticket=" + ticket);
     }
     else
     {

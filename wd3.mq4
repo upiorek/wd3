@@ -15,9 +15,37 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.5";
+string version = "3.6";
 
 //-----------------------------------------------------------------------
+
+void Log(string message)
+{
+   Print("Logged: " + message);
+
+   // Get current date for filename
+   string today = TimeToString(TimeCurrent(), TIME_DATE);
+   StringReplace(today, ".", "-");
+   string filename = "wd-" + today + ".log";
+   
+   int fileHandle = FileOpen(filename, FILE_READ|FILE_WRITE|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      // Seek to end to append
+      FileSeek(fileHandle, 0, SEEK_END);
+      
+      string logEntry = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | ";
+      logEntry += message + "\n";
+      
+      FileWriteString(fileHandle, logEntry);
+      FileClose(fileHandle);
+   }
+   else
+   {
+      Print("Failed to open log file: ", GetLastError());
+   }
+}
 
 void LogAccountInfo()
 {
@@ -42,7 +70,8 @@ void LogAccountInfo()
    }
    else
    {
-      Print("Error opening log file: ", GetLastError());
+      string msg = "Error opening log file: " + IntegerToString(GetLastError());
+      Log(msg);
    }
 }
 
@@ -70,7 +99,7 @@ void LogMarketData()
    }
    else
    {
-      Print("Error opening market log file: ", GetLastError());
+      Log("Error opening market log file: " + IntegerToString(GetLastError()));
    }
 }
 
@@ -739,14 +768,12 @@ void Logs()
 int decisionType = -1;
 void OrderFiles()
 {
-   datetime currentTime = TimeCurrent();
-   
-   // Check for drop all command
-   CheckAndDropAllOrders();
+   datetime currentTime = TimeCurrent();  
    
    // Check for dropped orders
    if(currentTime - lastDroppedCheck >= 1)
    {
+      CheckAndDropAllOrders();
       CheckAndCancelDroppedOrders();
       lastDroppedCheck = currentTime;
    }
@@ -769,6 +796,11 @@ void OrderFiles()
 
 void OnTick()
 {
+// Log to file test
+   if(hearbeat < 3)
+      Log("hello");
+   
+//-----------------------------------------------------------------------
    Logs();
    OrderFiles();
 
@@ -782,13 +814,12 @@ void OnTick()
 //----------------------------------------------------------------------- 
     int ticket = ExecuteWdDecision(decision);
     if (ticket > 0)
-        Print("new order ticket: ", ticket);
+        Log("new order ticket: " + IntegerToString(ticket));
 
     CheckBE();
 //-----------------------------------------------------------------------
 
    hearbeat++;
-   datetime currentTime = TimeCurrent();
-   if(currentTime - lastFileCheck >= 30)
+   if (hearbeat % 60 == 0)
       Print("WD: " + version + " heartbeat: " + IntegerToString(hearbeat));
 }
