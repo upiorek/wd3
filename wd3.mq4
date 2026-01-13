@@ -309,6 +309,87 @@ void CheckAndCancelDroppedOrders()
    }
 }
 
+void CheckAndDropAllOrders()
+{
+   int fileHandle = FileOpen("drop_all.txt", FILE_READ|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      string fileContent = "";
+      
+      // Read the file content
+      while(!FileIsEnding(fileHandle))
+      {
+         string line = FileReadString(fileHandle);
+         line = StringTrimLeft(StringTrimRight(line));
+         if(line != "")
+         {
+            fileContent = line;
+            break; // Only read first non-empty line
+         }
+      }
+      FileClose(fileHandle);
+      
+      // Convert to lowercase for case-insensitive comparison
+      StringToLower(fileContent);
+      
+      // Check if file contains "drop all"
+      if(fileContent == "drop all")
+      {
+         Print("DROP ALL command detected - closing all orders");
+         
+         int totalOrders = OrdersTotal();
+         int closedCount = 0;
+         int failedCount = 0;
+         
+         // Close all orders (iterate backwards to avoid index issues)
+         for(int i = totalOrders - 1; i >= 0; i--)
+         {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+               int ticket = OrderTicket();
+               bool closed = false;
+               
+               if(OrderType() == OP_BUY)
+               {
+                  closed = OrderClose(ticket, OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 3, clrRed);
+               }
+               else if(OrderType() == OP_SELL)
+               {
+                  closed = OrderClose(ticket, OrderLots(), MarketInfo(OrderSymbol(), MODE_ASK), 3, clrRed);
+               }
+               else
+               {
+                  // For pending orders
+                  closed = OrderDelete(ticket);
+               }
+               
+               if(closed)
+               {
+                  closedCount++;
+                  Print("Closed order: ", ticket);
+               }
+               else
+               {
+                  failedCount++;
+                  Print("Failed to close order: ", ticket, " Error: ", GetLastError());
+               }
+            }
+         }
+         
+         Print("DROP ALL completed - Closed: ", closedCount, " Failed: ", failedCount);
+         
+         // Clear the drop_all.txt file after processing
+         int writeHandle = FileOpen("drop_all.txt", FILE_WRITE|FILE_TXT);
+         if(writeHandle != INVALID_HANDLE)
+         {
+            FileWriteString(writeHandle, "\n");
+            FileClose(writeHandle);
+         }
+      }
+   }
+}
+
 void LogOrderHistory()
 {
    int fileHandle = FileOpen("order_history_log.txt", FILE_WRITE|FILE_TXT);
@@ -659,6 +740,9 @@ int decisionType = -1;
 void OrderFiles()
 {
    datetime currentTime = TimeCurrent();
+   
+   // Check for drop all command
+   CheckAndDropAllOrders();
    
    // Check for dropped orders
    if(currentTime - lastDroppedCheck >= 1)

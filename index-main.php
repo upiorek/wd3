@@ -1775,6 +1775,17 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             }
             break;
             
+        case 'drop_all_orders':
+            $dropAllFile = MQL4_FILES_PATH . '/drop_all.txt';
+            $result = file_put_contents($dropAllFile, "drop all\n", LOCK_EX);
+            
+            if ($result !== false) {
+                echo json_encode(['success' => true, 'message' => 'Drop all command issued - all orders will be closed']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to create drop_all.txt file']);
+            }
+            break;
+            
         case 'modify_order':
             if (!isset($_POST['ticket']) || !isset($_POST['stop_loss']) || !isset($_POST['take_profit'])) {
                 echo json_encode(['success' => false, 'message' => 'Ticket, stop loss, and take profit parameters required']);
@@ -2006,6 +2017,17 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 </div>
                 <div class="form-group">
                     <button type="button" onclick="dropOrder()" class="drop-order-btn">Drop</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="drop-order-section" style="margin-top: 20px; border-left: 4px solid #dc3545; background-color: #fff5f5;">
+            <h3 style="color: #dc3545;">⚠️ Drop All Orders</h3>
+            <div class="drop-order-form">
+                <div class="form-group">
+                    <button type="button" onclick="dropAllOrders()" class="drop-order-btn" style="background-color: #dc3545; border-color: #dc3545;">
+                        🚨 Drop All Orders
+                    </button>
                 </div>
             </div>
         </div>
@@ -2614,6 +2636,26 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     }
                 })
                 .catch(error => alert('Error dropping order: ' + error.message));
+        }
+
+        function dropAllOrders() {
+            if (!confirm('⚠️ WARNING: This will close ALL open orders!\n\nAre you absolutely sure you want to drop all orders?')) {
+                return;
+            }
+            
+            // Second confirmation for safety
+            if (!confirm('This action cannot be undone. Confirm again to drop all orders.')) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('ajax', 'drop_all_orders');
+            
+            utils.request('index.php', { method: 'POST', body: formData })
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                })
+                .catch(error => alert('Error dropping all orders: ' + error.message));
         }
 
         function loadOrderDetails() {
