@@ -35,6 +35,33 @@ def capture_screenshot():
         subprocess.run(['scrot', filepath], env=env, check=True)
         
         print(f"Screenshot saved: {filepath}")
+        
+        # Clean up old screenshots - keep only 500 most recent
+        try:
+            files = []
+            for f in os.listdir(scrs_dir):
+                if f.startswith("screenshot-") and f.endswith(".png"):
+                    full_path = os.path.join(scrs_dir, f)
+                    if os.path.isfile(full_path):
+                        files.append((full_path, os.path.getmtime(full_path)))
+            
+            # If we have more than 500 files, delete the oldest ones
+            if len(files) > 500:
+                # Sort by modification time (oldest first)
+                files.sort(key=lambda x: x[1])
+                
+                # Calculate how many to delete
+                files_to_delete = len(files) - 500
+                
+                # Delete the oldest files
+                for i in range(files_to_delete):
+                    os.remove(files[i][0])
+                    print(f"Deleted old screenshot: {os.path.basename(files[i][0])}")
+                
+                print(f"Cleaned up {files_to_delete} old screenshot(s), kept 500 most recent")
+        except Exception as e:
+            print(f"Warning: Error during cleanup: {e}")
+        
         return filepath
         
     except subprocess.CalledProcessError as e:
