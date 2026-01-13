@@ -22,7 +22,7 @@ running = True
 heartbeat = 1
 
 # Base directory paths
-VERSION = "2.2"
+VERSION = "2.3"
 REPO_DIR = "/home/ubuntu/repo"
 MQL4_FILES_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files"
 MQL4_EXPERTS_DIR = "/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Experts"
@@ -259,7 +259,15 @@ def check_for_signals(candle_time, decision):
 def capture_screenshot():
     """Capture a screenshot."""
     try:
-        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        scrs_log_dir = os.path.expanduser("~/scrs")
+        
+        # Create scrs directory if it doesn't exist
+        if not os.path.exists(scrs_log_dir):
+            os.makedirs(scrs_log_dir)
+        
+        log_file = os.path.join(scrs_log_dir, "screenshot.log")
+        
         print(f"Capturing screenshot at {current_time}...")
         result = subprocess.run(
             ['python3', os.path.join(REPO_DIR, 'capture_screenshot.py')],
@@ -268,14 +276,36 @@ def capture_screenshot():
             timeout=30
         )
         
-        if result.returncode == 0:
-            print(f"Screenshot captured successfully: {result.stdout.strip()}")
-        else:
-            print(f"Screenshot capture failed: {result.stderr}")
+        # Log to file
+        with open(log_file, 'a') as f:
+            f.write(f"[{current_time}] ")
+            if result.returncode == 0:
+                f.write(f"SUCCESS: {result.stdout.strip()}\n")
+                print(f"Screenshot captured successfully: {result.stdout.strip()}")
+            else:
+                f.write(f"FAILED: {result.stderr}\n")
+                print(f"Screenshot capture failed: {result.stderr}")
+                
     except subprocess.TimeoutExpired:
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"Screenshot capture timed out")
+        try:
+            scrs_log_dir = os.path.expanduser("~/scrs")
+            log_file = os.path.join(scrs_log_dir, "screenshot.log")
+            with open(log_file, 'a') as f:
+                f.write(f"[{current_time}] TIMEOUT: Screenshot capture exceeded 30s\n")
+        except:
+            pass
     except Exception as e:
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"Error capturing screenshot: {e}")
+        try:
+            scrs_log_dir = os.path.expanduser("~/scrs")
+            log_file = os.path.join(scrs_log_dir, "screenshot.log")
+            with open(log_file, 'a') as f:
+                f.write(f"[{current_time}] ERROR: {e}\n")
+        except:
+            pass
 
 def write_sheep_file():
     """Write hello world and current time to the sheep file."""
@@ -367,9 +397,7 @@ def write_sheep_file():
             f.write(content)
         
         print(f"Updated sheep file at {current_time} - Candles: {candles_count}, Old: {candles_old_count}, Latest M15: {latest_m15}, Chart: {chart_status}")
-        
-        # Capture screenshot
-        capture_screenshot()
+
     except Exception as e:
         print(f"Error writing sheep file: {e}")
 
@@ -408,6 +436,10 @@ def main():
 
         # Wait before next update
         time.sleep(1)
+
+	# Capture a screenshot every 100 heartbeats
+        if heartbeat % 100 == 0:		
+            capture_screenshot()
     
     print("Sheep service stopped.")
 
