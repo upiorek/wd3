@@ -1814,12 +1814,22 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'drop_all_orders':
             $dropAllFile = MQL4_FILES_PATH . '/drop_all.txt';
+            
+            // Check if directory is writable
+            if (!is_writable(MQL4_FILES_PATH)) {
+                echo json_encode(['success' => false, 'message' => 'Directory not writable: ' . MQL4_FILES_PATH]);
+                break;
+            }
+            
+            // Always write "drop all" to the file (overwrite if exists)
             $result = file_put_contents($dropAllFile, "drop all\n", LOCK_EX);
             
             if ($result !== false) {
                 echo json_encode(['success' => true, 'message' => 'Drop all command issued - all orders will be closed']);
             } else {
-                echo json_encode(['success' => false, 'message' => 'Failed to create drop_all.txt file']);
+                $error = error_get_last();
+                $errorMsg = $error ? $error['message'] : 'Unknown error';
+                echo json_encode(['success' => false, 'message' => 'Failed to write drop_all.txt: ' . $errorMsg]);
             }
             break;
             
