@@ -162,6 +162,7 @@ def detect_impulses(df) -> list[impulse_point]:
     for idx in minima_idx:
         if idx == 0 or body_low[idx] < body_low[idx - 1]:
             filtered_minima.append(idx)
+            # print("Znaleziono minimum na idx:", idx, "cena:", body_low[idx])
 
     for idx in filtered_minima:
         impulses_min_max.append(impulse_point(idx, body_low[idx], 
@@ -186,35 +187,26 @@ def detect_impulses(df) -> list[impulse_point]:
     impulses_min_max.sort(key=lambda p: (p.index, p.type, p.price))
 
     # Filtruj impulsy - zostaw tylko te otoczone min/max
-    filtered_impulses = []
-
     # Dodaj pierwszy element
-    filtered_impulses += [impulses_min_max[0]]
+    filtered_impulses = [impulses_min_max[0]]
     
     # Dodaj tylko impulsy z pattern min-max-min lub max-min-max
     i = 1
     while i < len(impulses_min_max) - 1:
+        prev_p = filtered_impulses[-1] # ostatni element
         p = impulses_min_max[i]
-        prev_p = impulses_min_max[i - 1]
-        next_p = impulses_min_max[i + 1]
 
-        # print("type:", p.type, "idx:", p.index)
-        types = [prev_p.type, p.type, next_p.type]
-        if types == ['minimum', 'maximum', 'minimum'] or types == ['maximum', 'minimum', 'maximum']:
+        if prev_p.type != p.type:
             filtered_impulses.append(p)
-        else:
-            # print(f"Pominięto punkt impulsu na idx {p.index} typu {p.type} - brak otaczających min/max")
-            filtered_impulses.append(next_p)
-            i += 1
+        elif prev_p.type == 'minimum':
+            # dwa minima pod rząd - zostaw to z niższą ceną
+            filtered_impulses[-1] = p if p.price < prev_p.price else prev_p
+        elif prev_p.type == 'maximum':
+            # dwa maxima pod rząd - zostaw to z wyższą ceną
+            filtered_impulses[-1] = p if p.price > prev_p.price else prev_p                
         i += 1
-
-    # Dodaj ostatni element
-    filtered_impulses += [impulses_min_max[-1]]
-
-    # print(f"wykryto minima: {len(minima_idx)}, maxima: {len(maxima_idx)}")
-    # print(f"wykryto impulsy: {len(impulses)}")
     
-    return impulses + filtered_impulses
+    return filtered_impulses
 
 # Funkcja do znajdowania linii równoległych
 def find_parallel_level(
