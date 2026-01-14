@@ -30,7 +30,7 @@ input int setupTP = 500 * 100;
 
 string GetVersion()
 {
-    return "wd main version 1.2";
+    return "wd main version 1.3";
 }
 
 void Log(string message)
@@ -284,7 +284,7 @@ int ExecuteWdDecision(string decision)
 {
     if(decision != "BUY" && decision != "SELL")
         return 0;
-    
+
     bool isBuy = (decision == "BUY");
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double price = NormalizeDouble(isBuy ? Ask : Bid, Digits);

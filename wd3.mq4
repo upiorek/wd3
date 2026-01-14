@@ -15,7 +15,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.6";
+string version = "3.7";
 
 //-----------------------------------------------------------------------
 
@@ -284,11 +284,13 @@ void CheckAndCancelDroppedOrders()
             
             if(closed)
             {
-               Print("Successfully cancelled order: ", ticketToCancel);
+               Log("Successfully cancelled order: " + IntegerToString(ticketToCancel));
             }
             else
             {
-               Print("Failed to cancel order: ", ticketToCancel, " Error: ", GetLastError());
+               Log("ERROR: Failed to cancel order: " ++ IntegerToString(ticketToCancel) +
+	           " Error: " + IntegerToString(GetLastError()));
+
                // If failed to cancel, keep the ticket in the file
                ArrayResize(remainingTickets, remainingCount + 1);
                remainingTickets[remainingCount] = ticketsToCancel[j];
@@ -337,7 +339,7 @@ void CheckAndDropAllOrders()
       // Check if file contains "drop all"
       if(fileContent == "drop all")
       {
-         Print("DROP ALL command detected - closing all orders");
+         Log("DROP ALL command detected - closing all orders");
          
          int totalOrders = OrdersTotal();
          int closedCount = 0;
@@ -479,7 +481,7 @@ void LogOrderHistory()
    }
    else
    {
-      Print("Error opening order history log file: ", GetLastError());
+      Log("Error opening order history log file: " + IntegerToString(GetLastError()));
    }
 }
 
@@ -538,13 +540,15 @@ void CheckAndModifyOrders()
                      
                      if(modified)
                      {
-                        Print("Successfully modified order: ", ticket, 
-                              " SL: ", DoubleToString(newStopLoss, 5), 
-                              " TP: ", DoubleToString(newTakeProfit, 5));
+                        Log("Successfully modified order: " + IntegerToString(ticket) + 
+                              " SL: " + DoubleToString(newStopLoss, 5) + 
+                              " TP: " + DoubleToString(newTakeProfit, 5));
                      }
                      else
                      {
-                        Print("Failed to modify order: ", ticket, " Error: ", GetLastError());
+                        Log("ERROR: Failed to modify order: " + IntegerToString(ticket) +
+			    " Error: " + IntegerToString(GetLastError()));
+
                         // If failed to modify, keep the line in the file for retry
                         ArrayResize(remainingLines, remainingCount + 1);
                         remainingLines[remainingCount] = line;
@@ -553,20 +557,21 @@ void CheckAndModifyOrders()
                   }
                   else
                   {
-                     Print("Order not found for modification: ", ticket);
+                     Log("WARNING: Order not found for modification?: " + IntegerToString(ticket));
                      // Order not found, remove from file (might be closed)
                   }
                }
                else
                {
-                  Print("Invalid ticket number in modified.txt: ", parts[0]);
+                  Log("ERROR: Invalid ticket number in modified.txt: " + parts[0]);
                   // Invalid ticket, remove from file
                }
             }
             else
             {
-               Print("Invalid format in modified.txt line: ", line);
-               Print("Expected format: TICKET STOPLOSS TAKEPROFIT");
+               Log("ERROR: Invalid format in modified.txt line: " + line);
+               Log("ERROR Expected format: TICKET STOPLOSS TAKEPROFIT");
+
                // Invalid format, keep in file for manual review
                ArrayResize(remainingLines, remainingCount + 1);
                remainingLines[remainingCount] = line;
@@ -644,7 +649,7 @@ void LogM1Candles()
       }
       else
       {
-         Print("Error opening M1 candle log file: ", GetLastError());
+         Log("Error opening M1 candle log file: " + IntegerToString(GetLastError()));
       }
    }
    
@@ -700,7 +705,7 @@ void LogM15Candles()
       }
       else
       {
-         Print("Error opening M15 candle log file: ", GetLastError());
+         Log("ERROR: opening M15 candle log file: " + IntegerToString(GetLastError()));
       }
    }
    
@@ -797,5 +802,8 @@ void OnTick()
 
    hearbeat++;
    if (hearbeat % 60 == 0)
+   {
+      // print only
       Print("WD: " + version + " heartbeat: " + IntegerToString(hearbeat));
+   }
 }
