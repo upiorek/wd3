@@ -288,8 +288,8 @@ void CheckAndCancelDroppedOrders()
             }
             else
             {
-               Log("ERROR: Failed to cancel order: " ++ IntegerToString(ticketToCancel) +
-	           " Error: " + IntegerToString(GetLastError()));
+               Log("ERROR: Failed to cancel order: " + IntegerToString(ticketToCancel) +
+	                " Error: " + IntegerToString(GetLastError()));
 
                // If failed to cancel, keep the ticket in the file
                ArrayResize(remainingTickets, remainingCount + 1);
