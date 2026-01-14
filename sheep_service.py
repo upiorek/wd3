@@ -146,6 +146,45 @@ def move_old_sheep_logs():
         print(f"Error moving old sheep logs: {e}")
         return 0
 
+def move_old_wd_logs():
+    """Move wd logs from previous day(s) to wd_old directory."""
+    try:
+        wd_old_dir = os.path.join(MQL4_FILES_DIR, "wd_old")
+        
+        if not os.path.exists(wd_old_dir):
+            os.makedirs(wd_old_dir)
+        
+        if not os.path.exists(MQL4_FILES_DIR):
+            return 0
+        
+        today = datetime.now().date()
+        moved_count = 0
+        
+        for filename in os.listdir(MQL4_FILES_DIR):
+            if filename.startswith("wd-") and filename.endswith(".log"):
+                file_path = os.path.join(MQL4_FILES_DIR, filename)
+                
+                if os.path.isfile(file_path):
+                    try:
+                        # Extract date from filename: wd-YYYY-MM-DD.log
+                        date_part = filename.replace("wd-", "").replace(".log", "")
+                        file_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+                        
+                        if file_date < today:
+                            dest_path = os.path.join(wd_old_dir, filename)
+                            shutil.move(file_path, dest_path)
+                            moved_count += 1
+                    except ValueError:
+                        continue
+        
+        if moved_count > 0:
+            print(f"Moved {moved_count} old wd log(s)")
+        
+        return moved_count
+    except Exception as e:
+        print(f"Error moving old wd logs: {e}")
+        return 0
+
 def count_files_in_directory(directory):
     """Count the number of files in a directory."""
     if not os.path.exists(directory):
@@ -433,6 +472,9 @@ def main():
 
         # Move old sheep action logs from previous day(s)
         move_old_sheep_logs()
+        
+        # Move old wd logs from previous day(s)
+        move_old_wd_logs()
 
         # Wait before next update
         time.sleep(1)

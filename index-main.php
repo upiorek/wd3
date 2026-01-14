@@ -764,6 +764,46 @@ function refreshOrderHistoryLog() {
 }
 
 /**
+ * Get the latest wd log file
+ * @return string|null The path to the latest wd log file or null if not found
+ */
+function getLatestWdLogFile() {
+    $wdLogPattern = MQL4_FILES_PATH . '/wd-*.log';
+    $wdLogFiles = glob($wdLogPattern);
+    
+    if (empty($wdLogFiles)) {
+        return null;
+    }
+    
+    // Sort by modification time (newest first)
+    usort($wdLogFiles, function($a, $b) {
+        return filemtime($b) - filemtime($a);
+    });
+    
+    return $wdLogFiles[0];
+}
+
+/**
+ * Read and display latest wd log content
+ */
+function refreshLatestWdLog() {
+    global $timestamp;
+    $latestWdLog = getLatestWdLogFile();
+    
+    if ($latestWdLog && file_exists($latestWdLog)) {
+        $content = file_get_contents($latestWdLog);
+        $content = htmlspecialchars($content);
+        $fileName = basename($latestWdLog);
+        echo '<div class="log-file-header">';
+        echo '<h4>' . htmlspecialchars($fileName) . '</h4>';
+        echo '</div>';
+        echo '<pre style="margin: 0; white-space: pre-wrap;">' . $content . '</pre>';
+    } else {
+        echo '<p class="error-message">No WD log files found.</p>';
+    }
+}
+
+/**
  * Get list of available log files from both log directories
  * @return array Array of log files with details
  */
@@ -1226,6 +1266,10 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             
         case 'order_history_log':
             refreshOrderHistoryLog();
+            break;
+            
+        case 'latest_wd_log':
+            refreshLatestWdLog();
             break;
             
         case 'orders_list':
@@ -2172,6 +2216,16 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <hr style="margin: 30px 0;">
         
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <h2 style="margin: 0;">Latest log</h2>
+            <button type="button" id="toggle-wd-log-btn" onclick="toggleWdLog()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
+        </div>
+        <div id="latest-wd-log" class="content-section order-history-log" style="display: none;">
+            <?php refreshLatestWdLog(); ?>
+        </div>
+
+        <hr style="margin: 30px 0;">
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
             <h2 id="logs-heading" style="margin: 0;">Logs (<?php $logFiles = getLogFilesList(); echo count($logFiles); ?> files)</h2>
             <button type="button" id="toggle-logs-btn" onclick="toggleLogsSection()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
         </div>
@@ -2371,7 +2425,8 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 approved_orders: { element: 'approved-orders-list', action: 'approved_orders_list', heading: 'approved-orders-heading', prefix: 'Approved Orders' },
                 modified_orders: { element: 'modified-orders-list', action: 'modified_orders_list', heading: 'modified-orders-heading', prefix: 'Modified Orders' },
                 to_be_modified_orders: { element: 'to-be-modified-orders-list', action: 'to_be_modified_orders_list', heading: 'to-be-modified-orders-heading', prefix: 'Orders To Be Modified' },
-                order_history_log: { element: 'order-history-log', action: 'order_history_log', text: true, onSuccess: 'refreshProfits' }
+                order_history_log: { element: 'order-history-log', action: 'order_history_log', text: true, onSuccess: 'refreshProfits' },
+                latest_wd_log: { element: 'latest-wd-log', action: 'latest_wd_log', text: true }
             },
             actions: {
                 add_p: { confirm: false, refresh: 'orders' },
@@ -2545,6 +2600,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         const refreshModifiedOrdersList = refresh.modifiedOrders;
         const refreshToBeModifiedOrdersList = refresh.toBeModifiedOrders;
         const refreshOrderHistoryLog = refresh.orderHistoryLog;
+        const refreshLatestWdLog = () => refreshSection('latest_wd_log');
 
         // Consolidated profit refresh
         function refreshProfits() {
@@ -2905,6 +2961,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         // Daily Order History Log collapse state (collapsed by default)
         let isOrderHistoryLogCollapsed = true;
 
+        // Latest WD Log collapse state (collapsed by default)
+        let isWdLogCollapsed = true;
+
         // Logs section collapse state (collapsed by default)
         let isLogsCollapsed = true;
 
@@ -2926,6 +2985,24 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 btn.textContent = 'Hide';
                 // Refresh immediately when expanding
                 refresh.orderHistoryLog();
+            }
+        }
+
+        function toggleWdLog() {
+            const section = document.getElementById('latest-wd-log');
+            const btn = document.getElementById('toggle-wd-log-btn');
+            if (!section || !btn) return;
+
+            isWdLogCollapsed = !isWdLogCollapsed;
+
+            if (isWdLogCollapsed) {
+                section.style.display = 'none';
+                btn.textContent = 'Show';
+            } else {
+                section.style.display = 'block';
+                btn.textContent = 'Hide';
+                // Refresh immediately when expanding
+                refreshLatestWdLog();
             }
         }
 
