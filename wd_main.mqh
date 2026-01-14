@@ -33,6 +33,34 @@ string GetVersion()
     return "wd main version 1.2";
 }
 
+void Log(string message)
+{
+   Print("Logged: " + message);
+
+   // Get current date for filename
+   string today = TimeToString(TimeCurrent(), TIME_DATE);
+   StringReplace(today, ".", "-");
+   string filename = "wd-" + today + ".log";
+   
+   int fileHandle = FileOpen(filename, FILE_READ|FILE_WRITE|FILE_TXT);
+   
+   if(fileHandle != INVALID_HANDLE)
+   {
+      // Seek to end to append
+      FileSeek(fileHandle, 0, SEEK_END);
+      
+      string logEntry = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | ";
+      logEntry += message + "\n";
+      
+      FileWriteString(fileHandle, logEntry);
+      FileClose(fileHandle);
+   }
+   else
+   {
+      Print("Failed to open log file: ", GetLastError());
+   }
+}
+
 int HasSimilarOpenOrderDropped = 0 ;
 bool HasSimilarOpenOrder(int orderType, double price)
 {
@@ -48,8 +76,8 @@ bool HasSimilarOpenOrder(int orderType, double price)
         {
             HasSimilarOpenOrderDropped++;
             string order = orderType == OP_BUY ? "BUY" : "SELL";
-            Print("Duplicate order skipped (", HasSimilarOpenOrderDropped, "): ",
-                order, " at ", price, " diff ", priceDiff);
+            Log("Duplicate order skipped (" + IntegerToString(HasSimilarOpenOrderDropped) + "): " +
+                order + " at " + DoubleToString(price) + " diff " + DoubleToString(priceDiff));
             return true;
         }
     }
@@ -77,8 +105,8 @@ void CheckSetupTP()
    
     if(profitPoints > setupTP)
     {
-        Print("Setup TP reached! Total profit: ", profitPoints, 
-              " > ", setupTP, " - Closing all ", orderCount, " orders");
+        Log("Setup TP reached! Total profit: " + IntegerToString(profitPoints) + 
+            " > " + IntegerToString(setupTP) + " - Closing all " + IntegerToString(orderCount) + " orders");
         
         int closedCount = 0;
         int failedCount = 0;
@@ -98,16 +126,19 @@ void CheckSetupTP()
             if(OrderClose(ticket, lots, closePrice, slippage, clrYellow))
             {
                 closedCount++;
-                Print("Closed order #", ticket, " | Type: ", OrderType() == OP_BUY ? "BUY" : "SELL");
+		string type = OrderType() == OP_BUY ? "BUY" : "SELL";
+                Log("Closed order #" + IntegerToString(ticket) + " | Type: " + type);
             }
             else
             {
                 failedCount++;
-                Print("ERROR: Failed to close order #", ticket, " | Error: ", GetLastError());
+                Log("ERROR: Failed to close order #" + IntegerToString(ticket) +
+		    " | Error: " + IntegerToString(GetLastError()));
             }
         }
         
-        Print("Setup TP complete: Closed ", closedCount, " orders | Failed: ", failedCount);
+        Log("Setup TP complete: Closed " + IntegerToString(closedCount) +
+	    " orders | Failed: " + IntegerToString(failedCount));
     }
 }
 
@@ -151,12 +182,14 @@ void CheckBE()
                 ResetLastError();
                 if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
                 {
-                    Print("Break-even set: Ticket=", OrderTicket(), " Type=", OrderType() == OP_BUY ? "BUY" : "SELL",
-                          " New SL=", newSL, " (BE+", BEBonus * Point, ")");
+		    string type = OrderType() == OP_BUY ? "BUY" : "SELL";
+                    Log("Break-even set: Ticket=" + IntegerToString(OrderTicket()) + " Type=" + type +
+                          " New SL=" + DoubleToString(newSL) + " (BE+" + DoubleToString(BEBonus * Point) + ")");
                 }
                 else
                 {
-                    Print("ERROR: Break-even failed: Ticket=", OrderTicket(), " Error=", GetLastError());
+                    Log("ERROR: Break-even failed: Ticket=" + IntegerToString(OrderTicket()) +
+		        " Error=" + IntegerToString(GetLastError()));
                 }
             }
         }
@@ -228,16 +261,18 @@ bool CheckWeakClosedOnFlip(string decision)
             ResetLastError();
             if(OrderClose(worstTicket, lots, closePrice, slippage, clrNONE))
             {
-                Print("Closed worst ", wantBuy ? "SELL" : "BUY", " instead of opening ", decision,
-                      " Ticket=", worstTicket, " Profit=", DoubleToStr(worstProfit, 2));
+		string wb = wantBuy ? "SELL" : "BUY";
+                Log("Closed worst " + wb + " instead of opening " + decision + 
+                      " Ticket=" + IntegerToString(worstTicket) + " Profit=" + DoubleToStr(worstProfit, 2));
                 
                 // closed worst
                 return true;
             }
             else
             {
-                Print("ERROR: Failed to close worst ", wantBuy ? "SELL" : "BUY", " Ticket=", worstTicket,
-                      " Error=", GetLastError());
+		string wb = wantBuy ? "SELL" : "BUY";
+                Log("ERROR: Failed to close worst " + wb + " Ticket=" + IntegerToString(worstTicket) +
+                      " Error=" + IntegerToString(GetLastError()));
             }
         }
     }
@@ -275,12 +310,12 @@ int ExecuteWdDecision(string decision)
     
     if(ticket > 0)
     {
-        Log("Order opened: " + decision + " Ticket=" + ticket);
+        Log("Order opened: " + decision + " Ticket=" + IntegerToString(ticket));
     }
     else
     {
-        Print("ERROR: Order failed: ", decision, " Error=", GetLastError(), 
-              " Price=", price, " SL=", sl, " TP=", tp);
+        Log("ERROR: Order failed: " + decision + " Error=" + IntegerToString(GetLastError()) + 
+              " Price=" + DoubleToString(price) + " SL=" + DoubleToString(sl) + " TP=" + DoubleToString(tp));
     }
     
     return ticket;

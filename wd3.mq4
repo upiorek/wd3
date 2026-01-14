@@ -19,34 +19,6 @@ string version = "3.6";
 
 //-----------------------------------------------------------------------
 
-void Log(string message)
-{
-   Print("Logged: " + message);
-
-   // Get current date for filename
-   string today = TimeToString(TimeCurrent(), TIME_DATE);
-   StringReplace(today, ".", "-");
-   string filename = "wd-" + today + ".log";
-   
-   int fileHandle = FileOpen(filename, FILE_READ|FILE_WRITE|FILE_TXT);
-   
-   if(fileHandle != INVALID_HANDLE)
-   {
-      // Seek to end to append
-      FileSeek(fileHandle, 0, SEEK_END);
-      
-      string logEntry = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " | ";
-      logEntry += message + "\n";
-      
-      FileWriteString(fileHandle, logEntry);
-      FileClose(fileHandle);
-   }
-   else
-   {
-      Print("Failed to open log file: ", GetLastError());
-   }
-}
-
 void LogAccountInfo()
 {
    int fileHandle = FileOpen("account_log.txt", FILE_WRITE|FILE_TXT);
@@ -152,7 +124,7 @@ int ParseOrder(string orderData)
       }
    }
 
-   Print("ERROR");
+   Log("ERROR: ParseOrder");
    return -1;
 }
 
@@ -396,17 +368,19 @@ void CheckAndDropAllOrders()
                if(closed)
                {
                   closedCount++;
-                  Print("Closed order: ", ticket);
+                  Log("Closed order: " + IntegerToString(ticket));
                }
                else
                {
                   failedCount++;
-                  Print("Failed to close order: ", ticket, " Error: ", GetLastError());
+                  Log("Failed to close order: " + IntegerToString(ticket) +
+		      " Error: " + IntegerToString(GetLastError()));
                }
             }
          }
          
-         Print("DROP ALL completed - Closed: ", closedCount, " Failed: ", failedCount);
+         Log("DROP ALL completed - Closed: " + IntegerToString(closedCount) +
+	     " Failed: " + IntegerToString(failedCount));
          
          // Clear the drop_all.txt file after processing
          int writeHandle = FileOpen("drop_all.txt", FILE_WRITE|FILE_TXT);
@@ -457,8 +431,10 @@ void LogOrderHistory()
                totalCommission += orderCommission;
                totalNetProfit += netProfit;
                
-               if(netProfit > 0) winningOrders++;
-               else if(netProfit < 0) losingOrders++;
+               if(netProfit > 0)
+	           winningOrders++;
+               else if(netProfit < 0)
+	           losingOrders++;
                
                string orderType = "";
                switch(OrderType())
