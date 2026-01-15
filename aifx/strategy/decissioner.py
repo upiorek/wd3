@@ -72,6 +72,16 @@ def decision(result: str | None) -> str:
     crossed_ids = parts[1:-1]
     if not crossed_ids:
         return "log: no line ids\nNONE"
+    
+    near_offsets = {k: v for k, v in offsets.items() if abs(v) < 5.0}
+    near_letters = {
+        (k[:1].upper() if k else "")
+        for k in near_offsets.keys()
+        if k and k[:1].upper() in ("A", "D")
+    }
+
+    #if "A" in near_letters and "D" in near_letters:
+    #    return "log: both A and D within 5 of base\nNONE"
 
     d0_offset = offsets.get("D0")
     a0_offset = offsets.get("A0")
