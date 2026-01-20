@@ -224,6 +224,8 @@ void ApplyBlackOnWhiteTheme()
     ChartSetInteger(chartId, CHART_COLOR_CHART_DOWN, clrBlack);
     ChartSetInteger(chartId, CHART_COLOR_CANDLE_BULL, clrWhite);
     ChartSetInteger(chartId, CHART_COLOR_CANDLE_BEAR, clrBlack);
+
+    ChartSetInteger(chartId, CHART_SCALE, 2);
     
     ChartRedraw(chartId);
 }
