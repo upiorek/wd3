@@ -65,6 +65,7 @@ MINMAX_ORDER = 7  # liczba świeczek do analizy lokalnych min/max
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
+FILTER_MINMAX_IMPULSES = False  # Czy filtrować impulsy min/max
 DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
 
 # ===== score impulsow =====
@@ -206,7 +207,13 @@ def detect_impulses(df) -> list[impulse_point]:
             filtered_impulses[-1] = p if p.price > prev_p.price else prev_p                
         i += 1
     
-    return filtered_impulses
+    # Odrzuć min/max na krawędziach danych
+    if FILTER_MINMAX_IMPULSES:
+        for p in impulses_min_max:
+            if p.index > (MINMAX_ORDER / 2) and p.index < len(df) - (MINMAX_ORDER / 2):
+                filtered_impulses.append(p)
+    
+    return impulses + filtered_impulses
 
 # Funkcja do znajdowania linii równoległych
 def find_parallel_level(
@@ -227,6 +234,7 @@ def find_parallel_level(
     best_score = 0
     best_touches = []
     best_offset = 0
+    base_slope = 0
     
     # Dla każdego punktu sprawdź czy może być bazą dla nowej linii
     for p in points:
