@@ -412,7 +412,26 @@ void OnTick()
     UpdateTesterStatsOverlay();
 
     datetime currentTime = Time[0];
-    string timeStr = TimeToString(currentTime, TIME_DATE|TIME_MINUTES);
+    datetime decisionTime = currentTime - (15 * 60);  // 15 minutes before
+    
+    // If decision is from previous day - skip
+    string currentDate = TimeToString(currentTime, TIME_DATE);
+    string decisionDate = TimeToString(decisionTime, TIME_DATE);
+    if(currentDate != decisionDate)
+    {
+        static datetime lastSkippedTime = 0;
+        if(lastSkippedTime != currentTime)
+            lastSkippedTime = currentTime;
+        
+        DeleteWdLines();
+        PrintErrorIfBothBuyAndSellOpen();
+        CheckBE();
+        CheckSetupTP();
+	
+        return;
+    }
+    
+    string timeStr = TimeToString(decisionTime, TIME_DATE|TIME_MINUTES);
     StringReplace(timeStr, "2025", "25");
     StringReplace(timeStr, "2026", "26");
     StringReplace(timeStr, ".", "-");
@@ -438,9 +457,12 @@ void OnTick()
 //-----------------------------------------------------------------------
     if(!no_orders)
     {
-        int ticket = ExecuteWdDecision(decision);
-        if (ticket > 0)
-            Print("new order ticket: ", ticket);
+	    // Format is like "BUY ABOVE 21917.27"
+	    int ticket = ExecuteWdDecision(decision);
+	    if (ticket > 0)
+	        Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
+	    else
+	        Log("no order for time: " + TimeToString(TimeCurrent()));
     }
     else
     {

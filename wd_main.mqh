@@ -23,8 +23,12 @@ bool weak_closed_on_flip_min_opp_enabled = true;
 int weak_closed_on_flip_min_opp = 4;
 
 //--- CheckSetupTP:
-bool CheckSetupTP_enabled = true;
+input bool CheckSetupTP_enabled = true;
 input int setupTP = 500 * 100;
+
+//--- BuyAboveBelowPrevious:
+input bool BuyAboveBelowPrevious_enabled = true;
+input int BuyAboveBelowPreviousTolerance = 3;
 
 //-----------------------------------------------------------------------
 
@@ -280,19 +284,73 @@ bool CheckWeakClosedOnFlip(string decision)
     return false;
 }
 
+bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, string decision)
+{
+    // Check for condition (ABOVE/BELOW) and price
+    if(partsCount >= 3)
+    {
+        string condition = parts[1];
+        double conditionPrice = StringToDouble(parts[2]);
+        
+        if(condition == "ABOVE" || condition == "BELOW")
+        {
+            if(condition == "ABOVE")
+            {
+                double priceWithTolerance = conditionPrice - BuyAboveBelowPreviousTolerance;
+                if(currentPrice <= priceWithTolerance)
+                {
+                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
+                        " not above " + DoubleToString(conditionPrice, 2) + 
+                        " tolerance " + IntegerToString(BuyAboveBelowPreviousTolerance));
+                    return false;
+                }
+            }
+            else if(condition == "BELOW")
+            {
+                double priceWithTolerance = conditionPrice + BuyAboveBelowPreviousTolerance;
+                if(currentPrice >= priceWithTolerance)
+                {
+                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
+                        " not below " + DoubleToString(conditionPrice, 2) + 
+                        " tolerance " + IntegerToString(BuyAboveBelowPreviousTolerance));
+                    return false;
+                }
+            }
+        }
+    }
+    
+    return true;
+}
+
+// Decision format can be like "BUY ABOVE 21917.27" or "BUY" or "SELL BELOW 21739.28"
 int ExecuteWdDecision(string decision)
 {
-    if(decision != "BUY" && decision != "SELL")
-        return 0;
-
-    bool isBuy = (decision == "BUY");
-    int cmd = isBuy ? OP_BUY : OP_SELL;
-    double price = NormalizeDouble(isBuy ? Ask : Bid, Digits);
+    // Parse decision string
+    string parts[];
+    int partsCount = StringSplit(decision, ' ', parts);
     
-    if(HasSimilarOpenOrder_enabled && HasSimilarOpenOrder(cmd, price))
+    if(partsCount < 1)
+        return 0;
+    
+    string orderTypeStr = parts[0];
+    if(orderTypeStr != "BUY" && orderTypeStr != "SELL")
+        return 0;
+    
+    bool isBuy = (orderTypeStr == "BUY");
+    int cmd = isBuy ? OP_BUY : OP_SELL;
+    double currentPrice = NormalizeDouble(isBuy ? Ask : Bid, Digits);
+
+    if (BuyAboveBelowPrevious_enabled)
+    {
+        // Check price condition (ABOVE/BELOW)
+        if(!CheckPriceCondition(parts, partsCount, currentPrice, decision))
+            return 0;
+    }
+    
+    if(HasSimilarOpenOrder_enabled && HasSimilarOpenOrder(cmd, currentPrice))
         return 0;
 
-    if (weak_closed_on_flip_enabled && CheckWeakClosedOnFlip(decision))
+    if (weak_closed_on_flip_enabled && CheckWeakClosedOnFlip(orderTypeStr))
         return 0;
     
     int stopLevelPoints = (int)MarketInfo(Symbol(), MODE_STOPLEVEL);
@@ -301,12 +359,12 @@ int ExecuteWdDecision(string decision)
     double slDist = MathMax(stopLoss * Point, minStopDistance);
     double tpDist = MathMax(takeProfit * Point, minStopDistance);
     
-    double tp = NormalizeDouble(isBuy ? Bid + tpDist : Ask - tpDist, Digits);
-    double sl = NormalizeDouble(isBuy ? Bid - slDist : Ask + slDist, Digits);
+    double tp = NormalizeDouble(isBuy ? currentPrice + tpDist : currentPrice - tpDist, Digits);
+    double sl = NormalizeDouble(isBuy ? currentPrice - slDist : currentPrice + slDist, Digits);
     
     ResetLastError();
-    int ticket = OrderSend(Symbol(), cmd, lotSize, price, slippage, sl, tp, 
-                           "WD " + decision, 0, 0, isBuy ? clrGreen : clrRed);
+    int ticket = OrderSend(Symbol(), cmd, lotSize, currentPrice, slippage, sl, tp, 
+                           "WD " + orderTypeStr, 0, 0, isBuy ? clrGreen : clrRed);
     
     if(ticket > 0)
     {
@@ -315,7 +373,7 @@ int ExecuteWdDecision(string decision)
     else
     {
         Log("ERROR: Order failed: " + decision + " Error=" + IntegerToString(GetLastError()) + 
-              " Price=" + DoubleToString(price) + " SL=" + DoubleToString(sl) + " TP=" + DoubleToString(tp));
+              " Price=" + DoubleToString(currentPrice) + " SL=" + DoubleToString(sl) + " TP=" + DoubleToString(tp));
     }
     
     return ticket;
