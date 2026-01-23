@@ -23,7 +23,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.7";
+string version = "3.8";
 
 //-----------------------------------------------------------------------
 
