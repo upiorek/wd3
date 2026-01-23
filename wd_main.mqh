@@ -27,7 +27,7 @@ input bool CheckSetupTP_enabled = true;
 input int setupTP = 500 * 100;
 
 //--- BuyAboveOrBelow:
-input bool BuyAboveOrBelow_enabled = false;
+input bool BuyAboveOrBelow_enabled = true;
 input int BuyAboveOrBelowTolerance = 3;
 
 //-----------------------------------------------------------------------
