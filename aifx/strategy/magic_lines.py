@@ -395,6 +395,16 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
             if abs_slope >= MIN_SLOPE and abs_slope <= MAX_SLOPE:
                 unique_slopes.add(abs_slope)
 
+    # filter very simialr slopes
+    unique_slopes = sorted(unique_slopes)
+    filtered_slopes = []
+    prev_slope = None
+    for s in unique_slopes:
+        if prev_slope is None or abs(s - prev_slope) / prev_slope > 0.01:
+            filtered_slopes.append(s)
+            prev_slope = s
+    unique_slopes = filtered_slopes
+
     # Dla każdego |slope| oblicz combined_score
     best_pair = None
     best_combined_score = 0
