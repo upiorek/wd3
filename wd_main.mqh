@@ -26,9 +26,9 @@ int weak_closed_on_flip_min_opp = 4;
 input bool CheckSetupTP_enabled = true;
 input int setupTP = 500 * 100;
 
-//--- BuyAboveBelowPrevious:
-input bool BuyAboveBelowPrevious_enabled = true;
-input int BuyAboveBelowPreviousTolerance = 3;
+//--- BuyAboveOrBelow:
+input bool BuyAboveOrBelow_enabled = false;
+input int BuyAboveOrBelowTolerance = 3;
 
 //-----------------------------------------------------------------------
 
@@ -296,23 +296,23 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
         {
             if(condition == "ABOVE")
             {
-                double priceWithTolerance = conditionPrice - BuyAboveBelowPreviousTolerance;
+                double priceWithTolerance = conditionPrice - BuyAboveOrBelowTolerance;
                 if(currentPrice <= priceWithTolerance)
                 {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " not above " + DoubleToString(conditionPrice, 2) + 
-                        " tolerance " + IntegerToString(BuyAboveBelowPreviousTolerance));
+                        " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
                     return false;
                 }
             }
             else if(condition == "BELOW")
             {
-                double priceWithTolerance = conditionPrice + BuyAboveBelowPreviousTolerance;
+                double priceWithTolerance = conditionPrice + BuyAboveOrBelowTolerance;
                 if(currentPrice >= priceWithTolerance)
                 {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " not below " + DoubleToString(conditionPrice, 2) + 
-                        " tolerance " + IntegerToString(BuyAboveBelowPreviousTolerance));
+                        " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
                     return false;
                 }
             }
@@ -340,7 +340,7 @@ int ExecuteWdDecision(string decision)
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double currentPrice = NormalizeDouble(isBuy ? Ask : Bid, Digits);
 
-    if (BuyAboveBelowPrevious_enabled)
+    if (BuyAboveOrBelow_enabled)
     {
         // Check price condition (ABOVE/BELOW)
         if(!CheckPriceCondition(parts, partsCount, currentPrice, decision))
