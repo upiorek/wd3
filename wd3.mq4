@@ -4,6 +4,14 @@
 
 #include "wd_main.mqh"
 
+// Structure to hold parsed order decision
+struct OrderDecision
+{
+   int orderType;        // OP_BUY, OP_SELL, or -1 for none
+   string condition;     // "ABOVE", "BELOW", or empty string
+   double price;         // Price value if condition exists, 0.0 otherwise
+};
+
 // Global variables
 datetime lastLogTime = 0;
 datetime lastFileCheck = 0;
@@ -15,7 +23,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.7";
+string version = "3.8";
 
 //-----------------------------------------------------------------------
 
@@ -75,8 +83,13 @@ void LogMarketData()
    }
 }
 
-int ReadOrderFromFile()
+OrderDecision ReadOrderFromFile()
 {
+   OrderDecision emptyDecision;
+   emptyDecision.orderType = -1;
+   emptyDecision.condition = "";
+   emptyDecision.price = 0.0;
+   
    int fileHandle = FileOpen("approved.txt", FILE_READ|FILE_TXT);
    
    if(fileHandle != INVALID_HANDLE)
@@ -85,7 +98,8 @@ int ReadOrderFromFile()
       while(!FileIsEnding(fileHandle))
       {
          string line = FileReadString(fileHandle);
-         if(line != "") fileContent += line + "\n";
+         if(line != "")
+            fileContent += line + "\n";
       }
       FileClose(fileHandle);
 
@@ -93,11 +107,18 @@ int ReadOrderFromFile()
           return ParseOrder(fileContent);
    }
 
-   return -1;
+   return emptyDecision;
 }
 
-int ParseOrder(string orderData)
+// Order can be like BUY ABOVE 21917.27 or SELL BELOW 21739.28
+// So in case there is ABOVE or BELOW, the value need to be parsed also
+OrderDecision ParseOrder(string orderData)
 {
+   OrderDecision result;
+   result.orderType = -1;
+   result.condition = "";
+   result.price = 0.0;
+   
    string lines[];
    int linesCount = StringSplit(orderData, '\n', lines);
    
@@ -108,24 +129,32 @@ int ParseOrder(string orderData)
       
       string parts[];
       int partsCount = StringSplit(line, ' ', parts);
-      
-      if(partsCount >= 6)
+      if(partsCount >= 1)
       {
-         //string symbol = parts[0];
-         int orderType = GetOrderType(parts[1]);
-         //double lots = StringToDouble(parts[2]);
-         //double price = StringToDouble(parts[3]);
-         //double stopLoss = StringToDouble(parts[4]);
-         //double takeProfit = StringToDouble(parts[5]);
-
-         ClearApprovedFile();
-
-	 return orderType;
+         int orderType = GetOrderType(parts[0]);
+         if(orderType != -1)
+         {
+            result.orderType = orderType;
+            
+            // Check for condition and price (e.g., "BUY ABOVE 21917.27")
+            if(partsCount >= 3)
+            {
+               string condition = parts[1];
+               if(condition == "ABOVE" || condition == "BELOW")
+               {
+                  result.condition = condition;
+                  result.price = StringToDouble(parts[2]);
+               }
+            }
+            
+            ClearApprovedFile();
+            return result;
+         }
       }
    }
 
    Log("ERROR: ParseOrder");
-   return -1;
+   return result;
 }
 
 int GetOrderType(string typeStr)
@@ -136,6 +165,7 @@ int GetOrderType(string typeStr)
    if(typeStr == "SELLLIMIT") return OP_SELLLIMIT;
    if(typeStr == "BUYSTOP") return OP_BUYSTOP;
    if(typeStr == "SELLSTOP") return OP_SELLSTOP;
+
    return -1;
 }
 
@@ -164,7 +194,6 @@ void ClearModifiedFile()
 void LogAllOrders()
 {
    int fileHandle = FileOpen("orders_log.txt", FILE_WRITE|FILE_TXT);
-   
    if(fileHandle != INVALID_HANDLE)
    {
       string logData = "=== ORDERS LOG " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + " ===\n";
@@ -195,9 +224,7 @@ void LogAllOrders()
          }
       }
       else
-      {
          logData += "No open orders\n";
-      }
       
       logData += "=== END LOG ===\n\n";
       
@@ -210,7 +237,6 @@ void LogAllOrders()
 void CheckAndCancelDroppedOrders()
 {
    int fileHandle = FileOpen("dropped.txt", FILE_READ|FILE_TXT);
-   
    if(fileHandle != INVALID_HANDLE)
    {
       string ticketsToCancel[];
@@ -746,7 +772,7 @@ void Logs()
    }
 }
 
-int decisionType = -1;
+OrderDecision currentDecision;
 void OrderFiles()
 {
    datetime currentTime = TimeCurrent();  
@@ -767,10 +793,12 @@ void OrderFiles()
    }
    
    // Check for new orders
-   decisionType = -1;   
+   currentDecision.orderType = -1;
+   currentDecision.condition = "";
+   currentDecision.price = 0.0;
    if(currentTime - lastFileCheck >= 5)
    {
-      decisionType = ReadOrderFromFile();
+      currentDecision = ReadOrderFromFile();
       lastFileCheck = currentTime;
    }
 }
@@ -786,16 +814,25 @@ void OnTick()
    OrderFiles();
 
    string decision = "NONE";
-   if (decisionType == OP_BUY)
+   if (currentDecision.orderType == OP_BUY)
        decision = "BUY";
-   if (decisionType == OP_SELL)
+   if (currentDecision.orderType == OP_SELL)
        decision = "SELL";
+   
+   // Add condition and price to decision if available
+   if (currentDecision.condition != "" && currentDecision.price > 0.0)
+   {
+       decision = decision + " " + currentDecision.condition + " " + DoubleToString(currentDecision.price, 2);
+   }
 
 // Main logic for every tick
 //----------------------------------------------------------------------- 
+    // Format is like "BUY ABOVE 21917.27"
     int ticket = ExecuteWdDecision(decision);
     if (ticket > 0)
-        Log("new order ticket: " + IntegerToString(ticket));
+        Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
+    else
+        Log("no order for time: " + TimeToString(TimeCurrent()))
 
     CheckBE();
 //-----------------------------------------------------------------------

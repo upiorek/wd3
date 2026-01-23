@@ -10,7 +10,7 @@ from __future__ import annotations
 
 def version() -> str:
     """Return module version info."""
-    return "decissioner 1.1"
+    return "decissioner 1.2"
 
 def _parse_line_offsets(result: str) -> dict[str, float]:
     """Parse `magic_lines.process_single_file()` output into {line_id: offset}.
@@ -43,6 +43,34 @@ def _parse_line_offsets(result: str) -> dict[str, float]:
 
     return offsets
 
+def _find_extreme_line(crossed_ids: list[str], offsets: dict[str, float], prefix: str) -> float | None:
+    """Find the extreme (highest or lowest) line with given prefix and return its offset + BASE.
+    
+    Args:
+        crossed_ids: List of crossed line IDs.
+        offsets: Dictionary of line offsets.
+        prefix: Line prefix to filter by ("A" finds highest, "D" finds lowest).
+    
+    Returns:
+        The extreme offset + BASE, or None if no valid line is found.
+    """
+    find_max = (prefix == "A")
+    extreme_offset: float | None = None
+    for line_id in crossed_ids:
+        if not line_id.startswith(prefix):
+            continue
+        offset = offsets.get(line_id)
+        if offset is None:
+            continue
+        if extreme_offset is None or (offset > extreme_offset if find_max else offset < extreme_offset):
+            extreme_offset = offset
+    
+    # add offset to base
+    base_offset = offsets.get("BASE")
+    if extreme_offset is not None and base_offset is not None:
+        extreme_offset += base_offset
+    
+    return extreme_offset
 
 def decision(result: str | None) -> str:
     """Map magic_lines.process_single_file() result string to an order type.
@@ -100,13 +128,17 @@ def decision(result: str | None) -> str:
         # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
         if d0_offset is not None and d0_offset > 0:
             return "log: do not buy below D0\nNONE"
-        return "BUY"
+        
+        highest_a_offset = _find_extreme_line(crossed_ids, offsets, "A")
+        return "BUY" + (f" ABOVE {highest_a_offset:.2f}" if highest_a_offset is not None else "")
 
     if can_sell:
         # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
         if a0_offset is not None and a0_offset < 0:
             return "log: do not sell above A0\nNONE"
-        return "SELL"
+
+        lowest_d_offset = _find_extreme_line(crossed_ids, offsets, "D")
+        return "SELL" + (f" BELOW {lowest_d_offset:.2f}" if lowest_d_offset is not None else "")
 
     # No valid lines matched the direction.
     if len(crossed_ids) > 1:
