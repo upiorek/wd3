@@ -94,9 +94,9 @@ def process_file(file_path, percentage=.0, revert=False, keep_results=False):
                 elif ALGO == "magic_lines":
                     if STOP_EVENT.is_set():
                         return
-                    # dump [0:i] lines to temp file
+                    # dump [0:i+1] lines to temp file
                     temp_lines = []
-                    for j in range(i):
+                    for j in range(i+1):
                         temp_lines.append(f"{';'.join(lines[j].strip().split(';')[:5])}\n")
                     # add _temp suffix to avoid overwriting original
                     temp_path = file_path.parent / f"{file_path.stem}_temp.csv"
