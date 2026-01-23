@@ -25,6 +25,10 @@ from aifx.strategy import decissioner as decissioner
 PRINT_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
 
+def version() -> str:
+    """Return module version info."""
+    return "process_candles 1.1"
+
 def process_file(file_path, percentage=.0, revert=False, keep_results=False):
     """Process or revert a CSV file - simulates order-maker logic."""
     if STOP_EVENT.is_set():
@@ -439,6 +443,8 @@ def main():
                     print(f"Error removing {file_to_remove.name}: {e}")
         
         print(f"\nProcessed: {processed_count} files")
+        # Process candles version
+        print(f"Process candles version: {version()}")
         # Decissioner version
         print(f"Decissioner version: {decissioner.version()}")
         # Statistics - #BUY vs #SELL in decision files
@@ -448,9 +454,10 @@ def main():
                 try:
                     with open(decision_file, 'r') as f:
                         content = f.read().strip()
-                        if content == "BUY":
+                        # line contains BUY or SELL
+                        if "BUY" in content:
                             buy_count += 1
-                        elif content == "SELL":
+                        elif "SELL" in content:
                             sell_count += 1
                 except Exception as e:
                     print(f"Warning: could not read {decision_file}: {e}")
