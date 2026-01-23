@@ -65,7 +65,7 @@ MINMAX_ORDER = 7  # liczba świeczek do analizy lokalnych min/max
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
-FILTER_MINMAX_IMPULSES = False  # Czy filtrować impulsy min/max
+FILTER_MINMAX_IMPULSES = True  # Czy filtrować impulsy min/max
 DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
 
 # ===== score impulsow =====
