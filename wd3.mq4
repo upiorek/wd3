@@ -831,8 +831,8 @@ void OnTick()
     int ticket = ExecuteWdDecision(decision);
     if (ticket > 0)
         Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
-    else
-        Log("no order for time: " + TimeToString(TimeCurrent()))
+    //else
+    //    Log("no order for time: " + TimeToString(TimeCurrent()));
 
     CheckBE();
 //-----------------------------------------------------------------------
