@@ -24,7 +24,7 @@ string ReadAllText(string filepath)
     if(fileHandle == INVALID_HANDLE)
     {
         int err = GetLastError();
-        Print("ERROR: Failed to open file: ", filepath, " Error: ", err);
+        Print("WARNING: Failed to open file: ", filepath, " Result: ", err);
         return "";
     }
 
@@ -427,7 +427,7 @@ void OnTick()
         PrintErrorIfBothBuyAndSellOpen();
         CheckBE();
         CheckSetupTP();
-	
+
         return;
     }
     
@@ -438,18 +438,26 @@ void OnTick()
     StringReplace(timeStr, ":", "-");
     StringReplace(timeStr, " ", "-");
 
-    string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
-    string decision = ReadAllText(decision_filename);
-
     string result_filename = "wd_tester/" + timeStr + "_result.txt";
     string result = ReadAllText(result_filename);
-
-    Print("Decision: " + decision + " Result: " + result);
-
-    DeleteWdLines();
-    if (show_lines == true)
+    string decision = "";
+    if (result != "")
     {
-        DrawLinesFromResult(result);
+        string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
+        decision = ReadAllText(decision_filename);
+
+        Print("Decision: " + decision + " Result: " + result);
+
+        DeleteWdLines();
+        if (show_lines == true)
+        {
+            DrawLinesFromResult(result);
+        }
+    }
+    else 
+    {
+        result = "EMPTY";
+        decision = "EMPTY";
     }
 
     PrintErrorIfBothBuyAndSellOpen();
@@ -457,12 +465,12 @@ void OnTick()
 //-----------------------------------------------------------------------
     if(!no_orders)
     {
-	    // Format is like "BUY ABOVE 21917.27"
-	    int ticket = ExecuteWdDecision(decision);
-	    if (ticket > 0)
-	        Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
-	    else
-	        Log("no order for time: " + TimeToString(TimeCurrent()));
+        // Format is like "BUY ABOVE 21917.27"
+        int ticket = ExecuteWdDecision(decision);
+        if (ticket > 0)
+            Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
+        else
+            Log("no order for time: " + TimeToString(TimeCurrent()));
     }
     else
     {
