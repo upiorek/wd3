@@ -65,26 +65,67 @@ MINMAX_ORDER = 7  # liczba świeczek do analizy lokalnych min/max
 HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
-FILTER_MINMAX_IMPULSES = True  # Czy filtrować impulsy min/max
 DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
 
 # ===== score impulsow =====
 SHADOW_IMPULSE_STRENGTH = 0.5  # siła impulsu dla cieni lokalnych min/max
 BODY_IMPULSE_STRENGTH = 1.0    # siła impulsu dla korpusów lokalnych min/max
+GAP_IMPULSE_STRENGTH = 1.0     # siła impulsu dla luk cenowych
 
 # ===== KLASY DANYCH =====
 
 class impulse_point:
+    # typy
+    TYPE_MIN = 0 
+    TYPE_MAX = 1
+    SUBTYPE_MINMAX_5 = 5
+    SUBTYPE_MINMAX_7 = 7 # toto remove i zmienić order
+    SUBTYPE_MINMAX_9 = 9
+    SUBTYPE_MINMAX_15 = 15
+    SUBTYPE_MINMAX_33 = 33    
+
+    TYPE_GAP = 2
+    SUBTYPE_GAP_LD = 0
+    SUBTYPE_GAP_LU = 1
+    SUBTYPE_GAP_RD = 2
+    SUBTYPE_GAP_RU = 3
+
+    # first after
+    TYPE_FA = 3
+    SUBTYPE_FA_MIN = 0
+    SUBTYPE_FA_MAX = 1
+
     def __init__(self, 
                  index, # indeks świeczki
-                 price, # cena impulsu
-                 strength=1.0, # siła impulsu
-                 type='impulse' # typ impulsu (np. 'gap', 'minimum', 'maximum')
-                 ):
-        self.index = index 
-        self.price = price 
-        self.strength = strength 
-        self.type = type 
+                 candle,
+                 type=-1,
+                 subtype=-1):
+        assert(type >= 0)
+        assert(subtype >= 0)
+
+        self.index = index
+        self.candle = candle 
+        self.type = type
+        self.subtype = subtype
+
+    def price(self):
+        if self.type == self.TYPE_MIN:
+            return min(self.candle['Open'], self.candle['Close'])
+        elif self.type == self.TYPE_MAX:
+            return max(self.candle['Open'], self.candle['Close'])
+        elif self.type == self.TYPE_GAP:
+            if self.subtype in [self.SUBTYPE_GAP_LD, self.SUBTYPE_GAP_RD]:
+                return self.candle['Low']
+            else:
+                return self.candle['High']
+            
+    def strength(self):
+        if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
+            return BODY_IMPULSE_STRENGTH
+        elif self.type == self.TYPE_GAP:
+            return GAP_IMPULSE_STRENGTH
+        else:
+            return 1.0
 
 class magic_line:
     def __init__(self, 
@@ -126,94 +167,78 @@ def detect_impulses(df) -> list[impulse_point]:
     Wykrywa impulsy rynkowe na podstawie różnych kryteriów.
     Zwraca listę impulse_point.
     """
-    impulses = []
-
-    # specjalna lista do min/max - będzie przefiltrowana później
-    impulses_min_max = []
-    
+    impulses_gap = []
     for i in range(1, len(df)):
         current = df.iloc[i]
         prev = df.iloc[i-1]        
         
         # Price gap (luka cenowa)
-        gap_up = current['Low'] > prev['High']
+        gap_up = current['Open'] > prev['Close']
         gap_size = math.fabs(current['Open'] - prev['Close'])
         if gap_size > 20: # luka większa niż 20 punktów
             # dodaj 2 punkty na krańcach luki
-            impulse_prev = impulse_point(i-1, prev['High'] if gap_up else prev['Low'], strength=1, type='gap')
-            impulses.append(impulse_prev)
+            impulse_prev = impulse_point(
+                i-1, 
+                prev, 
+                type=impulse_point.TYPE_GAP,
+                subtype=impulse_point.SUBTYPE_GAP_LD \
+                    if gap_up else impulse_point.SUBTYPE_GAP_LU)
+            impulses_gap.append(impulse_prev)
+            # print(f"  Detected gap {'UP' if gap_up else 'DOWN'} subtype {'LD' if gap_up else 'LU'} at index {i}, size: {gap_size}")
 
-            impulse_curr = impulse_point(i, current['Low'] if gap_up else current['High'], strength=1, type='gap')
-            impulses.append(impulse_curr)
+            impulse_curr = impulse_point(
+                i, 
+                current, 
+                type=impulse_point.TYPE_GAP,
+                subtype=impulse_point.SUBTYPE_GAP_RU \
+                    if gap_up else impulse_point.SUBTYPE_GAP_RD)
+            # print(f"  Detected gap {'UP' if gap_up else 'DOWN'} subtype {'RU' if gap_up else 'RD'} at index {i}, size: {gap_size}")
+            impulses_gap.append(impulse_curr)
 
-    # Lokalna minima/maxima - korpusy świec
-    body_low = []
-    body_high = []
-    for i in range(0, len(df)-1):
-        body_low.append(min(df['Open'].values[i], df['Close'].values[i]))
-        body_high.append(max(df['Open'].values[i], df['Close'].values[i]))
-            
-    minima_idx = argrelextrema(
-        np.array(body_low), 
-        np.less_equal, 
-        order=MINMAX_ORDER)[0]
-    
-    # Odfiltruj ciągi min - zostaw tylko pierwszy punkt z ciągu równych wartości
-    filtered_minima = []
-    for idx in minima_idx:
-        if idx == 0 or body_low[idx] < body_low[idx - 1]:
-            filtered_minima.append(idx)
-            # print("Znaleziono minimum na idx:", idx, "cena:", body_low[idx])
-
-    for idx in filtered_minima:
-        impulses_min_max.append(impulse_point(idx, body_low[idx], 
-                                      strength=BODY_IMPULSE_STRENGTH, type='minimum'))
-
-    maxima_idx = argrelextrema(
-        np.array(body_high), 
-        np.greater_equal, 
-        order=MINMAX_ORDER)[0]
-    
-    # Odfiltruj ciągi max - zostaw tylko pierwszy punkt z ciągu równych wartości
-    filtered_maxima = []
-    for idx in maxima_idx:
-        if idx == 0 or body_high[idx] > body_high[idx - 1]:
-            filtered_maxima.append(idx)
-    
-    for idx in filtered_maxima:
-        impulses_min_max.append(impulse_point(idx, body_high[idx], 
-                                      strength=BODY_IMPULSE_STRENGTH, type='maximum'))
+    # min max
+    impulses_minmax = []
+    for i in range(MINMAX_ORDER // 2, len(df) - MINMAX_ORDER // 2):
+        current = df.iloc[i]
         
-    # Sortuj impulsy po indeksie świeczki
-    impulses_min_max.sort(key=lambda p: (p.index, p.type, p.price))
+        # helper lambdas
+        get_low = lambda x: min(x['Open'], x['Close'])
+        get_high = lambda x: max(x['Open'], x['Close'])
 
-    # Filtruj impulsy - zostaw tylko te otoczone min/max
-    # Dodaj pierwszy element
-    filtered_impulses = [impulses_min_max[0]]
-    
-    # Dodaj tylko impulsy z pattern min-max-min lub max-min-max
-    i = 1
-    while i < len(impulses_min_max) - 1:
-        prev_p = filtered_impulses[-1] # ostatni element
-        p = impulses_min_max[i]
+        l = max(0, i - MINMAX_ORDER)
+        r = min(len(df), i + 1 + MINMAX_ORDER)
 
-        if prev_p.type != p.type:
-            filtered_impulses.append(p)
-        elif prev_p.type == 'minimum':
-            # dwa minima pod rząd - zostaw to z niższą ceną
-            filtered_impulses[-1] = p if p.price < prev_p.price else prev_p
-        elif prev_p.type == 'maximum':
-            # dwa maxima pod rząd - zostaw to z wyższą ceną
-            filtered_impulses[-1] = p if p.price > prev_p.price else prev_p                
-        i += 1
+        # min
+        body_low = get_low(current)
+        if body_low < min(
+            get_low(min(df.iloc[l: i].iloc, key=get_low)),
+            get_low(min(df.iloc[i + 1 : r].iloc, key=get_low))
+        ):
+            impulses_minmax.append(
+                impulse_point(
+                    i, 
+                    current, 
+                    type=impulse_point.TYPE_MIN,
+                    subtype=impulse_point.SUBTYPE_MINMAX_7))
+        
+        # max
+        body_high = get_high(current)
+        if body_high > max(
+            get_high(max(df.iloc[l: i].iloc, key=get_high)),
+            get_high(max(df.iloc[i + 1 : r].iloc, key=get_high))
+        ):
+            impulses_minmax.append(
+                impulse_point(
+                    i, 
+                    current, 
+                    type=impulse_point.TYPE_MAX,
+                    subtype=impulse_point.SUBTYPE_MINMAX_7))
     
-    # Odrzuć min/max na krawędziach danych
-    if FILTER_MINMAX_IMPULSES:
-        for p in impulses_min_max:
-            if p.index > (MINMAX_ORDER / 2) and p.index < len(df) - (MINMAX_ORDER / 2):
-                filtered_impulses.append(p)
-    
-    return impulses + filtered_impulses
+    # DEBUG print impulses
+    #for p in impulses_gap:
+    #    print(f"  Detected GAP at index {p.index}, price: {p.price():.2f}")
+    #for p in impulses_minmax:
+    #    print(f"  Detected minmax at index {p.index}, price: {p.price():.2f}")
+    return impulses_gap + impulses_minmax
 
 # Funkcja do znajdowania linii równoległych
 def find_parallel_level(
@@ -242,15 +267,15 @@ def find_parallel_level(
         # oraz search_dir
         if prev_line:
             expected_price = prev_line.slope * p.index + prev_line.intercept
-            if not search_up and p.price >= expected_price:
+            if not search_up and p.price() >= expected_price:
                 continue
-            if search_up and p.price <= expected_price:
+            if search_up and p.price() <= expected_price:
                 continue
 
         base_slope = prev_line.slope
         
         # Oblicz intercept dla linii równoległej przechodzącej przez ten punkt
-        intercept = p.price - prev_line.slope * p.index
+        intercept = p.price() - prev_line.slope * p.index
         offset = intercept - prev_line.intercept
                 
         # Sprawdź czy offset ma odpowiedni znak
@@ -271,10 +296,10 @@ def find_parallel_level(
         touches = []
         for pt in points:
             expected_price = base_slope * pt.index + intercept
-            dist = abs(pt.price - expected_price)
+            dist = abs(pt.price() - expected_price)
             
             if dist <= HIERARCHICAL_TOLERANCE:
-                score += pt.strength
+                score += pt.strength()
                 touches.append(pt)
         
         if score > best_score:
@@ -332,16 +357,16 @@ def calculate_line_score(slope, points, tolerance=LINE_TOLERANCE) -> magic_line:
     
     # Dla każdego punktu oblicz intercept i policz score
     for p_start in points:
-        intercept = p_start.price - slope * p_start.index
+        intercept = p_start.price() - slope * p_start.index
         
         score = 0
         used = []
         # Sprawdź ile punktów pasuje do tej linii
         for p in points:
             expected_price = slope * p.index + intercept
-            dist = abs(p.price - expected_price)
+            dist = abs(p.price() - expected_price)
             if dist <= tolerance:
-                score += p.strength
+                score += p.strength()
                 used.append(p)
         
         # Zaktualizuj najlepszy wynik
@@ -373,12 +398,7 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
     # print(f"  Wykryto {len(points)} punktów impulsów/min/max")
         
     if len(points) < 2:
-        # Fallback: użyj dwóch najniższych punktów
-        sorted_idx = lookback_df.nsmallest(2, 'Low').index.tolist()
-        points = [impulse_point(int(lookback_df.loc[i, 'index']),
-                                float(lookback_df.loc[i, 'Low']),
-                                strength=1,
-                                type='fallback') for i in sorted_idx]
+        assert False, "Za mało punktów do wyznaczenia linii"
     
     # Znajdź najlepsze pary linii (wznosząca + opadająca)    
     # Zbierz wszystkie unikalne wartości |slope|
@@ -389,7 +409,7 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
             if p2.index == p1.index:
                 continue
             
-            slope = (p2.price - p1.price) / (p2.index - p1.index)
+            slope = (p2.price() - p1.price()) / (p2.index - p1.index)
             abs_slope = abs(slope)
             
             if abs_slope >= MIN_SLOPE and abs_slope <= MAX_SLOPE:
@@ -425,7 +445,7 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
     
     # Przygotuj wyniki
     if not best_pair:
-        return []
+        return [], []
     
     best_ascending = best_pair['ascending'] if best_pair['ascending'].score > 0 else magic_line(score=0)
     best_descending = best_pair['descending'] if best_pair['descending'].score > 0 else magic_line(score=0)
@@ -499,15 +519,15 @@ def plot_chart(df_plot,
         all_maxima = {}
 
         for point in points:                     
-            if point.type == 'gap':
+            if point.type == impulse_point.TYPE_GAP:
                 idx = point.index
-                all_impulses[idx] = point.price
-            elif point.type == 'minimum':
+                all_impulses[idx] = point.price()
+            elif point.type == impulse_point.TYPE_MIN:
                 idx = point.index
-                all_minima[idx] = point.price
-            elif point.type == 'maximum':
+                all_minima[idx] = point.price()
+            elif point.type == impulse_point.TYPE_MAX:
                 idx = point.index
-                all_maxima[idx] = point.price
+                all_maxima[idx] = point.price()
         
         # Utwórz serie dla każdego typu punktu
         impulse_series = pd.Series(index=df_plot.index, dtype=float)
