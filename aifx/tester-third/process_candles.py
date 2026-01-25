@@ -25,9 +25,73 @@ from aifx.strategy import decissioner as decissioner
 PRINT_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
 
+quality_stats = {
+    "num_slopes": 0, # num of unique slopes in month
+    "add_remove_line": 0, # num of add/remove lines in month
+    "avg_slope_live": 0.0, # average num of period where slope doesn't change
+
+    # data
+    "slopes": [], # (val, num_periods)
+    "lines": [], # [(line_id, num_periods), ...]
+}
+
 def version() -> str:
     """Return module version info."""
-    return "process_candles 1.1"
+    return "process_candles 1.2"
+
+def update_quality_stats(result: str):
+    # example result: 'CROSSED DS2 UP | D0: -121.69 | DR1: -372.39 | DS1: -85.58 | DS2: -7.45 | 
+    #   DS3: 107.10 | A0: 1308.55 | AR1: 326.98 | AR2: 230.42 | AR3: -80.66 | AS1: 1633.04 | 
+    #   SLOPE: -3.0385 | BASE: 21299.18'
+
+    result_slope = float(result.split('| SLOPE: ')[-1].split(' |')[0].strip())
+    result_line_ids = [] # e.g. ['DS2', 'D0', ...]
+    for part in result.split('|'):
+        part = part.strip()
+        if part.startswith(('D', 'A')) and ':' in part:
+            line_id = part.split(':')[0].strip()
+            result_line_ids.append(line_id)
+    result_line_ids.sort()
+
+    # check if given slope matches the last slope in quality_stats
+    reset_lines = False
+    if quality_stats["slopes"] == []:
+        # initialize
+        quality_stats["slopes"].append((result_slope, 1))
+        reset_lines = True
+    elif quality_stats["slopes"] and quality_stats["slopes"][-1][0] == result_slope:
+        # same slope as last one - increment num_periods
+        num_periods = quality_stats["slopes"][-1][1] + 1
+        quality_stats["slopes"][-1] = (result_slope, num_periods)
+    else:
+        # new slope - add to list
+        quality_stats["slopes"].append((result_slope, 1))
+        reset_lines = True
+
+    # update lines data
+    if reset_lines:
+        # just add new set of ids
+        quality_stats["lines"] += [[(line_id, 1) for line_id in result_line_ids]]
+    else:
+        # for each line in result_line_ids, check if it exists in last quality_stats["lines"]
+        all_match = True
+        num_diff = 0
+        temp_stats = quality_stats["lines"][-1][:]
+        for i, (line_id, num_periods) in enumerate(quality_stats["lines"][-1]):
+            if line_id in result_line_ids:
+                # line exists - increment num_periods
+                temp_stats[i] = (line_id, num_periods + 1)
+            else:
+                all_match = False
+                num_diff += 1
+        if all_match and len(temp_stats) == len(result_line_ids):
+            # all lines match - update quality_stats
+            quality_stats["lines"][-1] = temp_stats
+        else:
+            # lines changed - add new entry
+            quality_stats["lines"].append([(line_id, 1) for line_id in result_line_ids])
+            # slope stays the same but lines changed - count as add/remove line
+            quality_stats["add_remove_line"] += abs(len(temp_stats) - len(result_line_ids)) + num_diff
 
 def process_file(file_path, percentage=.0, revert=False, keep_results=False):
     """Process or revert a CSV file - simulates order-maker logic."""
@@ -144,6 +208,9 @@ def process_file(file_path, percentage=.0, revert=False, keep_results=False):
                             chart_path.rename(new_chart_path)
 
                     temp_path.unlink()
+
+                    # quality stats
+                    update_quality_stats(result)
 
                     # decision
                     order_type = decissioner.decision(result)
@@ -528,6 +595,16 @@ def main():
             except Exception as e:
                 print(f"Error removing charts directory: {e}")
     
+    # quality stats output
+    if not revert and ALGO == "magic_lines":
+        quality_stats["num_slopes"] = len(quality_stats["slopes"])
+        num_m15_in_month = 4 * 24 * 30
+        avg_slope_live = num_m15_in_month / quality_stats["num_slopes"] \
+            if quality_stats["num_slopes"] != 0 else 0
+        print("\nQuality Statistics:")
+        print(f"  Avg slope live (x m15): {avg_slope_live:.2f}")
+        print(f"  Number of add/remove lines in month: {quality_stats['add_remove_line']}")
+
     print("\nComplete!")
 
 if __name__ == "__main__":

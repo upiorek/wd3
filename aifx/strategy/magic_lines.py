@@ -395,7 +395,7 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
             if abs_slope >= MIN_SLOPE and abs_slope <= MAX_SLOPE:
                 unique_slopes.add(abs_slope)
 
-    # filter very simialr slopes
+    # filter very similar slopes
     unique_slopes = sorted(unique_slopes)
     filtered_slopes = []
     prev_slope = None
