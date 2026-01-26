@@ -17,10 +17,9 @@ Użycie:
 """
 TODO 
 
-fix min/max - powinno lepiej wygladać
 przyspieszenie: generuj tylko najbliższe linie względem ostatniej świeczki
 czy linie rosnące powinny mieć wyższy score dla maxmia niż dla minima (i odwrotnie dla linii opadającej)?
-brać pod uwagę "pierwszą rosnącą po minimum"
+
 buy tylko na zielonych
 bugi - czasem złe min/max
 lepszy opis crossingu + dodać offsety
@@ -121,10 +120,13 @@ class impulse_point:
         elif self.type == self.TYPE_MAX:
             return max(self.candle['Open'], self.candle['Close'])
         elif self.type == self.TYPE_GAP:
+            # gap - price = body edge
             if self.subtype in [self.SUBTYPE_GAP_LD, self.SUBTYPE_GAP_RD]:
-                return self.candle['Low']
+                return max(self.candle['Open'], self.candle['Close'])
             else:
-                return self.candle['High']
+                return min(self.candle['Open'], self.candle['Close'])
+            
+        assert False, "Unknown impulse point type"
             
     def strength(self):
         if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
@@ -177,11 +179,16 @@ def detect_impulses(df) -> list[impulse_point]:
     impulses_gap = []
     for i in range(1, len(df)):
         current = df.iloc[i]
-        prev = df.iloc[i-1]        
+        prev = df.iloc[i-1]
         
         # Price gap (luka cenowa)
-        gap_up = current['Open'] > prev['Close']
-        gap_size = math.fabs(current['Open'] - prev['Close'])
+        gap_up = prev['Close'] < current['Open']
+        gap_size = 0
+        if gap_up:
+            gap_size = min(current['Open'], current['Close']) - max(prev['Open'], prev['Close'])
+        else:
+            gap_size = min(prev['Open'], prev['Close']) - max(current['Open'], current['Close'])
+        
         if gap_size > 20: # luka większa niż 20 punktów
             # dodaj 2 punkty na krańcach luki
             impulse_prev = impulse_point(
@@ -191,7 +198,8 @@ def detect_impulses(df) -> list[impulse_point]:
                 subtype=impulse_point.SUBTYPE_GAP_LD \
                     if gap_up else impulse_point.SUBTYPE_GAP_LU)
             impulses_gap.append(impulse_prev)
-            # print(f"  Detected gap {'UP' if gap_up else 'DOWN'} subtype {'LD' if gap_up else 'LU'} at index {i}, size: {gap_size}")
+            # print(f"  Detected gap {'UP' if gap_up else 'DOWN'} subtype {'LD' if gap_up else 'LU'} "
+            # "at index {i}, size: {gap_size}")
 
             impulse_curr = impulse_point(
                 i, 
@@ -199,7 +207,8 @@ def detect_impulses(df) -> list[impulse_point]:
                 type=impulse_point.TYPE_GAP,
                 subtype=impulse_point.SUBTYPE_GAP_RU \
                     if gap_up else impulse_point.SUBTYPE_GAP_RD)
-            # print(f"  Detected gap {'UP' if gap_up else 'DOWN'} subtype {'RU' if gap_up else 'RD'} at index {i}, size: {gap_size}")
+            # print(f"  Detected gap {'UP' if gap_up else 'DOWN'} subtype {'RU' if gap_up else 'RD'} "
+            # "at index {i}, size: {gap_size}")
             impulses_gap.append(impulse_curr)
 
     # min max
