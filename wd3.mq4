@@ -131,7 +131,10 @@ OrderDecision ParseOrder(string orderData)
       int partsCount = StringSplit(line, ' ', parts);
       if(partsCount >= 1)
       {
-         int orderType = GetOrderType(parts[0]);
+         if (parts[0] != "US100.f")	 
+            Log("ERROR: ParseOrder" + " parts: " + parts[0]);
+
+         int orderType = GetOrderType(parts[1]); 
          if(orderType != -1)
          {
             result.orderType = orderType;
@@ -150,10 +153,13 @@ OrderDecision ParseOrder(string orderData)
             ClearApprovedFile();
             return result;
          }
+	 else 
+	 {
+            Log("ERROR: ParseOrder" + " orderType: " + IntegerToString(orderType) + " parts: " + parts[0]);
+	 }
       }
    }
 
-   Log("ERROR: ParseOrder");
    return result;
 }
 
