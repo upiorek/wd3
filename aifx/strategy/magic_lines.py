@@ -108,7 +108,13 @@ class impulse_point:
         self.type = type
         self.subtype = subtype
 
+        self._price = None
+        self._price = self.price()
+
     def price(self):
+        if self._price is not None:
+            return self._price
+            
         if self.type == self.TYPE_MIN:
             return min(self.candle['Open'], self.candle['Close'])
         elif self.type == self.TYPE_MAX:
