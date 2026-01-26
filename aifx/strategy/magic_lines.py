@@ -66,6 +66,7 @@ HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
 LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
 SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
 DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
+IMAGE_DPI = 600  # DPI dla zapisywanych obrazów
 
 # ===== score impulsow =====
 SHADOW_IMPULSE_STRENGTH = 0.5  # siła impulsu dla cieni lokalnych min/max
@@ -626,7 +627,7 @@ def plot_chart(df_plot,
     ax.set_xticklabels(midnight_labels, rotation=0, ha='center')
     
     if DUMP_IMAGES:
-        fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1)
+        fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1, dpi=IMAGE_DPI)
     plt.close(fig)
 
 
