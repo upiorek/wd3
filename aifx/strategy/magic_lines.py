@@ -71,6 +71,7 @@ IMAGE_DPI = 600  # DPI dla zapisywanych obrazów
 SHADOW_IMPULSE_STRENGTH = 0.5  # siła impulsu dla cieni lokalnych min/max
 BODY_IMPULSE_STRENGTH = 1.0    # siła impulsu dla korpusów lokalnych min/max
 GAP_IMPULSE_STRENGTH = 1.0     # siła impulsu dla luk cenowych
+FA_IMPULSE_STRENGTH = 1.0     # siła impulsu dla first after
 
 # ===== KLASY DANYCH =====
 
@@ -125,6 +126,11 @@ class impulse_point:
                 return max(self.candle['Open'], self.candle['Close'])
             else:
                 return min(self.candle['Open'], self.candle['Close'])
+        elif self.type == self.TYPE_FA:
+            if self.subtype == self.SUBTYPE_FA_MIN:
+                return max(self.candle['Open'], self.candle['Close'])
+            elif self.subtype == self.SUBTYPE_FA_MAX:
+                return min(self.candle['Open'], self.candle['Close'])
             
         assert False, "Unknown impulse point type"
             
@@ -133,6 +139,8 @@ class impulse_point:
             return BODY_IMPULSE_STRENGTH
         elif self.type == self.TYPE_GAP:
             return GAP_IMPULSE_STRENGTH
+        elif self.type == self.TYPE_FA:
+            return FA_IMPULSE_STRENGTH
         else:
             return 1.0
 
@@ -248,13 +256,39 @@ def detect_impulses(df) -> list[impulse_point]:
                     current, 
                     type=impulse_point.TYPE_MAX,
                     subtype=impulse_point.SUBTYPE_MINMAX_7))
-    
+            
+    impulses_fa = []
+    # first after min/max - mark the first candle after local min/max
+    # min fa height = 20 points
+    for p in impulses_minmax:
+        # check bounds
+        if p.index + 1 >= len(df):
+            continue
+        # check min height
+        next_candle = df.iloc[p.index + 1]
+        if abs(next_candle['Open'] - next_candle['Close']) < 20:
+            continue        
+
+        subt = impulse_point.SUBTYPE_FA_MIN if p.type == impulse_point.TYPE_MIN \
+            else impulse_point.SUBTYPE_FA_MAX
+        impulses_fa.append(
+            impulse_point(
+                p.index + 1,
+                next_candle,
+                type=impulse_point.TYPE_FA,
+                subtype=subt))
+            
+    impulses_fa.sort(key=lambda p: p.index)
+        
     # DEBUG print impulses
     #for p in impulses_gap:
     #    print(f"  Detected GAP at index {p.index}, price: {p.price():.2f}")
     #for p in impulses_minmax:
     #    print(f"  Detected minmax at index {p.index}, price: {p.price():.2f}")
-    return impulses_gap + impulses_minmax
+    #for p in impulses_fa:
+    #    print(f"  Detected FA at index {p.index}, price: {p.price():.2f}")
+    
+    return impulses_gap + impulses_minmax + impulses_fa
 
 # Funkcja do znajdowania linii równoległych
 def find_parallel_level(
@@ -412,6 +446,13 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
     # Wykryj impulsy
     points = detect_impulses(lookback_df)
     # print(f"  Wykryto {len(points)} punktów impulsów/min/max")
+    
+    # asc points nie zawiera impulsów FA_MAX
+    asc_points = [p for p in points \
+                  if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MAX)]
+    # dsc points nie zawiera impulsów FA_MIN
+    dsc_points = [p for p in points \
+                  if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MIN)]
         
     if len(points) < 2:
         assert False, "Za mało punktów do wyznaczenia linii"
@@ -447,8 +488,8 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
     
     for i, abs_slope in enumerate(unique_slopes):
         # print(f"Sprawdzam slope: {abs_slope:.4f} {i+1}/{len(unique_slopes)}     ", end='\r')
-        asc_line = calculate_line_score(abs_slope, points)
-        desc_line = calculate_line_score(-abs_slope, points)
+        asc_line = calculate_line_score(abs_slope, asc_points)
+        desc_line = calculate_line_score(-abs_slope, dsc_points)
         combined_score = asc_line.score + desc_line.score
         
         if combined_score > best_combined_score:
@@ -469,7 +510,7 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
     detected_lines = []
     
     # Dodaj główną oraz hierarchiczne linie
-    for main_line in [best_descending, best_ascending]:
+    for (main_line, points) in [(best_descending, dsc_points), (best_ascending, asc_points)]:
         below, above = find_hierarchical_lines(
             main_line,
             points,
@@ -482,7 +523,6 @@ def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_poin
         detected_lines += above  
 
     return detected_lines, points
-
 
 def plot_chart(df_plot, 
                points : list[impulse_point],
@@ -533,6 +573,7 @@ def plot_chart(df_plot,
         all_impulses = {}
         all_minima = {}
         all_maxima = {}
+        all_fa = {}
 
         for point in points:                     
             if point.type == impulse_point.TYPE_GAP:
@@ -544,11 +585,15 @@ def plot_chart(df_plot,
             elif point.type == impulse_point.TYPE_MAX:
                 idx = point.index
                 all_maxima[idx] = point.price()
+            elif point.type == impulse_point.TYPE_FA:
+                idx = point.index
+                all_fa[idx] = point.price()
         
         # Utwórz serie dla każdego typu punktu
         impulse_series = pd.Series(index=df_plot.index, dtype=float)
         minima_series = pd.Series(index=df_plot.index, dtype=float)
         maxima_series = pd.Series(index=df_plot.index, dtype=float)
+        fa_series = pd.Series(index=df_plot.index, dtype=float)
         
         for i, dt in enumerate(df_plot.index):
             if i in all_impulses:
@@ -557,6 +602,8 @@ def plot_chart(df_plot,
                 minima_series.iloc[i] = all_minima[i]
             if i in all_maxima:
                 maxima_series.iloc[i] = all_maxima[i]
+            if i in all_fa:
+                fa_series.iloc[i] = all_fa[i]
         
         # Dodaj do wykresu
         if not impulse_series.isna().all():
@@ -587,6 +634,16 @@ def plot_chart(df_plot,
                 marker='v',
                 color='green',
                 alpha=0.5
+            ))
+
+        if not fa_series.isna().all():
+            apds.append(mpf.make_addplot(
+                fa_series,
+                type='scatter',
+                markersize=40,
+                marker='*',
+                color='orange',
+                alpha=0.7
             ))
     
     # Generuj wykres
