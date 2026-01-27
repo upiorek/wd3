@@ -331,7 +331,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
                     if compare_mode:
                         if csv_file.stem in order_files:
                             percentage = (processed_count + 1) * 100 / len(csv_files)
-                            futures.append(executor.submit(process_file, csv_file, percentage, False, keep_results))
+                            futures.append(executor.submit(process_file, csv_file, percentage, keep_results))
                             processed_count += 1
                             return True
                         else:
@@ -343,7 +343,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
                         if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
                             continue
                         percentage = (processed_count + 1) * 100 / len(csv_files)
-                        futures.append(executor.submit(process_file, csv_file, percentage, False, keep_results))
+                        futures.append(executor.submit(process_file, csv_file, percentage, keep_results))
                         processed_count += 1
                         return True
                 return False
@@ -381,7 +381,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
             if compare_mode:
                 if csv_file.stem in order_files:
                     percentage = (processed_count + 1) * 100 / len(csv_files) 
-                    process_file(csv_file, percentage, False, keep_results)
+                    process_file(csv_file, percentage, keep_results)
                     processed_count += 1
                 else:
                     # Only delete source files if we're actively matching
@@ -394,7 +394,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
                     continue
 
                 percentage = (processed_count + 1) * 100 / len(csv_files) 
-                process_file(csv_file, percentage, False, keep_results)
+                process_file(csv_file, percentage, keep_results)
                 processed_count += 1
     
     # Remove skipped files (only in compare mode)
