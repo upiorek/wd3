@@ -106,8 +106,49 @@ def calculate_quality_stats():
                 # slope stays the same but lines changed - count as add/remove line
                 quality_stats["add_remove_line"] += abs(len(temp_stats) - len(result_line_ids)) + num_diff
 
-def process_file(file_path, percentage=.0, revert=False, keep_results=False):
-    """Process or revert a CSV file - simulates order-maker logic."""
+def revert_csv_file(file_path, lines):
+    """Revert a modified CSV file by removing BUY/SELL markers and restoring original format.
+    
+    Args:
+        file_path: Path to the _mod.csv file to revert
+        lines: List of lines from the file
+    
+    Returns:
+        tuple: (new_path, action) for logging
+    """
+    cleaned_lines = []
+    for line in lines:
+        stripped = line.rstrip()
+        # Remove everything after the OHLC data
+        parts = stripped.split(';')
+        if len(parts) >= 5:
+            # Keep Time;Open;High;Low;Close
+            base_parts = parts[:5]
+            # Clean the Close field if it has any trailing data (BUY/SELL/gain/loss markers)
+            # But preserve "decision-here" marker
+            close_parts = base_parts[4].split()
+            close_field = close_parts[0]  # Take only the number
+            # Check if "decision-here" is present
+            if "decision-here" in base_parts[4]:
+                base_parts[4] = f"{close_field};decision-here"
+            else:
+                base_parts[4] = close_field
+            cleaned_lines.append(';'.join(base_parts) + '\n')
+        else:
+            cleaned_lines.append(line)
+    
+    new_path = file_path.parent / f"{file_path.stem.replace('_mod', '')}.csv"
+    action = "Reverted"
+    
+    # Write to original file and remove _mod file
+    with open(new_path, 'w') as f:
+        f.writelines(cleaned_lines)
+    os.remove(file_path)
+    
+    return new_path, action
+
+def process_file(file_path, percentage=.0, keep_results=False):
+    """Process a CSV file by adding BUY/SELL decision markers."""
     if STOP_EVENT.is_set():
         return
     with open(file_path, 'r') as f:
@@ -118,137 +159,106 @@ def process_file(file_path, percentage=.0, revert=False, keep_results=False):
     
     order_type = "NONE"
     
-    if revert:
-        # Remove BUY/SELL and distSL markers, restore original filename
-        cleaned_lines = []
-        for line in lines:
-            stripped = line.rstrip()
-            # Remove everything after the OHLC data
-            parts = stripped.split(';')
-            if len(parts) >= 5:
-                # Keep Time;Open;High;Low;Close
-                base_parts = parts[:5]
-                # Clean the Close field if it has any trailing data (BUY/SELL/gain/loss markers)
-                # But preserve "decision-here" marker
-                close_parts = base_parts[4].split()
-                close_field = close_parts[0]  # Take only the number
-                # Check if "decision-here" is present
-                if "decision-here" in base_parts[4]:
-                    base_parts[4] = f"{close_field};decision-here"
+    # Decision candle - mark BUY/SELL based on odd/even logic
+    decision_index = 300 + 1 # 1 for header
+
+    # Only add decision BUY/SELL marker:
+    processed_lines = []
+    
+    for i, line in enumerate(lines):
+        parts = line.strip().split(';')
+
+        # Remove volume column (6th element)
+        ohlc_line = ';'.join(parts[:5])
+        
+        # Decision candle: analyze open price and mark BUY/SELL
+        if i == decision_index:
+            if ALGO == "odd_even":
+                open_price = float(parts[1])
+                # Odd/even logic (matching order-maker)
+                price_int = int(open_price * 100)
+                is_odd = (price_int % 2 == 1)
+                order_type = "BUY" if is_odd else "SELL"
+                processed_lines.append(f"{ohlc_line} {order_type}\n")
+                continue
+            
+            elif ALGO == "magic_lines":
+                if STOP_EVENT.is_set():
+                    return
+                # dump [0:i+1] lines to temp file
+                temp_lines = []
+                for j in range(i+1):
+                    temp_lines.append(f"{';'.join(lines[j].strip().split(';')[:5])}\n")
+                # add _temp suffix to avoid overwriting original
+                temp_path = file_path.parent / f"{file_path.stem}_temp.csv"
+                with open(temp_path, 'w') as temp_f:
+                    temp_f.writelines(temp_lines)
+
+                charts_dir = file_path.parent / "charts"
+                if not charts_dir.exists():
+                    charts_dir.mkdir(parents=True, exist_ok=True)
+
+                # check if chart and result file exist and if not - call magic_lines.process_single_file()                    
+                result_txt_path = file_path.parent / "charts" / f"{file_path.stem}_result.txt"
+                if result_txt_path.exists():
+                    with open(result_txt_path, 'r') as result_f:
+                        result = result_f.read().strip()
                 else:
-                    base_parts[4] = close_field
-                cleaned_lines.append(';'.join(base_parts) + '\n')
-            else:
-                cleaned_lines.append(line)
-        
-        new_path = file_path.parent / f"{file_path.stem.replace('_mod', '')}.csv"
-        action = "Reverted"
-        
-        # Write to original file and remove _mod file
-        with open(new_path, 'w') as f:
-            f.writelines(cleaned_lines)
-        os.remove(file_path)
-    else:
-        # Decision candle - mark BUY/SELL based on odd/even logic
-        decision_index = 300 + 1 # 1 for header
-
-        # Only add decision BUY/SELL marker:
-        processed_lines = []
-        
-        for i, line in enumerate(lines):
-            parts = line.strip().split(';')
-
-            # Remove volume column (6th element)
-            ohlc_line = ';'.join(parts[:5])
-            
-            # Decision candle: analyze open price and mark BUY/SELL
-            if i == decision_index:
-                if ALGO == "odd_even":
-                    open_price = float(parts[1])
-                    # Odd/even logic (matching order-maker)
-                    price_int = int(open_price * 100)
-                    is_odd = (price_int % 2 == 1)
-                    order_type = "BUY" if is_odd else "SELL"
-                    processed_lines.append(f"{ohlc_line} {order_type}\n")
-                    continue
-                
-                elif ALGO == "magic_lines":
-                    if STOP_EVENT.is_set():
+                    if keep_results:
+                        # Skip files without existing results when --keep-results is set
+                        with PRINT_LOCK:
+                            print(f"Skipping {file_path.name}: no existing result file found")
+                        temp_path.unlink(missing_ok=True)
                         return
-                    # dump [0:i+1] lines to temp file
-                    temp_lines = []
-                    for j in range(i+1):
-                        temp_lines.append(f"{';'.join(lines[j].strip().split(';')[:5])}\n")
-                    # add _temp suffix to avoid overwriting original
-                    temp_path = file_path.parent / f"{file_path.stem}_temp.csv"
-                    with open(temp_path, 'w') as temp_f:
-                        temp_f.writelines(temp_lines)
+                    
+                    if STOP_EVENT.is_set():
+                        temp_path.unlink(missing_ok=True)
+                        return
+                    result = magic_lines.process_single_file(
+                        str(temp_path), 
+                        output_dir=str(file_path.parent / "charts"))
 
-                    charts_dir = file_path.parent / "charts"
-                    if not charts_dir.exists():
-                        charts_dir.mkdir(parents=True, exist_ok=True)
+                    # save result data to txt file next to charts
+                    with open(result_txt_path, 'w') as result_f:
+                        result_f.write(result or "No result\n")
 
-                    # check if chart and result file exist and if not - call magic_lines.process_single_file()                    
-                    result_txt_path = file_path.parent / "charts" / f"{file_path.stem}_result.txt"
-                    if result_txt_path.exists():
-                        with open(result_txt_path, 'r') as result_f:
-                            result = result_f.read().strip()
-                    else:
-                        if keep_results:
-                            # Skip files without existing results when --keep-results is set
-                            with PRINT_LOCK:
-                                print(f"Skipping {file_path.name}: no existing result file found")
-                            temp_path.unlink(missing_ok=True)
-                            return
-                        
-                        if STOP_EVENT.is_set():
-                            temp_path.unlink(missing_ok=True)
-                            return
-                        result = magic_lines.process_single_file(
-                            str(temp_path), 
-                            output_dir=str(file_path.parent / "charts"))
+                    # rename chart file to match current file
+                    chart_path = file_path.parent / "charts" / f"{temp_path.stem}.png"
+                    if chart_path.exists():
+                        new_chart_path = file_path.parent / "charts" / f"{file_path.stem}.png"
+                        if new_chart_path.exists():
+                            new_chart_path.unlink()
+                        chart_path.rename(new_chart_path)
 
-                        # save result data to txt file next to charts
-                        with open(result_txt_path, 'w') as result_f:
-                            result_f.write(result or "No result\n")
+                temp_path.unlink()
 
-                        # rename chart file to match current file
-                        chart_path = file_path.parent / "charts" / f"{temp_path.stem}.png"
-                        if chart_path.exists():
-                            new_chart_path = file_path.parent / "charts" / f"{file_path.stem}.png"
-                            if new_chart_path.exists():
-                                new_chart_path.unlink()
-                            chart_path.rename(new_chart_path)
+                # quality stats
+                update_quality_stats(file_path.name, result)
 
-                    temp_path.unlink()
+                # decision
+                order_type = decissioner.decision(result)
 
-                    # quality stats
-                    update_quality_stats(file_path.name, result)
+                # create file with decision if doesn't exist
+                decision_txt_path = file_path.parent / "charts" / f"{file_path.stem}_decision.txt"
+                with open(decision_txt_path, 'w') as decision_f:
+                    decision_f.write(order_type)
 
-                    # decision
-                    order_type = decissioner.decision(result)
+                # skip the "log: ..." part if present
+                if order_type.startswith("log:"):
+                    order_type = order_type.split('\n', 1)[1]
 
-                    # create file with decision if doesn't exist
-                    decision_txt_path = file_path.parent / "charts" / f"{file_path.stem}_decision.txt"
-                    with open(decision_txt_path, 'w') as decision_f:
-                        decision_f.write(order_type)
-
-                    # skip the "log: ..." part if present
-                    if order_type.startswith("log:"):
-                        order_type = order_type.split('\n', 1)[1]
-
-                    processed_lines.append(f"{ohlc_line} {order_type}\n")
-                    continue
-            
-            # All other lines: just remove volume
-            processed_lines.append(f"{ohlc_line}\n")
+                processed_lines.append(f"{ohlc_line} {order_type}\n")
+                continue
         
-        new_path = file_path.parent / f"{file_path.stem}_mod.csv"
-        action = f"Processed"
-        
-        # Write to new _mod file, keep original
-        with open(new_path, 'w') as f:
-            f.writelines(processed_lines)
+        # All other lines: just remove volume
+        processed_lines.append(f"{ohlc_line}\n")
+    
+    new_path = file_path.parent / f"{file_path.stem}_mod.csv"
+    action = f"Processed"
+    
+    # Write to new _mod file, keep original
+    with open(new_path, 'w') as f:
+        f.writelines(processed_lines)
     
     with PRINT_LOCK:
         if ALGO == "magic_lines":
@@ -401,6 +411,18 @@ def revert_files(csv_files, candles_dir, mt, mt_workers):
     """Revert _mod.csv files back to original format."""
     processed_count = 0
 
+    def _revert_single_file(file_path, percentage):
+        """Helper to revert a single file with logging."""
+        if STOP_EVENT.is_set():
+            return
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        if len(lines) < 2:
+            return
+        new_path, action = revert_csv_file(file_path, lines)
+        with PRINT_LOCK:
+            print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
+
     if mt:
         futures = []
         errors = 0
@@ -416,7 +438,7 @@ def revert_files(csv_files, candles_dir, mt, mt_workers):
                     if STOP_EVENT.is_set():
                         return False
                     percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
-                    futures.append(executor.submit(process_file, csv_file, percentage, True))
+                    futures.append(executor.submit(_revert_single_file, csv_file, percentage))
                     processed_count += 1
                     return True
                 return False
@@ -449,7 +471,7 @@ def revert_files(csv_files, candles_dir, mt, mt_workers):
     else:
         for csv_file in csv_files:
             percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
-            process_file(csv_file, percentage, revert=True)
+            _revert_single_file(csv_file, percentage)
             processed_count += 1
     
     # delete "charts" directory
@@ -462,6 +484,31 @@ def revert_files(csv_files, candles_dir, mt, mt_workers):
             print(f"\nRemoved charts directory: {charts_dir}")
         except Exception as e:
             print(f"Error removing charts directory: {e}")
+
+
+def cleanup_files(candles_dir):
+    """Delete all *_mod.csv files and remove the charts folder."""
+    mod_files = sorted(candles_dir.glob("*_mod.csv"))
+    removed_mod = 0
+    for mod_file in mod_files:
+        try:
+            mod_file.unlink()
+            removed_mod += 1
+        except Exception as e:
+            print(f"Warning: could not remove {mod_file}: {e}")
+
+    charts_dir = candles_dir / "charts"
+    removed_charts = False
+    if charts_dir.exists() and charts_dir.is_dir():
+        try:
+            shutil.rmtree(charts_dir)
+            removed_charts = True
+        except Exception as e:
+            print(f"Warning: could not remove charts directory {charts_dir}: {e}")
+
+    print(f"Cleanup complete in: {candles_dir}")
+    print(f"Removed *_mod.csv: {removed_mod}")
+    print(f"Removed charts folder: {removed_charts}")
 
 
 def main():
@@ -570,27 +617,7 @@ def main():
     orders_dir = Path(__file__).parent / "mt4_test_results" / "m15_orders"
 
     if cleanup:
-        mod_files = sorted(candles_dir.glob("*_mod.csv"))
-        removed_mod = 0
-        for mod_file in mod_files:
-            try:
-                mod_file.unlink()
-                removed_mod += 1
-            except Exception as e:
-                print(f"Warning: could not remove {mod_file}: {e}")
-
-        charts_dir = candles_dir / "charts"
-        removed_charts = False
-        if charts_dir.exists() and charts_dir.is_dir():
-            try:
-                shutil.rmtree(charts_dir)
-                removed_charts = True
-            except Exception as e:
-                print(f"Warning: could not remove charts directory {charts_dir}: {e}")
-
-        print(f"Cleanup complete in: {candles_dir}")
-        print(f"Removed *_mod.csv: {removed_mod}")
-        print(f"Removed charts folder: {removed_charts}")
+        cleanup_files(candles_dir)
         return
     
     pattern = "*_mod.csv" if revert else "*.csv"
