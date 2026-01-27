@@ -418,21 +418,23 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
     # Decissioner version
     print(f"Decissioner version: {decissioner.version()}")
     # Statistics - #BUY vs #SELL in decision files
-    for (buy_count, sell_count) in [(0, 0)]:
-        decision_files = sorted((candles_dir / "charts").glob("*_decision.txt"))
-        for decision_file in decision_files:
-            try:
-                with open(decision_file, 'r') as f:
-                    content = f.read().strip()
-                    # line contains BUY or SELL
-                    if "BUY" in content:
-                        buy_count += 1
-                    elif "SELL" in content:
-                        sell_count += 1
-            except Exception as e:
-                print(f"Warning: could not read {decision_file}: {e}")
-        print(f"Decisions: BUY={buy_count}, SELL={sell_count}")
-        break
+    buy_count = 0
+    sell_count = 0
+    decision_files = sorted((candles_dir / "charts").glob("*_decision.txt"))
+    for decision_file in decision_files:
+        try:
+            with open(decision_file, 'r') as f:
+                content = f.read().strip()
+                # line contains BUY or SELL
+                if "BUY" in content:
+                    buy_count += 1
+                elif "SELL" in content:
+                    sell_count += 1
+        except Exception as e:
+            print(f"Warning: could not read {decision_file}: {e}")
+    print(f"Decisions: BUY={buy_count}, SELL={sell_count}")
+    
+    return processed_count, buy_count, sell_count
 
 def revert_files(csv_files, candles_dir):
     """Revert _mod.csv files back to original format."""
@@ -625,9 +627,12 @@ def main():
     start_time = time.time()
     
     if not revert:
-        process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results)
+        processed_count, buy_count, sell_count = process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results)
     else:
         revert_files(csv_files, candles_dir)
+        processed_count = 0
+        buy_count = 0
+        sell_count = 0
     
     # quality stats output
     if not revert and ALGO == "magic_lines":
@@ -644,6 +649,20 @@ def main():
         print(f"  Processing time: {minutes}m {seconds:.2f}s")
         print(f"  Avg slope live (x m15): {avg_slope_live:.2f}")
         print(f"  Number of add/remove lines in month: {quality_stats['add_remove_line']}")
+        
+        # Write stats to file
+        stats_file = candles_dir / "processing_stats.txt"
+        with open(stats_file, 'w') as f:
+            f.write(f"Processed: {processed_count} files\n")
+            f.write(f"Process candles version: {version()}\n")
+            f.write(f"Decissioner version: {decissioner.version()}\n")
+            f.write(f"Decisions: BUY={buy_count}, SELL={sell_count}\n")
+            f.write(f"\n")
+            f.write(f"Quality Statistics:\n")
+            f.write(f"  Processing time: {minutes}m {seconds:.2f}s\n")
+            f.write(f"  Avg slope live (x m15): {avg_slope_live:.2f}\n")
+            f.write(f"  Number of add/remove lines in month: {quality_stats['add_remove_line']}\n")
+        print(f"\nStats written to: {stats_file}")
 
     print("\nComplete!")
 
