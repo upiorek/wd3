@@ -75,6 +75,14 @@ FA_IMPULSE_STRENGTH = 1.0     # siła impulsu dla first after
 
 # ===== KLASY DANYCH =====
 
+class candle:
+    def __init__(self, index, open, high, low, close):
+        self.index = index
+        self.open = open
+        self.high = high
+        self.low = low
+        self.close = close
+
 class impulse_point:
     # typy
     TYPE_MIN = 0 
@@ -98,7 +106,7 @@ class impulse_point:
 
     def __init__(self, 
                  index, # indeks świeczki
-                 candle,
+                 candle : candle, # świeczka
                  type=-1,
                  subtype=-1):
         assert(type >= 0)
@@ -117,20 +125,20 @@ class impulse_point:
             return self._price
             
         if self.type == self.TYPE_MIN:
-            return min(self.candle['Open'], self.candle['Close'])
+            return min(self.candle.open, self.candle.close)
         elif self.type == self.TYPE_MAX:
-            return max(self.candle['Open'], self.candle['Close'])
+            return max(self.candle.open, self.candle.close)
         elif self.type == self.TYPE_GAP:
             # gap - price = body edge
             if self.subtype in [self.SUBTYPE_GAP_LD, self.SUBTYPE_GAP_RD]:
-                return max(self.candle['Open'], self.candle['Close'])
+                return max(self.candle.open, self.candle.close)
             else:
-                return min(self.candle['Open'], self.candle['Close'])
+                return min(self.candle.open, self.candle.close)
         elif self.type == self.TYPE_FA:
             if self.subtype == self.SUBTYPE_FA_MIN:
-                return max(self.candle['Open'], self.candle['Close'])
+                return max(self.candle.open, self.candle.close)
             elif self.subtype == self.SUBTYPE_FA_MAX:
-                return min(self.candle['Open'], self.candle['Close'])
+                return min(self.candle.open, self.candle.close)
             
         assert False, "Unknown impulse point type"
             
@@ -179,23 +187,23 @@ def load_csv_data(filepath):
     
     return df
 
-def detect_impulses(df) -> list[impulse_point]:
+def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     """
     Wykrywa impulsy rynkowe na podstawie różnych kryteriów.
     Zwraca listę impulse_point.
     """
     impulses_gap = []
-    for i in range(1, len(df)):
-        current = df.iloc[i]
-        prev = df.iloc[i-1]
+    for i in range(1, len(candles)):
+        current = candles[i]
+        prev = candles[i-1]
         
         # Price gap (luka cenowa)
-        gap_up = prev['Close'] < current['Open']
+        gap_up = prev.close < current.open
         gap_size = 0
         if gap_up:
-            gap_size = min(current['Open'], current['Close']) - max(prev['Open'], prev['Close'])
+            gap_size = min(current.open, current.close) - max(prev.open, prev.close)
         else:
-            gap_size = min(prev['Open'], prev['Close']) - max(current['Open'], current['Close'])
+            gap_size = min(prev.open, prev.close) - max(current.open, current.close)
         
         if gap_size > 20: # luka większa niż 20 punktów
             # dodaj 2 punkty na krańcach luki
@@ -221,21 +229,21 @@ def detect_impulses(df) -> list[impulse_point]:
 
     # min max
     impulses_minmax = []
-    for i in range(MINMAX_ORDER // 2, len(df) - MINMAX_ORDER // 2):
-        current = df.iloc[i]
+    for i in range(MINMAX_ORDER // 2, len(candles) - MINMAX_ORDER // 2):
+        current = candles[i]
         
         # helper lambdas
-        get_low = lambda x: min(x['Open'], x['Close'])
-        get_high = lambda x: max(x['Open'], x['Close'])
+        get_low = lambda x: min(x.open, x.close)
+        get_high = lambda x: max(x.open, x.close)
 
         l = max(0, i - MINMAX_ORDER)
-        r = min(len(df), i + 1 + MINMAX_ORDER)
+        r = min(len(candles), i + 1 + MINMAX_ORDER)
 
         # min
         body_low = get_low(current)
         if body_low < min(
-            get_low(min(df.iloc[l: i].iloc, key=get_low)),
-            get_low(min(df.iloc[i + 1 : r].iloc, key=get_low))
+            get_low(min(candles[l: i], key=get_low)),
+            get_low(min(candles[i + 1 : r], key=get_low))
         ):
             impulses_minmax.append(
                 impulse_point(
@@ -247,8 +255,8 @@ def detect_impulses(df) -> list[impulse_point]:
         # max
         body_high = get_high(current)
         if body_high > max(
-            get_high(max(df.iloc[l: i].iloc, key=get_high)),
-            get_high(max(df.iloc[i + 1 : r].iloc, key=get_high))
+            get_high(max(candles[l: i], key=get_high)),
+            get_high(max(candles[i + 1 : r], key=get_high))
         ):
             impulses_minmax.append(
                 impulse_point(
@@ -262,11 +270,11 @@ def detect_impulses(df) -> list[impulse_point]:
     # min fa height = 20 points
     for p in impulses_minmax:
         # check bounds
-        if p.index + 1 >= len(df):
+        if p.index + 1 >= len(candles):
             continue
         # check min height
-        next_candle = df.iloc[p.index + 1]
-        if abs(next_candle['Open'] - next_candle['Close']) < 20:
+        next_candle = candles[p.index + 1]
+        if abs(next_candle.open - next_candle.close) < 20:
             continue        
 
         subt = impulse_point.SUBTYPE_FA_MIN if p.type == impulse_point.TYPE_MIN \
@@ -434,17 +442,14 @@ def calculate_line_score(slope, points, tolerance=LINE_TOLERANCE) -> magic_line:
         level=1 # główna linia
     )
 
-def find_support_lines(lookback_df) -> tuple[list[magic_line], list[impulse_point]]:
+def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[impulse_point]]:
     """
     Znajduje główną linię support/resistance oraz hierarchiczne linie równoległe.    
     Zwraca listę wykrytych linii (od 0 do HIERARCHICAL_LEVELS - wznosząca i/lub opadająca).
     """
-    # Dodaj kolumnę index dla lookback_df
-    lookback_df = lookback_df.copy()
-    lookback_df['index'] = range(len(lookback_df))
     
     # Wykryj impulsy
-    points = detect_impulses(lookback_df)
+    points = detect_impulses(candles)
     # print(f"  Wykryto {len(points)} punktów impulsów/min/max")
     
     # asc points nie zawiera impulsów FA_MAX
@@ -776,7 +781,13 @@ def process_single_file(csv_filepath, output_dir='charts'):
     lookback_df_for_lines = lookback_df_full.iloc[:].copy()
     
     # Wykryj linie
-    detected_lines, points = find_support_lines(lookback_df_for_lines)
+    candles = [candle(i,
+                      lookback_df_for_lines.iloc[i]['Open'],
+                      lookback_df_for_lines.iloc[i]['High'],
+                      lookback_df_for_lines.iloc[i]['Low'],
+                      lookback_df_for_lines.iloc[i]['Close']) 
+               for i in range(len(lookback_df_for_lines))]
+    detected_lines, points = find_support_lines(candles)
     
     if not detected_lines:
         return "NONE"
