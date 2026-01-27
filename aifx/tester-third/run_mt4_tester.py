@@ -1104,6 +1104,47 @@ def write_wd_summary(config: dict) -> None:
         f" | sl: {sl_str} | tp: {tp_str} | win: "
         f"{(tp_count / (sl_count + tp_count) * 100 if (sl_count + tp_count) > 0 else 0):.2f}%"
     )
+    
+    # Try to read additional stats from processing_stats.txt
+    try:
+        # Derive the data folder path based on the from_date
+        from_date = config.get('from_date', '')
+        if from_date:
+            # from_date is like "2025.01.01"
+            year_month = '.'.join(from_date.split('.')[:2])  # "2025.01"
+            stats_path = CURRENT_DIR.parent / "data" / year_month / "processing_stats.txt"
+            
+            if stats_path.exists():
+                stats_content = stats_path.read_text(encoding='utf-8')
+                
+                # Extract BUY and SELL counts
+                buy_count = 0
+                sell_count = 0
+                avg_slope = 0.0
+                lines_count = 0
+                
+                for line in stats_content.splitlines():
+                    if line.startswith("Decisions: BUY="):
+                        parts = line.replace("Decisions: BUY=", "").split(", SELL=")
+                        if len(parts) == 2:
+                            buy_count = int(parts[0])
+                            sell_count = int(parts[1])
+                    elif "Avg slope live (x m15):" in line:
+                        avg_slope = float(line.split(":")[-1].strip())
+                    elif "Number of add/remove lines in month:" in line:
+                        lines_count = int(line.split(":")[-1].strip())
+                
+                total_decisions = buy_count + sell_count
+                if total_decisions > 0:
+                    summary_line += f" | BUY: {buy_count} | SELL: {sell_count}"
+                if avg_slope > 0:
+                    summary_line += f" | slope live: {avg_slope:.2f}"
+                if lines_count > 0:
+                    summary_line += f" | lines: {lines_count}"
+    except Exception as e:
+        # If we can't read the stats, just continue without them
+        pass
+    
     print(f"\nWD summary for month {summary_line}")
 
     try:
