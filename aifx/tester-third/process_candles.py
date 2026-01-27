@@ -618,6 +618,8 @@ def main():
             if active_charts_dir.resolve() != requested_charts_dir.resolve():
                 _clean_charts_dir(active_charts_dir)
     
+    start_time = time.time()
+    
     if not revert:
         process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results)
     else:
@@ -629,7 +631,13 @@ def main():
         num_m15_in_month = 4 * 24 * 30
         avg_slope_live = num_m15_in_month / quality_stats["num_slopes"] \
             if quality_stats["num_slopes"] != 0 else 0
+        
+        elapsed_time = time.time() - start_time
+        minutes = int(elapsed_time // 60)
+        seconds = elapsed_time % 60
+        
         print("\nQuality Statistics:")
+        print(f"  Processing time: {minutes}m {seconds:.2f}s")
         print(f"  Avg slope live (x m15): {avg_slope_live:.2f}")
         print(f"  Number of add/remove lines in month: {quality_stats['add_remove_line']}")
 
