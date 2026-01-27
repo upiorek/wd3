@@ -187,6 +187,46 @@ def load_csv_data(filepath):
     
     return df
 
+def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:   
+    impulses_minmax = []     
+    for i in range(order // 2, len(candles) - order // 2):
+        current = candles[i]
+        
+        # helper lambdas
+        get_low = lambda x: min(x.open, x.close)
+        get_high = lambda x: max(x.open, x.close)
+
+        l = max(0, i - order)
+        r = min(len(candles), i + 1 + order)
+
+        # min
+        body_low = get_low(current)
+        if body_low < min(
+            get_low(min(candles[l: i], key=get_low)),
+            get_low(min(candles[i + 1 : r], key=get_low))
+        ):
+            impulses_minmax.append(
+                impulse_point(
+                    i, 
+                    current, 
+                    type=impulse_point.TYPE_MIN,
+                    subtype=impulse_point.SUBTYPE_MINMAX_7))
+        
+        # max
+        body_high = get_high(current)
+        if body_high > max(
+            get_high(max(candles[l: i], key=get_high)),
+            get_high(max(candles[i + 1 : r], key=get_high))
+        ):
+            impulses_minmax.append(
+                impulse_point(
+                    i, 
+                    current, 
+                    type=impulse_point.TYPE_MAX,
+                    subtype=impulse_point.SUBTYPE_MINMAX_7))
+            
+    return impulses_minmax    
+
 def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     """
     Wykrywa impulsy rynkowe na podstawie różnych kryteriów.
@@ -228,42 +268,7 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
             impulses_gap.append(impulse_curr)
 
     # min max
-    impulses_minmax = []
-    for i in range(MINMAX_ORDER // 2, len(candles) - MINMAX_ORDER // 2):
-        current = candles[i]
-        
-        # helper lambdas
-        get_low = lambda x: min(x.open, x.close)
-        get_high = lambda x: max(x.open, x.close)
-
-        l = max(0, i - MINMAX_ORDER)
-        r = min(len(candles), i + 1 + MINMAX_ORDER)
-
-        # min
-        body_low = get_low(current)
-        if body_low < min(
-            get_low(min(candles[l: i], key=get_low)),
-            get_low(min(candles[i + 1 : r], key=get_low))
-        ):
-            impulses_minmax.append(
-                impulse_point(
-                    i, 
-                    current, 
-                    type=impulse_point.TYPE_MIN,
-                    subtype=impulse_point.SUBTYPE_MINMAX_7))
-        
-        # max
-        body_high = get_high(current)
-        if body_high > max(
-            get_high(max(candles[l: i], key=get_high)),
-            get_high(max(candles[i + 1 : r], key=get_high))
-        ):
-            impulses_minmax.append(
-                impulse_point(
-                    i, 
-                    current, 
-                    type=impulse_point.TYPE_MAX,
-                    subtype=impulse_point.SUBTYPE_MINMAX_7))
+    impulses_minmax = detect_minmax(candles, order=MINMAX_ORDER)
             
     impulses_fa = []
     # first after min/max - mark the first candle after local min/max
