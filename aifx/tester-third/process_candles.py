@@ -33,65 +33,78 @@ quality_stats = {
     # data
     "slopes": [], # (val, num_periods)
     "lines": [], # [(line_id, num_periods), ...]
+    "results": [], # [(filename, result_str), ...] for deferred processing
 }
 
 def version() -> str:
     """Return module version info."""
     return "process_candles 1.2"
 
-def update_quality_stats(result: str):
-    # example result: 'CROSSED DS2 UP | D0: -121.69 | DR1: -372.39 | DS1: -85.58 | DS2: -7.45 | 
-    #   DS3: 107.10 | A0: 1308.55 | AR1: 326.98 | AR2: 230.42 | AR3: -80.66 | AS1: 1633.04 | 
-    #   SLOPE: -3.0385 | BASE: 21299.18'
+def update_quality_stats(filename: str, result: str):
+    """Collect result for later processing in chronological order."""
+    # Thread-safe append to results list
+    with PRINT_LOCK:
+        quality_stats["results"].append((filename, result))
 
-    result_slope = float(result.split('| SLOPE: ')[-1].split(' |')[0].strip())
-    result_line_ids = [] # e.g. ['DS2', 'D0', ...]
-    for part in result.split('|'):
-        part = part.strip()
-        if part.startswith(('D', 'A')) and ':' in part:
-            line_id = part.split(':')[0].strip()
-            result_line_ids.append(line_id)
-    result_line_ids.sort()
 
-    # check if given slope matches the last slope in quality_stats
-    reset_lines = False
-    if quality_stats["slopes"] == []:
-        # initialize
-        quality_stats["slopes"].append((result_slope, 1))
-        reset_lines = True
-    elif quality_stats["slopes"] and quality_stats["slopes"][-1][0] == result_slope:
-        # same slope as last one - increment num_periods
-        num_periods = quality_stats["slopes"][-1][1] + 1
-        quality_stats["slopes"][-1] = (result_slope, num_periods)
-    else:
-        # new slope - add to list
-        quality_stats["slopes"].append((result_slope, 1))
-        reset_lines = True
+def calculate_quality_stats():
+    """Process collected results in chronological order to calculate stats."""
+    # Sort results by filename (which is timestamp-based)
+    sorted_results = sorted(quality_stats["results"], key=lambda x: x[0])
+    
+    for filename, result in sorted_results:
+        # example result: 'CROSSED DS2 UP | D0: -121.69 | DR1: -372.39 | DS1: -85.58 | DS2: -7.45 | 
+        #   DS3: 107.10 | A0: 1308.55 | AR1: 326.98 | AR2: 230.42 | AR3: -80.66 | AS1: 1633.04 | 
+        #   SLOPE: -3.0385 | BASE: 21299.18'
 
-    # update lines data
-    if reset_lines:
-        # just add new set of ids
-        quality_stats["lines"] += [[(line_id, 1) for line_id in result_line_ids]]
-    else:
-        # for each line in result_line_ids, check if it exists in last quality_stats["lines"]
-        all_match = True
-        num_diff = 0
-        temp_stats = quality_stats["lines"][-1][:]
-        for i, (line_id, num_periods) in enumerate(quality_stats["lines"][-1]):
-            if line_id in result_line_ids:
-                # line exists - increment num_periods
-                temp_stats[i] = (line_id, num_periods + 1)
-            else:
-                all_match = False
-                num_diff += 1
-        if all_match and len(temp_stats) == len(result_line_ids):
-            # all lines match - update quality_stats
-            quality_stats["lines"][-1] = temp_stats
+        result_slope = float(result.split('| SLOPE: ')[-1].split(' |')[0].strip())
+        result_line_ids = [] # e.g. ['DS2', 'D0', ...]
+        for part in result.split('|'):
+            part = part.strip()
+            if part.startswith(('D', 'A')) and ':' in part:
+                line_id = part.split(':')[0].strip()
+                result_line_ids.append(line_id)
+        result_line_ids.sort()
+
+        # check if given slope matches the last slope in quality_stats
+        reset_lines = False
+        if quality_stats["slopes"] == []:
+            # initialize
+            quality_stats["slopes"].append((result_slope, 1))
+            reset_lines = True
+        elif quality_stats["slopes"] and quality_stats["slopes"][-1][0] == result_slope:
+            # same slope as last one - increment num_periods
+            num_periods = quality_stats["slopes"][-1][1] + 1
+            quality_stats["slopes"][-1] = (result_slope, num_periods)
         else:
-            # lines changed - add new entry
-            quality_stats["lines"].append([(line_id, 1) for line_id in result_line_ids])
-            # slope stays the same but lines changed - count as add/remove line
-            quality_stats["add_remove_line"] += abs(len(temp_stats) - len(result_line_ids)) + num_diff
+            # new slope - add to list
+            quality_stats["slopes"].append((result_slope, 1))
+            reset_lines = True
+
+        # update lines data
+        if reset_lines:
+            # just add new set of ids
+            quality_stats["lines"] += [[(line_id, 1) for line_id in result_line_ids]]
+        else:
+            # for each line in result_line_ids, check if it exists in last quality_stats["lines"]
+            all_match = True
+            num_diff = 0
+            temp_stats = quality_stats["lines"][-1][:]
+            for i, (line_id, num_periods) in enumerate(quality_stats["lines"][-1]):
+                if line_id in result_line_ids:
+                    # line exists - increment num_periods
+                    temp_stats[i] = (line_id, num_periods + 1)
+                else:
+                    all_match = False
+                    num_diff += 1
+            if all_match and len(temp_stats) == len(result_line_ids):
+                # all lines match - update quality_stats
+                quality_stats["lines"][-1] = temp_stats
+            else:
+                # lines changed - add new entry
+                quality_stats["lines"].append([(line_id, 1) for line_id in result_line_ids])
+                # slope stays the same but lines changed - count as add/remove line
+                quality_stats["add_remove_line"] += abs(len(temp_stats) - len(result_line_ids)) + num_diff
 
 def process_file(file_path, percentage=.0, revert=False, keep_results=False):
     """Process or revert a CSV file - simulates order-maker logic."""
@@ -210,7 +223,7 @@ def process_file(file_path, percentage=.0, revert=False, keep_results=False):
                     temp_path.unlink()
 
                     # quality stats
-                    update_quality_stats(result)
+                    update_quality_stats(file_path.name, result)
 
                     # decision
                     order_type = decissioner.decision(result)
@@ -242,6 +255,214 @@ def process_file(file_path, percentage=.0, revert=False, keep_results=False):
             print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name} {order_type}")
         else:
             print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
+
+def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results):
+    """Process CSV files by adding BUY/SELL decision markers."""
+    # Get list of order files to match (only in compare mode)
+    order_files = set()
+    if compare_mode and orders_dir.exists():
+        for order_file in orders_dir.glob("*.csv"):
+            order_files.add(order_file.stem)  # Get filename without extension
+        print(f"Compare mode: Matching {len(order_files)} order files\n")
+    
+    if compare_mode and not order_files:
+        print("No order files found - skipping processing")
+        print("(Run order-maker EA first to generate order files)")
+        return
+    
+    processed_count = 0
+    skipped_count = 0
+    files_to_remove = []
+
+    if mt:
+        errors = 0
+        futures = []
+        inflight_limit = max(1, (mt_workers or 1) * 2)
+
+        executor = ThreadPoolExecutor(max_workers=mt_workers)
+        try:
+            file_iter = iter(csv_files)
+
+            def _submit_next() -> bool:
+                nonlocal processed_count, skipped_count
+                for csv_file in file_iter:
+                    if STOP_EVENT.is_set():
+                        return False
+                    # In compare mode: only process files that have corresponding order files
+                    # In normal mode: process all files
+                    if compare_mode:
+                        if csv_file.stem in order_files:
+                            percentage = (processed_count + 1) * 100 / len(csv_files)
+                            futures.append(executor.submit(process_file, csv_file, percentage, False, keep_results))
+                            processed_count += 1
+                            return True
+                        else:
+                            if not csv_file.stem.endswith('_mod'):
+                                files_to_remove.append(csv_file)
+                                skipped_count += 1
+                            continue
+                    else:
+                        if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
+                            continue
+                        percentage = (processed_count + 1) * 100 / len(csv_files)
+                        futures.append(executor.submit(process_file, csv_file, percentage, False, keep_results))
+                        processed_count += 1
+                        return True
+                return False
+
+            while len(futures) < inflight_limit and _submit_next():
+                pass
+
+            while futures:
+                done_future = next(as_completed(futures))
+                futures.remove(done_future)
+                try:
+                    done_future.result()
+                except Exception as e:
+                    errors += 1
+                    with PRINT_LOCK:
+                        print(f"Error: {e}")
+
+                while len(futures) < inflight_limit and _submit_next():
+                    pass
+
+        except KeyboardInterrupt:
+            STOP_EVENT.set()
+            with PRINT_LOCK:
+                print("\nInterrupted (Ctrl+C). Stopping new work; waiting for in-flight tasks to finish...")
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+        if errors:
+            with PRINT_LOCK:
+                print(f"Warning: {errors} file(s) failed during multithreaded processing")
+    else:
+        for csv_file in csv_files:
+            # In compare mode: only process files that have corresponding order files
+            # In normal mode: process all files
+            if compare_mode:
+                if csv_file.stem in order_files:
+                    percentage = (processed_count + 1) * 100 / len(csv_files) 
+                    process_file(csv_file, percentage, False, keep_results)
+                    processed_count += 1
+                else:
+                    # Only delete source files if we're actively matching
+                    if not csv_file.stem.endswith('_mod'):
+                        files_to_remove.append(csv_file)
+                        skipped_count += 1
+            else:
+                # Normal mode: process all files (except _mod and _temp)
+                if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
+                    continue
+
+                percentage = (processed_count + 1) * 100 / len(csv_files) 
+                process_file(csv_file, percentage, False, keep_results)
+                processed_count += 1
+    
+    # Remove skipped files (only in compare mode)
+    if compare_mode and files_to_remove:
+        print(f"\nRemoving {len(files_to_remove)} unmatched source files...")
+        for file_to_remove in files_to_remove:
+            try:
+                file_to_remove.unlink()
+                print(f"Removed: {file_to_remove.name}")
+            except Exception as e:
+                print(f"Error removing {file_to_remove.name}: {e}")
+    
+    print(f"\nProcessed: {processed_count} files")
+    
+    # Calculate quality stats from collected results in chronological order
+    if quality_stats["results"]:
+        calculate_quality_stats()
+    
+    # Process candles version
+    print(f"Process candles version: {version()}")
+    # Decissioner version
+    print(f"Decissioner version: {decissioner.version()}")
+    # Statistics - #BUY vs #SELL in decision files
+    for (buy_count, sell_count) in [(0, 0)]:
+        decision_files = sorted((candles_dir / "charts").glob("*_decision.txt"))
+        for decision_file in decision_files:
+            try:
+                with open(decision_file, 'r') as f:
+                    content = f.read().strip()
+                    # line contains BUY or SELL
+                    if "BUY" in content:
+                        buy_count += 1
+                    elif "SELL" in content:
+                        sell_count += 1
+            except Exception as e:
+                print(f"Warning: could not read {decision_file}: {e}")
+        print(f"Decisions: BUY={buy_count}, SELL={sell_count}")
+        break
+
+
+def revert_files(csv_files, candles_dir, mt, mt_workers):
+    """Revert _mod.csv files back to original format."""
+    processed_count = 0
+
+    if mt:
+        futures = []
+        errors = 0
+        inflight_limit = max(1, (mt_workers or 1) * 2)
+
+        executor = ThreadPoolExecutor(max_workers=mt_workers)
+        try:
+            file_iter = iter(csv_files)
+
+            def _submit_next() -> bool:
+                nonlocal processed_count
+                for csv_file in file_iter:
+                    if STOP_EVENT.is_set():
+                        return False
+                    percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
+                    futures.append(executor.submit(process_file, csv_file, percentage, True))
+                    processed_count += 1
+                    return True
+                return False
+
+            while len(futures) < inflight_limit and _submit_next():
+                pass
+
+            while futures:
+                done_future = next(as_completed(futures))
+                futures.remove(done_future)
+                try:
+                    done_future.result()
+                except Exception as e:
+                    errors += 1
+                    with PRINT_LOCK:
+                        print(f"Error: {e}")
+                while len(futures) < inflight_limit and _submit_next():
+                    pass
+
+        except KeyboardInterrupt:
+            STOP_EVENT.set()
+            with PRINT_LOCK:
+                print("\nInterrupted (Ctrl+C). Stopping new work; waiting for in-flight tasks to finish...")
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+        if errors:
+            with PRINT_LOCK:
+                print(f"Warning: {errors} file(s) failed during multithreaded revert")
+    else:
+        for csv_file in csv_files:
+            percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
+            process_file(csv_file, percentage, revert=True)
+            processed_count += 1
+    
+    # delete "charts" directory
+    charts_dir = candles_dir / "charts"
+    if charts_dir.exists() and charts_dir.is_dir():
+        try:
+            for chart_file in charts_dir.glob("*.png"):
+                chart_file.unlink()
+            charts_dir.rmdir()
+            print(f"\nRemoved charts directory: {charts_dir}")
+        except Exception as e:
+            print(f"Error removing charts directory: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Process or revert MT4 candle CSV files.")
@@ -398,202 +619,9 @@ def main():
                 _clean_charts_dir(active_charts_dir)
     
     if not revert:
-        # Get list of order files to match (only in compare mode)
-        order_files = set()
-        if compare_mode and orders_dir.exists():
-            for order_file in orders_dir.glob("*.csv"):
-                order_files.add(order_file.stem)  # Get filename without extension
-            print(f"Compare mode: Matching {len(order_files)} order files\n")
-        
-        if compare_mode and not order_files:
-            print("No order files found - skipping processing")
-            print("(Run order-maker EA first to generate order files)")
-            return
-        
-        processed_count = 0
-        skipped_count = 0
-        files_to_remove = []
-
-        if mt:
-            errors = 0
-            futures = []
-            inflight_limit = max(1, (mt_workers or 1) * 2)
-
-            executor = ThreadPoolExecutor(max_workers=mt_workers)
-            try:
-                file_iter = iter(csv_files)
-
-                def _submit_next() -> bool:
-                    nonlocal processed_count, skipped_count
-                    for csv_file in file_iter:
-                        if STOP_EVENT.is_set():
-                            return False
-                        # In compare mode: only process files that have corresponding order files
-                        # In normal mode: process all files
-                        if compare_mode:
-                            if csv_file.stem in order_files:
-                                percentage = (processed_count + 1) * 100 / len(csv_files)
-                                futures.append(executor.submit(process_file, csv_file, percentage, revert, keep_results))
-                                processed_count += 1
-                                return True
-                            else:
-                                if not csv_file.stem.endswith('_mod'):
-                                    files_to_remove.append(csv_file)
-                                    skipped_count += 1
-                                continue
-                        else:
-                            if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
-                                continue
-                            percentage = (processed_count + 1) * 100 / len(csv_files)
-                            futures.append(executor.submit(process_file, csv_file, percentage, revert, keep_results))
-                            processed_count += 1
-                            return True
-                    return False
-
-                while len(futures) < inflight_limit and _submit_next():
-                    pass
-
-                while futures:
-                    done_future = next(as_completed(futures))
-                    futures.remove(done_future)
-                    try:
-                        done_future.result()
-                    except Exception as e:
-                        errors += 1
-                        with PRINT_LOCK:
-                            print(f"Error: {e}")
-
-                    while len(futures) < inflight_limit and _submit_next():
-                        pass
-
-            except KeyboardInterrupt:
-                STOP_EVENT.set()
-                with PRINT_LOCK:
-                    print("\nInterrupted (Ctrl+C). Stopping new work; waiting for in-flight tasks to finish...")
-            finally:
-                executor.shutdown(wait=True, cancel_futures=True)
-
-            if errors:
-                with PRINT_LOCK:
-                    print(f"Warning: {errors} file(s) failed during multithreaded processing")
-        else:
-            for csv_file in csv_files:
-                # In compare mode: only process files that have corresponding order files
-                # In normal mode: process all files
-                if compare_mode:
-                    if csv_file.stem in order_files:
-                        percentage = (processed_count + 1) * 100 / len(csv_files) 
-                        process_file(csv_file, percentage, revert, keep_results)
-                        processed_count += 1
-                    else:
-                        # Only delete source files if we're actively matching
-                        if not csv_file.stem.endswith('_mod'):
-                            files_to_remove.append(csv_file)
-                            skipped_count += 1
-                else:
-                    # Normal mode: process all files (except _mod and _temp)
-                    if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
-                        continue
-
-                    percentage = (processed_count + 1) * 100 / len(csv_files) 
-                    process_file(csv_file, percentage, revert, keep_results)
-                    processed_count += 1
-        
-        # Remove skipped files (only in compare mode)
-        if compare_mode and files_to_remove:
-            print(f"\nRemoving {len(files_to_remove)} unmatched source files...")
-            for file_to_remove in files_to_remove:
-                try:
-                    file_to_remove.unlink()
-                    print(f"Removed: {file_to_remove.name}")
-                except Exception as e:
-                    print(f"Error removing {file_to_remove.name}: {e}")
-        
-        print(f"\nProcessed: {processed_count} files")
-        # Process candles version
-        print(f"Process candles version: {version()}")
-        # Decissioner version
-        print(f"Decissioner version: {decissioner.version()}")
-        # Statistics - #BUY vs #SELL in decision files
-        for (buy_count, sell_count) in [(0, 0)]:
-            decision_files = sorted((candles_dir / "charts").glob("*_decision.txt"))
-            for decision_file in decision_files:
-                try:
-                    with open(decision_file, 'r') as f:
-                        content = f.read().strip()
-                        # line contains BUY or SELL
-                        if "BUY" in content:
-                            buy_count += 1
-                        elif "SELL" in content:
-                            sell_count += 1
-                except Exception as e:
-                    print(f"Warning: could not read {decision_file}: {e}")
-            print(f"Decisions: BUY={buy_count}, SELL={sell_count}")
-            break
+        process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results)
     else:
-        processed_count = 0
-
-        if mt:
-            futures = []
-            errors = 0
-            inflight_limit = max(1, (mt_workers or 1) * 2)
-
-            executor = ThreadPoolExecutor(max_workers=mt_workers)
-            try:
-                file_iter = iter(csv_files)
-
-                def _submit_next() -> bool:
-                    nonlocal processed_count
-                    for csv_file in file_iter:
-                        if STOP_EVENT.is_set():
-                            return False
-                        percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
-                        futures.append(executor.submit(process_file, csv_file, percentage, True))
-                        processed_count += 1
-                        return True
-                    return False
-
-                while len(futures) < inflight_limit and _submit_next():
-                    pass
-
-                while futures:
-                    done_future = next(as_completed(futures))
-                    futures.remove(done_future)
-                    try:
-                        done_future.result()
-                    except Exception as e:
-                        errors += 1
-                        with PRINT_LOCK:
-                            print(f"Error: {e}")
-                    while len(futures) < inflight_limit and _submit_next():
-                        pass
-
-            except KeyboardInterrupt:
-                STOP_EVENT.set()
-                with PRINT_LOCK:
-                    print("\nInterrupted (Ctrl+C). Stopping new work; waiting for in-flight tasks to finish...")
-            finally:
-                executor.shutdown(wait=True, cancel_futures=True)
-
-            if errors:
-                with PRINT_LOCK:
-                    print(f"Warning: {errors} file(s) failed during multithreaded revert")
-        else:
-            for csv_file in csv_files:
-                percentage = (processed_count + 1) * 100 / len(csv_files) if csv_files else 100.0
-                process_file(csv_file, percentage, revert=True)
-                processed_count += 1
-        
-        # delete "charts" directory
-        charts_dir = candles_dir / "charts"
-        if charts_dir.exists() and charts_dir.is_dir():
-            try:
-                for chart_file in charts_dir.glob("*.png"):
-                    chart_file.unlink()
-                charts_dir.rmdir()
-                print(f"\nRemoved charts directory: {charts_dir}")
-            except Exception as e:
-                print(f"Error removing charts directory: {e}")
+        revert_files(csv_files, candles_dir, mt, mt_workers)
     
     # quality stats output
     if not revert and ALGO == "magic_lines":
