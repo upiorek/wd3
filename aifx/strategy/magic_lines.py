@@ -60,18 +60,19 @@ MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
-MINMAX_ORDER = 7  # liczba świeczek do analizy lokalnych min/max
-HIERARCHICAL_TOLERANCE = 10  # Tolerancja dla linii hierarchicznych (punkty)
-LINE_TOLERANCE = 5  # Tolerancja dla dopasowania punktów do linii głównej
-SHOW_IMPULSES = True  # Czy pokazywać impulsy na wykresie
-DUMP_IMAGES = True  # Czy zapisywać wykresy do plików
-IMAGE_DPI = 600  # DPI dla zapisywanych obrazów
+HIERARCHICAL_TOLERANCE = 1.0  # Tolerancja dla linii hierarchicznych (punkty)
+LINE_TOLERANCE = 0.5  # Tolerancja dla dopasowania punktów do linii głównej
 
-# ===== score impulsow =====
-SHADOW_IMPULSE_STRENGTH = 0.5  # siła impulsu dla cieni lokalnych min/max
-BODY_IMPULSE_STRENGTH = 1.0    # siła impulsu dla korpusów lokalnych min/max
-GAP_IMPULSE_STRENGTH = 1.0     # siła impulsu dla luk cenowych
-FA_IMPULSE_STRENGTH = 1.0     # siła impulsu dla first after
+# ===== WYKRESY =====
+SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
+DUMP_IMAGES = True      # Czy zapisywać wykresy do plików
+IMAGE_DPI = 600         # DPI dla zapisywanych obrazów
+
+# ===== SIŁA IMPULSÓW =====
+SHADOW_IMPULSE_STRENGTH = 0.5   # siła impulsu dla cieni lokalnych min/max
+MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max UWAGA sumuje się
+GAP_IMPULSE_STRENGTH = 1.0      # siła impulsu dla luk cenowych
+FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
 
 # ===== KLASY DANYCH =====
 
@@ -87,11 +88,11 @@ class impulse_point:
     # typy
     TYPE_MIN = 0 
     TYPE_MAX = 1
+    # podtypy min/max - rozmiar okna
     SUBTYPE_MINMAX_5 = 5
-    SUBTYPE_MINMAX_7 = 7 # toto remove i zmienić order
     SUBTYPE_MINMAX_9 = 9
-    SUBTYPE_MINMAX_15 = 15
-    SUBTYPE_MINMAX_33 = 33    
+    SUBTYPE_MINMAX_17 = 17
+    SUBTYPE_MINMAX_33 = 33
 
     TYPE_GAP = 2
     SUBTYPE_GAP_LD = 0
@@ -120,6 +121,37 @@ class impulse_point:
         self._price = None
         self._price = self.price()
 
+    def subtype_str(self):
+        if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
+            return f"{self.subtype}"
+        elif self.type == self.TYPE_GAP:
+            if self.subtype == self.SUBTYPE_GAP_LD:
+                return "LD"
+            elif self.subtype == self.SUBTYPE_GAP_LU:
+                return "LU"
+            elif self.subtype == self.SUBTYPE_GAP_RD:
+                return "RD"
+            elif self.subtype == self.SUBTYPE_GAP_RU:
+                return "RU"
+        elif self.type == self.TYPE_FA:
+            if self.subtype == self.SUBTYPE_FA_MIN:
+                return "MIN"
+            elif self.subtype == self.SUBTYPE_FA_MAX:
+                return "MAX"
+        return "UNKNOWN"
+
+    def type_str(self):
+        if self.type == self.TYPE_MIN:
+            return f"MIN_{self.subtype_str()}"
+        elif self.type == self.TYPE_MAX:
+            return f"MAX_{self.subtype_str()}"
+        elif self.type == self.TYPE_GAP:
+            return f"GAP_{self.subtype_str()}"
+        elif self.type == self.TYPE_FA:
+            return f"FA_{self.subtype_str()}"
+        else:
+            return "UNKNOWN"
+
     def price(self):
         if self._price is not None:
             return self._price
@@ -144,13 +176,22 @@ class impulse_point:
             
     def strength(self):
         if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
-            return BODY_IMPULSE_STRENGTH
+            if self.subtype == self.SUBTYPE_MINMAX_5:
+                return MINMAX_IMPULSE_STRENGTH * 1.0
+            elif self.subtype == self.SUBTYPE_MINMAX_9:
+                return MINMAX_IMPULSE_STRENGTH * 2.0
+            elif self.subtype == self.SUBTYPE_MINMAX_17:
+                return MINMAX_IMPULSE_STRENGTH * 3.0
+            elif self.subtype == self.SUBTYPE_MINMAX_33:
+                return MINMAX_IMPULSE_STRENGTH * 4.0
+            else:
+                assert False, "Unknown min/max subtype"
         elif self.type == self.TYPE_GAP:
             return GAP_IMPULSE_STRENGTH
         elif self.type == self.TYPE_FA:
             return FA_IMPULSE_STRENGTH
         else:
-            return 1.0
+            assert False, "Unknown impulse point type"
 
 class magic_line:
     def __init__(self, 
@@ -210,7 +251,7 @@ def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:
                     i, 
                     current, 
                     type=impulse_point.TYPE_MIN,
-                    subtype=impulse_point.SUBTYPE_MINMAX_7))
+                    subtype=order))
         
         # max
         body_high = get_high(current)
@@ -223,7 +264,7 @@ def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:
                     i, 
                     current, 
                     type=impulse_point.TYPE_MAX,
-                    subtype=impulse_point.SUBTYPE_MINMAX_7))
+                    subtype=order))
             
     return impulses_minmax    
 
@@ -268,8 +309,25 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
             impulses_gap.append(impulse_curr)
 
     # min max
-    impulses_minmax = detect_minmax(candles, order=MINMAX_ORDER)
-            
+    impulses_minmax = []
+    for order in [impulse_point.SUBTYPE_MINMAX_5,
+                  impulse_point.SUBTYPE_MINMAX_9,
+                  impulse_point.SUBTYPE_MINMAX_17,
+                  impulse_point.SUBTYPE_MINMAX_33]:
+        temp = detect_minmax(candles, order=order)
+        impulses_minmax.extend(temp)
+    
+    # unique minmax - leave only the strongest (largest order)
+    unique_minmax = {}
+    for p in impulses_minmax:
+        if p.index not in unique_minmax:
+            unique_minmax[p.index] = p
+        else:
+            # keep the one with larger order (stronger)
+            if p.subtype > unique_minmax[p.index].subtype:
+                unique_minmax[p.index] = p
+    impulses_minmax = list(unique_minmax.values())
+
     impulses_fa = []
     # first after min/max - mark the first candle after local min/max
     # min fa height = 20 points
@@ -297,7 +355,7 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     #for p in impulses_gap:
     #    print(f"  Detected GAP at index {p.index}, price: {p.price():.2f}")
     #for p in impulses_minmax:
-    #    print(f"  Detected minmax at index {p.index}, price: {p.price():.2f}")
+    #    print(f"  Detected minmax {p.subtype} at index {p.index}, price: {p.price():.2f}")
     #for p in impulses_fa:
     #    print(f"  Detected FA at index {p.index}, price: {p.price():.2f}")
     
@@ -362,7 +420,7 @@ def find_parallel_level(
             dist = abs(pt.price() - expected_price)
             
             if dist <= HIERARCHICAL_TOLERANCE:
-                score += pt.strength()
+                score += pt.strength() * (1.0 - dist / HIERARCHICAL_TOLERANCE)  # ważone przez odległość
                 touches.append(pt)
         
         if score > best_score:
@@ -386,8 +444,8 @@ def find_parallel_level(
 
 def find_hierarchical_lines(base_line : magic_line,
                             points : list[impulse_point], 
-                            max_num_lines=4, 
-                            tolerance=50) \
+                            max_num_lines: int = 4, 
+                            tolerance : float = 1.0) \
                                 -> tuple[list[magic_line], list[magic_line]]:
     """
     Znajduje hierarchiczne linie równoległe poniżej i powyżej bazowej linii.
@@ -412,11 +470,21 @@ def find_hierarchical_lines(base_line : magic_line,
     
     return lines_below, lines_above
 
-def calculate_line_score(slope, points, tolerance=LINE_TOLERANCE) -> magic_line:
-    """Oblicza score dla linii o danym slope"""
+def calculate_line_score(slope : float, 
+        points : list[impulse_point], 
+        tolerance: float = LINE_TOLERANCE, 
+        debug: int = 0) -> magic_line:    
+    """
+    Oblicza score dla linii o danym slope
+    """
     best_intercept = None
     best_score = 0
     best_used = []
+
+    # DEBUG
+    best_debug_string = ""
+    if (debug):
+        print(f"  Calculating line score for slope={slope:.4f}")
     
     # Dla każdego punktu oblicz intercept i policz score
     for p_start in points:
@@ -424,19 +492,41 @@ def calculate_line_score(slope, points, tolerance=LINE_TOLERANCE) -> magic_line:
         
         score = 0
         used = []
+        debug_string = ""
+
         # Sprawdź ile punktów pasuje do tej linii
         for p in points:
+            # optymalizacja: pomiń punkty przed p_start
+            if p.index <= p_start.index:
+                continue
+
             expected_price = slope * p.index + intercept
             dist = abs(p.price() - expected_price)
-            if dist <= tolerance:
-                score += p.strength()
+            if dist <= tolerance: 
+                # ważone przez odległość
+                score += p.strength() * (1.0 - dist / tolerance) 
                 used.append(p)
+
+                # DEBUG
+                if (debug):
+                    debug_string += f"    Point at index {p.index} type {p.type_str()} "\
+                        f"price {p.price():.2f} matches line " \
+                        f"expected {expected_price:.2f} "\
+                        f"dist {dist:.2f} "\
+                        f"score contrib {p.strength() * (1.0 - dist / tolerance):.2f}\n"
         
         # Zaktualizuj najlepszy wynik
         if score > best_score:
             best_score = score
             best_intercept = intercept
             best_used = used
+            # DEBUG
+            best_debug_string = debug_string
+
+    # DEBUG
+    if (debug):
+        print(f"    Best intercept: {best_intercept:.2f} with score {best_score:.2f} using {len(best_used)} points")
+        print(best_debug_string)
     
     return magic_line(
         slope=slope,
@@ -496,23 +586,31 @@ def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[im
     best_pair = None
     best_combined_score = 0
     
+    slope_scores = [] # [(combined_score, {'ascending': , 'descending':}), ...]
     for i, abs_slope in enumerate(unique_slopes):
         # print(f"Sprawdzam slope: {abs_slope:.4f} {i+1}/{len(unique_slopes)}     ", end='\r')
         asc_line = calculate_line_score(abs_slope, asc_points)
         desc_line = calculate_line_score(-abs_slope, dsc_points)
         combined_score = asc_line.score + desc_line.score
         
-        if combined_score > best_combined_score:
-            best_combined_score = combined_score
-            best_pair = {
-                'ascending': asc_line,
-                'descending': desc_line,
-                'combined_score': combined_score
-            }
+        slope_scores.append((combined_score, {
+            'ascending': asc_line,
+            'descending': desc_line,
+            'slope': abs_slope
+        }))
+
+    best_combined_score = 0
+    slope_scores.sort(key=lambda x: x[0], reverse=True)
+    if slope_scores:
+        best_combined_score, best_pair = slope_scores[0]
     
     # Przygotuj wyniki
     if not best_pair:
         return [], []
+    
+    # DEBUG
+    # calculate_line_score(-best_pair['slope'], dsc_points, debug=1)
+    # print(f"  Best lines: ASC score={best_pair['ascending'].score:.2f}, DESC score={best_pair['descending'].score:.2f}, Combined score={best_combined_score:.2f}")
     
     best_ascending = best_pair['ascending'] if best_pair['ascending'].score > 0 else magic_line(score=0)
     best_descending = best_pair['descending'] if best_pair['descending'].score > 0 else magic_line(score=0)
@@ -520,10 +618,10 @@ def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[im
     detected_lines = []
     
     # Dodaj główną oraz hierarchiczne linie
-    for (main_line, points) in [(best_descending, dsc_points), (best_ascending, asc_points)]:
+    for (main_line, pts) in [(best_descending, dsc_points), (best_ascending, asc_points)]:
         below, above = find_hierarchical_lines(
             main_line,
-            points,
+            pts,
             max_num_lines=MAX_HIERARCHICAL_LEVELS,
             tolerance=HIERARCHICAL_TOLERANCE
         )
@@ -598,6 +696,8 @@ def plot_chart(df_plot,
             elif point.type == impulse_point.TYPE_FA:
                 idx = point.index
                 all_fa[idx] = point.price()
+                # DEBUG
+                # print(f"  FA point at index {idx}, price {point.price():.2f}")
         
         # Utwórz serie dla każdego typu punktu
         impulse_series = pd.Series(index=df_plot.index, dtype=float)
