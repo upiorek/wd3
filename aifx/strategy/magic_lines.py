@@ -60,11 +60,12 @@ MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
-HIERARCHICAL_TOLERANCE = 1.0  # Tolerancja dla linii hierarchicznych (punkty)
-LINE_TOLERANCE = 0.5  # Tolerancja dla dopasowania punktów do linii głównej
+HIERARCHICAL_TOLERANCE = 5.0  # Tolerancja dla linii hierarchicznych (punkty)
+LINE_TOLERANCE = 2.0  # Tolerancja dla dopasowania punktów do linii głównej
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
+SHOW_TOLERANCE = False   # Czy pokazywać tolerancję na wykresie
 DUMP_IMAGES = True      # Czy zapisywać wykresy do plików
 IMAGE_DPI = 600         # DPI dla zapisywanych obrazów
 
@@ -754,6 +755,40 @@ def plot_chart(df_plot,
                 marker='*',
                 color='orange',
                 alpha=0.7
+            ))
+
+    if SHOW_TOLERANCE:
+        up_tolerance = {}
+        down_tolerance = {}
+        for point in points:
+            tolerance = HIERARCHICAL_TOLERANCE
+            idx = point.index
+            up_tolerance[idx] = point.price() + tolerance
+            down_tolerance[idx] = point.price() - tolerance
+        up_tolerance_series = pd.Series(index=df_plot.index, dtype=float)
+        down_tolerance_series = pd.Series(index=df_plot.index, dtype=float)
+        for i, dt in enumerate(df_plot.index):
+            if i in up_tolerance:
+                up_tolerance_series.iloc[i] = up_tolerance[i]
+            if i in down_tolerance:
+                down_tolerance_series.iloc[i] = down_tolerance[i]
+        if not up_tolerance_series.isna().all():
+            apds.append(mpf.make_addplot(
+                up_tolerance_series,
+                type='scatter',
+                markersize=1,
+                marker='.',
+                color='gray',
+                alpha=1
+            ))
+        if not down_tolerance_series.isna().all():
+            apds.append(mpf.make_addplot(
+                down_tolerance_series,
+                type='scatter',
+                markersize=1,
+                marker='.',
+                color='gray',
+                alpha=1
             ))
     
     # Generuj wykres
