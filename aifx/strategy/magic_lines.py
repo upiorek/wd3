@@ -471,6 +471,40 @@ def find_hierarchical_lines(base_line : magic_line,
     
     return lines_below, lines_above
 
+def calculate_line_score(slope: float, 
+        p_start: impulse_point, 
+        points : list[impulse_point], 
+        tolerance: float = LINE_TOLERANCE,
+        debug: int = 0) -> tuple[float, float, list[impulse_point], str]:
+    intercept = p_start.price() - slope * p_start.index
+        
+    score = 0
+    used : list[impulse_point] = []
+    debug_string = ""
+
+    # Sprawdź ile punktów pasuje do tej linii
+    for p in points:
+        # optymalizacja: pomiń punkty przed p_start
+        if p.index <= p_start.index:
+            continue
+
+        expected_price = slope * p.index + intercept
+        dist = abs(p.price() - expected_price)
+        if dist <= tolerance: 
+            # ważone przez odległość
+            score += p.strength() * (1.0 - dist / tolerance) 
+            used.append(p)
+
+            # DEBUG
+            if (debug):
+                debug_string += f"    Point at index {p.index} type {p.type_str()} "\
+                    f"price {p.price():.2f} matches line " \
+                    f"expected {expected_price:.2f} "\
+                    f"dist {dist:.2f} "\
+                    f"score contrib {p.strength() * (1.0 - dist / tolerance):.2f}\n"
+                
+    return intercept,score, used, debug_string
+
 def calculate_lines(slope : float, 
         points : list[impulse_point], 
         tolerance: float = LINE_TOLERANCE, 
@@ -485,33 +519,14 @@ def calculate_lines(slope : float,
     lines = [] # (intercept, score, used_points, debug_string)
     # Dla każdego punktu oblicz intercept i policz score
     for p_start in points:
-        intercept = p_start.price() - slope * p_start.index
         
-        score = 0
-        used = []
-        debug_string = ""
-
-        # Sprawdź ile punktów pasuje do tej linii
-        for p in points:
-            # optymalizacja: pomiń punkty przed p_start
-            if p.index <= p_start.index:
-                continue
-
-            expected_price = slope * p.index + intercept
-            dist = abs(p.price() - expected_price)
-            if dist <= tolerance: 
-                # ważone przez odległość
-                score += p.strength() * (1.0 - dist / tolerance) 
-                used.append(p)
-
-                # DEBUG
-                if (debug):
-                    debug_string += f"    Point at index {p.index} type {p.type_str()} "\
-                        f"price {p.price():.2f} matches line " \
-                        f"expected {expected_price:.2f} "\
-                        f"dist {dist:.2f} "\
-                        f"score contrib {p.strength() * (1.0 - dist / tolerance):.2f}\n"
-        
+        intercept, score, used, debug_string = calculate_line_score(
+            slope,
+            p_start,
+            points,
+            tolerance,
+            debug)
+                
         # dodaj do wyników
         lines.append((intercept, score, used, debug_string))
     
@@ -587,13 +602,15 @@ def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[im
     slope_scores = [] # [(combined_score, {'ascending': , 'descending':}), ...]
     for i, abs_slope in enumerate(unique_slopes):
         # print(f"Sprawdzam slope: {abs_slope:.4f} {i+1}/{len(unique_slopes)}     ", end='\r')
-        asc_line = calculate_lines(abs_slope, asc_points)[0]
-        desc_line = calculate_lines(-abs_slope, dsc_points)[0]
-        combined_score = asc_line.score + desc_line.score
+        asc_lines = calculate_lines(abs_slope, asc_points)
+        desc_lines = calculate_lines(-abs_slope, dsc_points)
+
+        # Get score from best lines
+        combined_score = asc_lines[0].score + desc_lines[0].score
         
         slope_scores.append((combined_score, {
-            'ascending': asc_line,
-            'descending': desc_line,
+            'ascending': asc_lines,
+            'descending': desc_lines,
             'slope': abs_slope
         }))
 
@@ -610,8 +627,8 @@ def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[im
     # calculate_line_score(-best_pair['slope'], dsc_points, debug=1)
     # print(f"  Best lines: ASC score={best_pair['ascending'].score:.2f}, DESC score={best_pair['descending'].score:.2f}, Combined score={best_combined_score:.2f}")
     
-    best_ascending = best_pair['ascending']
-    best_descending = best_pair['descending']
+    best_ascending = best_pair['ascending'][0]
+    best_descending = best_pair['descending'][0]
     
     detected_lines = []
     
