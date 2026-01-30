@@ -1,37 +1,15 @@
 """
 Magic Lines - Standalone Support/Resistance Line Detection and Analysis
 
-Ten skrypt analizuje dane CSV z cenami świeczek, wykrywa linie wsparcia/oporu,
-generuje wykresy i zapisuje wyniki przecięć ostatniej świeczki.
-
-Wyjście: plik support_lines_results.txt z wynikami dla każdego pliku CSV.
-Wykresy: zapisywane w folderze support_charts/
-
 Użycie:
     python magic_lines.py  # przetwarza wszystkie pliki CSV w tester-third/mt4_test_results/m15_candles/
     python magic_lines.py <plik.csv>  # przetwarza pojedynczy plik
 """
 
-
-
-"""
-TODO 
-
-przyspieszenie: generuj tylko najbliższe linie względem ostatniej świeczki
-czy linie rosnące powinny mieć wyższy score dla maxmia niż dla minima (i odwrotnie dla linii opadającej)?
-
-buy tylko na zielonych
-bugi - czasem złe min/max
-lepszy opis crossingu + dodać offsety
-
-"""
-
-
 import math
 import sys
 import os
 import pandas as pd
-import numpy as np
 import mplfinance as mpf
 
 from pathlib import Path
@@ -60,8 +38,7 @@ MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
-HIERARCHICAL_TOLERANCE = 5.0  # Tolerancja dla linii hierarchicznych (punkty)
-LINE_TOLERANCE = 2.0  # Tolerancja dla dopasowania punktów do linii głównej
+LINE_TOLERANCE = 2.0  # Tolerancja dla dopasowania punktów do linii
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -362,115 +339,6 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     
     return impulses_gap + impulses_minmax + impulses_fa
 
-# Funkcja do znajdowania linii równoległych
-def find_parallel_level(
-        points : list[impulse_point], 
-        prev_line : magic_line, 
-        search_up : bool) \
-            -> magic_line:
-    """
-    Znajduje kolejną linie równoległą (wsparcia lub oporu).
-    
-    Args:
-        points: lista punktów do analizy
-        prev_line: poprzednia linia (do wykluczenia punktów z obszau)
-        search_up: bool, czy szukamy powyżej (True) czy poniżej (False) poprzedniej linii
-    """
-
-    best_intercept = None
-    best_score = 0
-    best_touches = []
-    best_offset = 0
-    base_slope = 0
-    
-    # Dla każdego punktu sprawdź czy może być bazą dla nowej linii
-    for p in points:
-        # Sprawdź czy punkt leży w obszarze wykluczenia na podstawie prev_line
-        # oraz search_dir
-        if prev_line:
-            expected_price = prev_line.slope * p.index + prev_line.intercept
-            if not search_up and p.price() >= expected_price:
-                continue
-            if search_up and p.price() <= expected_price:
-                continue
-
-        base_slope = prev_line.slope
-        
-        # Oblicz intercept dla linii równoległej przechodzącej przez ten punkt
-        intercept = p.price() - prev_line.slope * p.index
-        offset = intercept - prev_line.intercept
-                
-        # Sprawdź czy offset ma odpowiedni znak
-        # search_up=False (poniżej): offset musi być ujemny (linia niżej)
-        # search_up=True (powyżej): offset musi być dodatni (linia wyżej)
-        if not search_up and offset >= 0:
-            continue
-        if search_up and offset <= 0:
-            continue
-
-        # Sprawdź czy offset jest wystarczająco duży 
-        # (minimalna odległość od poprzedniej linii)
-        if abs(offset) < MIN_HIERARCHICAL_OFFSET:
-            continue
-        
-        # Policz ile punktów pasuje do tej linii
-        score = 0
-        touches = []
-        for pt in points:
-            expected_price = base_slope * pt.index + intercept
-            dist = abs(pt.price() - expected_price)
-            
-            if dist <= HIERARCHICAL_TOLERANCE:
-                score += pt.strength() * (1.0 - dist / HIERARCHICAL_TOLERANCE)  # ważone przez odległość
-                touches.append(pt)
-        
-        if score > best_score:
-            best_score = score
-            best_intercept = intercept
-            best_touches = touches
-            best_offset = offset
-    
-    if best_score >= 2:  # Minimum 2 punkty
-        return magic_line(
-            slope=base_slope,
-            intercept=best_intercept,
-            offset=best_offset,
-            used_points=best_touches,
-            score=best_score,
-            level=prev_line.level + 1
-        )
-    
-    # No parallel line found - return None
-    return None
-
-def find_hierarchical_lines(base_line : magic_line,
-                            points : list[impulse_point], 
-                            max_num_lines: int = 4, 
-                            tolerance : float = 1.0) \
-                                -> tuple[list[magic_line], list[magic_line]]:
-    """
-    Znajduje hierarchiczne linie równoległe poniżej i powyżej bazowej linii.
-
-    """
-
-    lines_below = []
-    lines_above = []
-
-    for search_up in [True, False]:
-        prev_line = base_line
-        for i in range(max_num_lines):
-            parallel_line = find_parallel_level(points, prev_line, search_up)
-            if parallel_line:
-                if search_up:
-                    lines_above.append(parallel_line)
-                else:
-                    lines_below.append(parallel_line)
-                prev_line = parallel_line
-            else:
-                break
-    
-    return lines_below, lines_above
-
 def calculate_line_score(slope: float, 
         p_start: impulse_point, 
         points : list[impulse_point], 
@@ -484,8 +352,8 @@ def calculate_line_score(slope: float,
 
     # Sprawdź ile punktów pasuje do tej linii
     for p in points:
-        # optymalizacja: pomiń punkty przed p_start
-        if p.index <= p_start.index:
+        # optymalizacja: pomiń punkty przed p_start (uwzględnij p_start)
+        if p.index < p_start.index:
             continue
 
         expected_price = slope * p.index + intercept
@@ -519,7 +387,6 @@ def calculate_lines(slope : float,
     lines = [] # (intercept, score, used_points, debug_string)
     # Dla każdego punktu oblicz intercept i policz score
     for p_start in points:
-        
         intercept, score, used, debug_string = calculate_line_score(
             slope,
             p_start,
@@ -528,7 +395,13 @@ def calculate_lines(slope : float,
             debug)
                 
         # dodaj do wyników
+        # UWAGA: dla linii które nie przecinają żadnego punktu 
+        # score = score dla impulsu p_start
         lines.append((intercept, score, used, debug_string))
+
+        if (debug):
+            print(f"    Line intercept {intercept:.2f} score {score:.2f} "
+                f"using {len(used)} points starting from index {p_start.index}")
     
     # sortuj linie po score
     lines.sort(key=lambda x: x[1], reverse=True)
@@ -550,7 +423,8 @@ def calculate_lines(slope : float,
             
     return magic_lines
 
-def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[impulse_point]]:
+def find_support_lines(candles :list[candle], 
+        debug: int = 0) -> tuple[list[magic_line], list[impulse_point]]:
     """
     Znajduje główną linię support/resistance oraz hierarchiczne linie równoległe.    
     Zwraca listę wykrytych linii (od 0 do HIERARCHICAL_LEVELS - wznosząca i/lub opadająca).
@@ -597,16 +471,16 @@ def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[im
 
     # Dla każdego |slope| oblicz combined_score
     best_pair = None
-    best_combined_score = 0
     
     slope_scores = [] # [(combined_score, {'ascending': , 'descending':}), ...]
     for i, abs_slope in enumerate(unique_slopes):
         # print(f"Sprawdzam slope: {abs_slope:.4f} {i+1}/{len(unique_slopes)}     ", end='\r')
-        asc_lines = calculate_lines(abs_slope, asc_points)
-        desc_lines = calculate_lines(-abs_slope, dsc_points)
+        asc_lines = calculate_lines(abs_slope, asc_points, debug=debug)
+        desc_lines = calculate_lines(-abs_slope, dsc_points, debug=debug)
 
         # Get score from best lines
-        combined_score = asc_lines[0].score + desc_lines[0].score
+        combined_score = (asc_lines[0].score if asc_lines else 0) + \
+            (desc_lines[0].score if desc_lines else 0)
         
         slope_scores.append((combined_score, {
             'ascending': asc_lines,
@@ -614,36 +488,68 @@ def find_support_lines(candles :list[candle]) -> tuple[list[magic_line], list[im
             'slope': abs_slope
         }))
 
-    best_combined_score = 0
+    # Wybierz parę z najwyższym combined_score
     slope_scores.sort(key=lambda x: x[0], reverse=True)
-    if slope_scores:
-        best_combined_score, best_pair = slope_scores[0]
-    
-    # Przygotuj wyniki
-    if not best_pair:
-        return [], []
-    
+    best_pair = slope_scores[0][1]
+
     # DEBUG
-    # calculate_line_score(-best_pair['slope'], dsc_points, debug=1)
-    # print(f"  Best lines: ASC score={best_pair['ascending'].score:.2f}, DESC score={best_pair['descending'].score:.2f}, Combined score={best_combined_score:.2f}")
-    
+    # calc line score for best desc line with debug info
+    # calculate_lines(best_pair['slope'], dsc_points, debug=1)
+
+    if (debug):
+        for line in best_pair['ascending']:
+            if debug:
+                print(f"  Ascending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
+                    f"using {len(line.used_points)} points")
+        for line in best_pair['descending']:
+            if debug:
+                print(f"  Descending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
+                    f"using {len(line.used_points)} points")
+
+
     best_ascending = best_pair['ascending'][0]
     best_descending = best_pair['descending'][0]
     
-    detected_lines = []
+    # Dodaj główne linie do wyników
+    detected_lines = [best_ascending, best_descending]
     
-    # Dodaj główną oraz hierarchiczne linie
-    for (main_line, pts) in [(best_descending, dsc_points), (best_ascending, asc_points)]:
-        below, above = find_hierarchical_lines(
-            main_line,
-            pts,
-            max_num_lines=MAX_HIERARCHICAL_LEVELS,
-            tolerance=HIERARCHICAL_TOLERANCE
-        )
-        
-        detected_lines += [main_line]
-        detected_lines += below
-        detected_lines += above  
+    # Dodaj linie hierarchiczne
+    for lines in [best_pair['ascending'], best_pair['descending']]:
+        base_line : magic_line = lines[0]
+
+        # Wszystkie linie powyżej 
+        level = base_line.level + 1
+        intercept = base_line.intercept
+        while level <= MAX_HIERARCHICAL_LEVELS:
+            lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]
+            if not lines_above: break
+            best_line = sorted(lines_above, key=lambda x: x.score, reverse=True)[0]
+            best_line.level = level
+            best_line.offset = best_line.intercept - intercept
+            detected_lines.append(best_line)
+            # DEBUG
+            if (debug):
+                print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
+                    f"at intercept {best_line.intercept:.2f} ")
+            level += 1
+            intercept = best_line.intercept
+            
+        # Wszystkie linie poniżej
+        level = base_line.level + 1
+        intercept = base_line.intercept
+        while level <= MAX_HIERARCHICAL_LEVELS:
+            lines_below = [line for line in lines if line.intercept < intercept - MIN_HIERARCHICAL_OFFSET]
+            if not lines_below: break
+            best_line = sorted(lines_below, key=lambda x: x.score, reverse=True)[0]
+            best_line.level = level
+            best_line.offset = best_line.intercept - intercept
+            detected_lines.append(best_line)
+            # DEBUG
+            if (debug):
+                print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
+                    f"at intercept {best_line.intercept:.2f} ")
+            level += 1
+            intercept = best_line.intercept
 
     return detected_lines, points
 
@@ -909,7 +815,7 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
 
     # jeżeli były jakieś przecięcia...
     if crossed:
-        crossed_lines = ["CROSSED " + crossed_id + " " + last_candle_direction] + crossed_lines    
+        crossed_lines = ["CROSSED " + crossed_id + " " + last_candle_direction] + crossed_lines
 
     result = crossed_lines if crossed else []    
     return result
@@ -987,6 +893,16 @@ def process_single_file(csv_filepath, output_dir='charts'):
         line_offsets.append((line_id, line_offset))
 
     slope = detected_lines[0].slope
+    
+    # TEST
+    # wszystkie ID linii powinny być unikalne
+    unique_ids = set()
+    for line in line_offsets:
+        line_id = line[0]
+        if line_id in unique_ids:
+            print(f"ERROR: Duplicate line ID detected: {line_id}")
+            assert False, "Duplicate line ID detected"
+        unique_ids.add(line_id)
     
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
