@@ -239,7 +239,7 @@ def magic_lines_decision(file_path, lines, i, keep_results):
 
     return order_type
 
-def process_file(file_path, percentage=.0, keep_results=False):
+def process_file(file_path, percentage=.0, keep_results=False, start_time=None):
     """Process a CSV file by adding BUY/SELL decision markers."""
     if STOP_EVENT.is_set():
         return
@@ -288,13 +288,28 @@ def process_file(file_path, percentage=.0, keep_results=False):
     with open(new_path, 'w') as f:
         f.writelines(processed_lines)
     
-    with PRINT_LOCK:
-        if ALGO == "magic_lines":
-            print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name} {order_type}")
-        else:
-            print(f"{action} {percentage:.2f}%: {file_path.name} -> {new_path.name}")
+    elapsed_str = ""
+    left_str = ""
+    if start_time is not None:
+        elapsed = time.time() - start_time
+        minutes = int(elapsed // 60)
+        seconds = elapsed % 60
+        elapsed_str = f"{minutes}m {seconds:.1f}s"
 
-def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results):
+        left_time = (elapsed / (percentage / 100.0)) - elapsed if percentage > 0 else 0
+        left_minutes = int(left_time // 60)
+        left_seconds = left_time % 60
+        left_str = f"left: {left_minutes}m {left_seconds:.1f}s"
+    
+    with PRINT_LOCK:
+        str = f"{action} {percentage:.2f}% {elapsed_str} / {left_str}: "\
+            f"{file_path.name} -> {new_path.name}"
+        if ALGO == "magic_lines":
+            print(str + f" {order_type}")
+        else:
+            print(str)
+
+def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results, start_time=None):
     """Process CSV files by adding BUY/SELL decision markers."""
     # Get list of order files to match (only in compare mode)
     order_files = set()
@@ -331,7 +346,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
                     if compare_mode:
                         if csv_file.stem in order_files:
                             percentage = (processed_count + 1) * 100 / len(csv_files)
-                            futures.append(executor.submit(process_file, csv_file, percentage, keep_results))
+                            futures.append(executor.submit(process_file, csv_file, percentage, keep_results, start_time))
                             processed_count += 1
                             return True
                         else:
@@ -343,7 +358,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
                         if csv_file.stem.endswith('_temp') or csv_file.stem.endswith('_mod'):
                             continue
                         percentage = (processed_count + 1) * 100 / len(csv_files)
-                        futures.append(executor.submit(process_file, csv_file, percentage, keep_results))
+                        futures.append(executor.submit(process_file, csv_file, percentage, keep_results, start_time))
                         processed_count += 1
                         return True
                 return False
@@ -381,7 +396,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
             if compare_mode:
                 if csv_file.stem in order_files:
                     percentage = (processed_count + 1) * 100 / len(csv_files) 
-                    process_file(csv_file, percentage, keep_results)
+                    process_file(csv_file, percentage, keep_results, start_time)
                     processed_count += 1
                 else:
                     # Only delete source files if we're actively matching
@@ -394,7 +409,7 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
                     continue
 
                 percentage = (processed_count + 1) * 100 / len(csv_files) 
-                process_file(csv_file, percentage, keep_results)
+                process_file(csv_file, percentage, keep_results, start_time)
                 processed_count += 1
     
     # Remove skipped files (only in compare mode)
@@ -627,7 +642,7 @@ def main():
     start_time = time.time()
     
     if not revert:
-        processed_count, buy_count, sell_count = process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results)
+        processed_count, buy_count, sell_count = process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_workers, keep_results, start_time)
     else:
         revert_files(csv_files, candles_dir)
         processed_count = 0
