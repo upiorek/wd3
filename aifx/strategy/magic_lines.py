@@ -56,8 +56,9 @@ MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max 
 GAP_IMPULSE_STRENGTH = 1.0      # siła impulsu dla luk cenowych
 FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
 
-BODY_IMPULSE_STRENGTH = 0.5     # siła świeczek - korpusy
-SHADOW_IMPULSE_STRENGTH = 0.5   # siła świeczek - cienie
+# NOTE: zero = same impulsy
+BODY_IMPULSE_STRENGTH = 0.3     # siła świeczek - korpusy
+SHADOW_IMPULSE_STRENGTH = 0.1   # siła świeczek - cienie
 
 # ===== KLASY DANYCH =====
 
@@ -103,8 +104,8 @@ class impulse_point:
         self.type = type
         self.subtype = subtype
 
-        self._price = None
-        self._price = self.price()
+        self.price = self.calc_price()
+        self.strength = self.calc_strength()
 
     def subtype_str(self):
         if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
@@ -137,10 +138,7 @@ class impulse_point:
         else:
             return "UNKNOWN"
 
-    def price(self):
-        if self._price is not None:
-            return self._price
-            
+    def calc_price(self):            
         if self.type == self.TYPE_MIN:
             return min(self.candle.open, self.candle.close)
         elif self.type == self.TYPE_MAX:
@@ -159,7 +157,7 @@ class impulse_point:
             
         assert False, "Unknown impulse point type"
             
-    def strength(self):
+    def calc_strength(self):
         if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
             if self.subtype == self.SUBTYPE_MINMAX_5:
                 return MINMAX_IMPULSE_STRENGTH * 1.0
@@ -351,38 +349,65 @@ def calculate_line_score(slope: float,
         impulses : list[impulse_point], 
         candles : list[candle],
         tolerance: float = LINE_IMPULSE_TOLERANCE,
-        debug: int = 0) -> tuple[float, float, list[impulse_point], str]:
+        debug: int = 0) -> tuple[float, float, float, list[impulse_point], str]:
     
     # oblicz intercept z równania linii y = slope * x + intercept
     # gdzie x = index świeczki, y = cena
-    intercept = i_start.price() - slope * i_start.index
+    intercept = i_start.price - slope * i_start.index
         
-    score = 0
-    used : list[impulse_point] = []
+    # Sprawdź ile impulsów pasuje do tej linii
+    impulses_score = 0
+    used_impulses : list[impulse_point] = []
     debug_string = ""
 
-    # Sprawdź ile impulsów pasuje do tej linii
     for p in impulses:
         # optymalizacja: pomiń punkty przed i_start (uwzględnij i_start)
         if p.index < i_start.index:
             continue
 
         expected_price = slope * p.index + intercept
-        dist = abs(p.price() - expected_price)
+        dist = abs(p.price - expected_price)
         if dist <= tolerance: 
             # ważone przez odległość
-            score += p.strength() * (1.0 - dist / tolerance) 
-            used.append(p)
+            impulses_score += p.strength * (1.0 - dist / tolerance) 
+            used_impulses.append(p)
 
             # DEBUG
             if (debug):
                 debug_string += f"    Impulse at index {p.index} type {p.type_str()} "\
-                    f"price {p.price():.2f} matches line " \
+                    f"price {p.price:.2f} matches line " \
                     f"expected {expected_price:.2f} "\
                     f"dist {dist:.2f} "\
-                    f"score contrib {p.strength() * (1.0 - dist / tolerance):.2f}\n"
+                    f"score contrib {p.strength * (1.0 - dist / tolerance):.2f}\n"
                 
-    return intercept, score, used, debug_string
+    # Sprawdź ile świeczek pasuje do tej linii
+    candles_score = 0
+
+    for candle in candles:
+        expected_price = slope * candle.index + intercept
+        
+        # sprawdź korpus
+        body_low = min(candle.open, candle.close)
+        body_high = max(candle.open, candle.close)
+        if abs(body_low - expected_price) <= LINE_CANDLE_TOLERANCE \
+            or abs(body_high - expected_price) <= LINE_CANDLE_TOLERANCE:
+            dist = min(abs(body_low - expected_price), abs(body_high - expected_price))
+            candles_score += BODY_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
+
+            # DEBUG
+            if (debug):
+                debug_string += f"    Candle at index {candle.index} body matches line "
+        # sprawd cień
+        elif abs(candle.low - expected_price) <= LINE_CANDLE_TOLERANCE \
+            or abs(candle.high - expected_price) <= LINE_CANDLE_TOLERANCE:
+            dist = min(abs(candle.low - expected_price), abs(candle.high - expected_price))
+            candles_score += SHADOW_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
+
+            # DEBUG
+            if (debug):
+                debug_string += f"    Candle at index {candle.index} shadow matches line "
+
+    return intercept, impulses_score, candles_score, used_impulses, debug_string
 
 def calculate_lines(slope : float, 
         impulses : list[impulse_point], 
@@ -399,7 +424,7 @@ def calculate_lines(slope : float,
     lines = [] # (intercept, score, used_points, debug_string)
     # Dla każdego punktu oblicz intercept i policz score
     for i_start in impulses:
-        intercept, score, used, debug_string = calculate_line_score(
+        intercept, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
             slope,
             i_start,
             impulses,
@@ -410,19 +435,20 @@ def calculate_lines(slope : float,
         # dodaj do wyników
         # UWAGA: dla linii które nie przecinają żadnego punktu 
         # score = score dla impulsu i_start
-        lines.append((intercept, score, used, debug_string))
+        lines.append((intercept, impulses_score, candles_score, used_impulses, debug_string))
 
         if (debug):
-            print(f"    Line intercept {intercept:.2f} score {score:.2f} "
-                f"using {len(used)} points starting from index {i_start.index}")
+            print(f"    Line intercept {intercept:.2f} impulses score {impulses_score:.2f} "\
+                f"candles score {candles_score:.2f} "
+                f"using {len(used_impulses)} points starting from index {i_start.index}")
     
-    # sortuj linie po score
-    lines.sort(key=lambda x: x[1], reverse=True)
+    # sortuj linie po score (suma impulsów i świeczek)
+    lines.sort(key=lambda x: x[1] + x[2], reverse=True)
 
     # DEBUG
     if (debug):
-        print(f"    Best intercept: {lines[0][0]:.2f} with score {lines[0][1]:.2f} using {len(lines[0][2])} points")
-        print(lines[0][3])
+        print(f"    Best intercept: {lines[0][0]:.2f} with score i/c {lines[0][1]:.2f}/{lines[0][2]:.2f} "\
+              f"using {len(lines[0][3])} points")
 
     magic_lines = []
     for line in lines:
@@ -430,8 +456,8 @@ def calculate_lines(slope : float,
             slope=slope,
             intercept=line[0],
             offset=0,
-            score=line[1],
-            used_points=line[2],
+            score=line[1] + line[2],
+            used_points=line[3],
             level=1))
             
     return magic_lines
@@ -466,7 +492,7 @@ def find_support_lines(candles :list[candle],
             if p2.index == p1.index:
                 continue
             
-            slope = (p2.price() - p1.price()) / (p2.index - p1.index)
+            slope = (p2.price - p1.price) / (p2.index - p1.index)
             abs_slope = abs(slope)
             
             if abs_slope >= MIN_SLOPE and abs_slope <= MAX_SLOPE:
@@ -652,16 +678,16 @@ def plot_chart(df_plot,
         for impulse in impulses:                     
             if impulse.type == impulse_point.TYPE_GAP:
                 idx = impulse.index
-                all_impulses[idx] = impulse.price()
+                all_impulses[idx] = impulse.price
             elif impulse.type == impulse_point.TYPE_MIN:
                 idx = impulse.index
-                all_minima[idx] = impulse.price()
+                all_minima[idx] = impulse.price
             elif impulse.type == impulse_point.TYPE_MAX:
                 idx = impulse.index
-                all_maxima[idx] = impulse.price()
+                all_maxima[idx] = impulse.price
             elif impulse.type == impulse_point.TYPE_FA:
                 idx = impulse.index
-                all_fa[idx] = impulse.price()
+                all_fa[idx] = impulse.price
                 # DEBUG
                 # print(f"  FA point at index {idx}, price {point.price():.2f}")
         
