@@ -57,8 +57,8 @@ GAP_IMPULSE_STRENGTH = 1.0      # siła impulsu dla luk cenowych
 FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
 
 # NOTE: zero = same impulsy
-BODY_IMPULSE_STRENGTH = 0.3     # siła świeczek - korpusy
-SHADOW_IMPULSE_STRENGTH = 0.1   # siła świeczek - cienie
+BODY_IMPULSE_STRENGTH = 0.0 # 0.3     # siła świeczek - korpusy
+SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 
 # ===== KLASY DANYCH =====
 
@@ -383,29 +383,33 @@ def calculate_line_score(slope: float,
     # Sprawdź ile świeczek pasuje do tej linii
     candles_score = 0
 
-    for candle in candles:
-        expected_price = slope * candle.index + intercept
-        
-        # sprawdź korpus
-        body_low = min(candle.open, candle.close)
-        body_high = max(candle.open, candle.close)
-        if abs(body_low - expected_price) <= LINE_CANDLE_TOLERANCE \
-            or abs(body_high - expected_price) <= LINE_CANDLE_TOLERANCE:
-            dist = min(abs(body_low - expected_price), abs(body_high - expected_price))
-            candles_score += BODY_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
+    # jeśli siła świeczek/cieni = 0 to pomiń tę część
+    if BODY_IMPULSE_STRENGTH == 0.0 and SHADOW_IMPULSE_STRENGTH == 0.0:
+        return intercept, impulses_score, candles_score, used_impulses, debug_string
+    else:
+        for candle in candles:
+            expected_price = slope * candle.index + intercept
+            
+            # sprawdź korpus
+            body_low = min(candle.open, candle.close)
+            body_high = max(candle.open, candle.close)
+            if abs(body_low - expected_price) <= LINE_CANDLE_TOLERANCE \
+                or abs(body_high - expected_price) <= LINE_CANDLE_TOLERANCE:
+                dist = min(abs(body_low - expected_price), abs(body_high - expected_price))
+                candles_score += BODY_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
 
-            # DEBUG
-            if (debug):
-                debug_string += f"    Candle at index {candle.index} body matches line "
-        # sprawd cień
-        elif abs(candle.low - expected_price) <= LINE_CANDLE_TOLERANCE \
-            or abs(candle.high - expected_price) <= LINE_CANDLE_TOLERANCE:
-            dist = min(abs(candle.low - expected_price), abs(candle.high - expected_price))
-            candles_score += SHADOW_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
+                # DEBUG
+                if (debug):
+                    debug_string += f"    Candle at index {candle.index} body matches line "
+            # sprawd cień
+            elif abs(candle.low - expected_price) <= LINE_CANDLE_TOLERANCE \
+                or abs(candle.high - expected_price) <= LINE_CANDLE_TOLERANCE:
+                dist = min(abs(candle.low - expected_price), abs(candle.high - expected_price))
+                candles_score += SHADOW_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
 
-            # DEBUG
-            if (debug):
-                debug_string += f"    Candle at index {candle.index} shadow matches line "
+                # DEBUG
+                if (debug):
+                    debug_string += f"    Candle at index {candle.index} shadow matches line "
 
     return intercept, impulses_score, candles_score, used_impulses, debug_string
 
