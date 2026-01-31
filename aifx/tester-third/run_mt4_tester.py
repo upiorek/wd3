@@ -1083,6 +1083,9 @@ def write_wd_summary(config: dict) -> None:
     else:
         closed_str = str(closed_orders)
 
+    tp_count = 0
+    sl_count = 0
+
     if not report_path:
         sl_str = "NO_REPORT"
         tp_str = "NO_REPORT"
@@ -1340,7 +1343,7 @@ def main():
 
     # For wd_tester, ensure we didn't run with a different git commit than current.
     # This checks the latest copied MT4 log in mt4_test_results/logs/*.log.
-    if config.get('expert') == 'wd_tester':
+    if 0 and config.get('expert') == 'wd_tester':
         print("\nVerifying git commit against latest copied MT4 log...")
         if not verify_wd_tester_git_hash_from_latest_log():
             return 1

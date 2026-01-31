@@ -34,11 +34,15 @@ def log(message):
 
 # ===== KONFIGURACJA =====
 LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
+
+# ===== PARAMETRY LINI =====
 MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
+SLOPE_UNIQUENESS_THRESHOLD = 0.01  # Minimalna różnica procentowa między unikalnymi slope'ami
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
 LINE_TOLERANCE = 2.0  # Tolerancja dla dopasowania punktów do linii
+SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -460,13 +464,17 @@ def find_support_lines(candles :list[candle],
                 unique_slopes.add(abs_slope)
 
     # filter very similar slopes
+    # TODO increase SLOPE_UNIQUENESS_THRESHOLD for fewer slopes + calibrate after
     unique_slopes = sorted(unique_slopes)
     filtered_slopes = []
     prev_slope = None
     for s in unique_slopes:
-        if prev_slope is None or abs(s - prev_slope) / prev_slope > 0.01:
+        if prev_slope is None or abs(s - prev_slope) / prev_slope > SLOPE_UNIQUENESS_THRESHOLD:
             filtered_slopes.append(s)
             prev_slope = s
+    # DEBUG
+    if (debug):
+        print(f"  Filtered slopes: {len(filtered_slopes)} from {len(unique_slopes)}")
     unique_slopes = filtered_slopes
 
     # Dla każdego |slope| oblicz combined_score
@@ -478,9 +486,37 @@ def find_support_lines(candles :list[candle],
         asc_lines = calculate_lines(abs_slope, asc_points, debug=debug)
         desc_lines = calculate_lines(-abs_slope, dsc_points, debug=debug)
 
+        # Helper function to find best lines above/below and collect scores
+        # levels = how many best lines to consider
+        # 1 = only best line
+        # 2 = best line + best above + best below
+        def get_hierarchical_avg_score(lines, levels):
+            best = lines[0]
+            above = sorted([l for l in lines if l.intercept > best.intercept + MIN_HIERARCHICAL_OFFSET],
+                          key=lambda x: x.score, reverse=True)
+            below = sorted([l for l in lines if l.intercept < best.intercept - MIN_HIERARCHICAL_OFFSET],
+                          key=lambda x: x.score, reverse=True)
+            scores = [best.score]
+            for n in range(1, levels):
+                if len(above) >= n:
+                    scores.append(above[n-1].score)
+                if len(below) >= n:
+                    scores.append(below[n-1].score)
+
+            # NOTE: return scores list only for debug
+            return sum(scores) / len(scores), scores
+
+        # Oblicz score bazując na avg najlepszych linii
+        avg_asc_score, asc_scores = get_hierarchical_avg_score(asc_lines, SCORE_LINES_LEVELS)
+        avg_desc_score, desc_scores = get_hierarchical_avg_score(desc_lines, SCORE_LINES_LEVELS)
+
+        # DEBUG
+        if (debug):
+            print(f"    Slope {abs_slope:.4f} asc scores: {[f'{s:.2f}' for s in asc_scores]} avg {avg_asc_score:.2f} | "
+                f"desc scores: {[f'{s:.2f}' for s in desc_scores]} avg {avg_desc_score:.2f}")
+     
         # Get score from best lines
-        combined_score = (asc_lines[0].score if asc_lines else 0) + \
-            (desc_lines[0].score if desc_lines else 0)
+        combined_score = avg_asc_score + avg_desc_score
         
         slope_scores.append((combined_score, {
             'ascending': asc_lines,
@@ -507,15 +543,15 @@ def find_support_lines(candles :list[candle],
                     f"using {len(line.used_points)} points")
 
 
-    best_ascending = best_pair['ascending'][0]
-    best_descending = best_pair['descending'][0]
-    
+    best_ascending : magic_line = best_pair['ascending'][0]
+    best_descending : magic_line = best_pair['descending'][0]
+
     # Dodaj główne linie do wyników
     detected_lines = [best_ascending, best_descending]
     
     # Dodaj linie hierarchiczne
     for lines in [best_pair['ascending'], best_pair['descending']]:
-        base_line : magic_line = lines[0]
+        base_line = lines[0]
 
         # Wszystkie linie powyżej 
         level = base_line.level + 1
@@ -681,7 +717,7 @@ def plot_chart(df_plot,
         up_tolerance = {}
         down_tolerance = {}
         for point in points:
-            tolerance = HIERARCHICAL_TOLERANCE
+            tolerance = LINE_TOLERANCE
             idx = point.index
             up_tolerance[idx] = point.price() + tolerance
             down_tolerance[idx] = point.price() - tolerance
