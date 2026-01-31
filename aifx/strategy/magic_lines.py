@@ -41,8 +41,9 @@ MAX_SLOPE = 5.0  # Maksymalny slope linii
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # Minimalna różnica procentowa między unikalnymi slope'ami
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
-LINE_TOLERANCE = 2.0  # Tolerancja dla dopasowania punktów do linii
-SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
+LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
+LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
+SCORE_LINES_LEVELS = 2  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -51,10 +52,12 @@ DUMP_IMAGES = True      # Czy zapisywać wykresy do plików
 IMAGE_DPI = 600         # DPI dla zapisywanych obrazów
 
 # ===== SIŁA IMPULSÓW =====
-SHADOW_IMPULSE_STRENGTH = 0.5   # siła impulsu dla cieni lokalnych min/max
 MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max UWAGA sumuje się
 GAP_IMPULSE_STRENGTH = 1.0      # siła impulsu dla luk cenowych
 FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
+
+BODY_IMPULSE_STRENGTH = 0.5     # siła świeczek - korpusy
+SHADOW_IMPULSE_STRENGTH = 0.5   # siła świeczek - cienie
 
 # ===== KLASY DANYCH =====
 
@@ -178,7 +181,7 @@ class impulse_point:
 class magic_line:
     def __init__(self, 
                  slope,  # nachylenie linii
-                 intercept, # wartość y przy x=0
+                 intercept, # wartość y przy x = 0 (ze wzoru na linię: y = slope * x + intercept)
                  offset,  # offset względem poprzedniej linii
                  used_points, # lista punktów użytych do wyznaczenia linii
                  score,  # liczba punktów dopasowanych do linii
@@ -344,20 +347,24 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     return impulses_gap + impulses_minmax + impulses_fa
 
 def calculate_line_score(slope: float, 
-        p_start: impulse_point, 
-        points : list[impulse_point], 
-        tolerance: float = LINE_TOLERANCE,
+        i_start: impulse_point, 
+        impulses : list[impulse_point], 
+        candles : list[candle],
+        tolerance: float = LINE_IMPULSE_TOLERANCE,
         debug: int = 0) -> tuple[float, float, list[impulse_point], str]:
-    intercept = p_start.price() - slope * p_start.index
+    
+    # oblicz intercept z równania linii y = slope * x + intercept
+    # gdzie x = index świeczki, y = cena
+    intercept = i_start.price() - slope * i_start.index
         
     score = 0
     used : list[impulse_point] = []
     debug_string = ""
 
-    # Sprawdź ile punktów pasuje do tej linii
-    for p in points:
-        # optymalizacja: pomiń punkty przed p_start (uwzględnij p_start)
-        if p.index < p_start.index:
+    # Sprawdź ile impulsów pasuje do tej linii
+    for p in impulses:
+        # optymalizacja: pomiń punkty przed i_start (uwzględnij i_start)
+        if p.index < i_start.index:
             continue
 
         expected_price = slope * p.index + intercept
@@ -369,17 +376,18 @@ def calculate_line_score(slope: float,
 
             # DEBUG
             if (debug):
-                debug_string += f"    Point at index {p.index} type {p.type_str()} "\
+                debug_string += f"    Impulse at index {p.index} type {p.type_str()} "\
                     f"price {p.price():.2f} matches line " \
                     f"expected {expected_price:.2f} "\
                     f"dist {dist:.2f} "\
                     f"score contrib {p.strength() * (1.0 - dist / tolerance):.2f}\n"
                 
-    return intercept,score, used, debug_string
+    return intercept, score, used, debug_string
 
 def calculate_lines(slope : float, 
-        points : list[impulse_point], 
-        tolerance: float = LINE_TOLERANCE, 
+        impulses : list[impulse_point], 
+        candles : list[candle],
+        tolerance: float = LINE_IMPULSE_TOLERANCE,
         debug: int = 0) -> list[magic_line]:    
     """
     Dla danego slope oblicza zestaw linii magicznych
@@ -390,22 +398,23 @@ def calculate_lines(slope : float,
     
     lines = [] # (intercept, score, used_points, debug_string)
     # Dla każdego punktu oblicz intercept i policz score
-    for p_start in points:
+    for i_start in impulses:
         intercept, score, used, debug_string = calculate_line_score(
             slope,
-            p_start,
-            points,
+            i_start,
+            impulses,
+            candles,
             tolerance,
             debug)
                 
         # dodaj do wyników
         # UWAGA: dla linii które nie przecinają żadnego punktu 
-        # score = score dla impulsu p_start
+        # score = score dla impulsu i_start
         lines.append((intercept, score, used, debug_string))
 
         if (debug):
             print(f"    Line intercept {intercept:.2f} score {score:.2f} "
-                f"using {len(used)} points starting from index {p_start.index}")
+                f"using {len(used)} points starting from index {i_start.index}")
     
     # sortuj linie po score
     lines.sort(key=lambda x: x[1], reverse=True)
@@ -438,11 +447,11 @@ def find_support_lines(candles :list[candle],
     points = detect_impulses(candles)
     # print(f"  Wykryto {len(points)} punktów impulsów/min/max")
     
-    # asc points nie zawiera impulsów FA_MAX
-    asc_points = [p for p in points \
+    # asc impulses nie zawiera impulsów FA_MAX
+    asc_impulses = [p for p in points \
                   if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MAX)]
-    # dsc points nie zawiera impulsów FA_MIN
-    dsc_points = [p for p in points \
+    # dsc impulses nie zawiera impulsów FA_MIN
+    dsc_impulses = [p for p in points \
                   if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MIN)]
         
     if len(points) < 2:
@@ -483,8 +492,8 @@ def find_support_lines(candles :list[candle],
     slope_scores = [] # [(combined_score, {'ascending': , 'descending':}), ...]
     for i, abs_slope in enumerate(unique_slopes):
         # print(f"Sprawdzam slope: {abs_slope:.4f} {i+1}/{len(unique_slopes)}     ", end='\r')
-        asc_lines = calculate_lines(abs_slope, asc_points, debug=debug)
-        desc_lines = calculate_lines(-abs_slope, dsc_points, debug=debug)
+        asc_lines = calculate_lines(abs_slope, asc_impulses, candles, debug=debug)
+        desc_lines = calculate_lines(-abs_slope, dsc_impulses, candles, debug=debug)
 
         # Helper function to find best lines above/below and collect scores
         # levels = how many best lines to consider
@@ -530,7 +539,7 @@ def find_support_lines(candles :list[candle],
 
     # DEBUG
     # calc line score for best desc line with debug info
-    # calculate_lines(best_pair['slope'], dsc_points, debug=1)
+    # calculate_lines(best_pair['slope'], dsc_impulses, debug=1)
 
     if (debug):
         for line in best_pair['ascending']:
@@ -590,7 +599,7 @@ def find_support_lines(candles :list[candle],
     return detected_lines, points
 
 def plot_chart(df_plot, 
-               points : list[impulse_point],
+               impulses : list[impulse_point],
                detected_lines : list[magic_line], 
                output_filepath, lookback_start_dt, lookback_end_dt):
     """
@@ -640,19 +649,19 @@ def plot_chart(df_plot,
         all_maxima = {}
         all_fa = {}
 
-        for point in points:                     
-            if point.type == impulse_point.TYPE_GAP:
-                idx = point.index
-                all_impulses[idx] = point.price()
-            elif point.type == impulse_point.TYPE_MIN:
-                idx = point.index
-                all_minima[idx] = point.price()
-            elif point.type == impulse_point.TYPE_MAX:
-                idx = point.index
-                all_maxima[idx] = point.price()
-            elif point.type == impulse_point.TYPE_FA:
-                idx = point.index
-                all_fa[idx] = point.price()
+        for impulse in impulses:                     
+            if impulse.type == impulse_point.TYPE_GAP:
+                idx = impulse.index
+                all_impulses[idx] = impulse.price()
+            elif impulse.type == impulse_point.TYPE_MIN:
+                idx = impulse.index
+                all_minima[idx] = impulse.price()
+            elif impulse.type == impulse_point.TYPE_MAX:
+                idx = impulse.index
+                all_maxima[idx] = impulse.price()
+            elif impulse.type == impulse_point.TYPE_FA:
+                idx = impulse.index
+                all_fa[idx] = impulse.price()
                 # DEBUG
                 # print(f"  FA point at index {idx}, price {point.price():.2f}")
         
@@ -716,11 +725,11 @@ def plot_chart(df_plot,
     if SHOW_TOLERANCE:
         up_tolerance = {}
         down_tolerance = {}
-        for point in points:
-            tolerance = LINE_TOLERANCE
-            idx = point.index
-            up_tolerance[idx] = point.price() + tolerance
-            down_tolerance[idx] = point.price() - tolerance
+        for impulse in impulses:
+            tolerance = LINE_IMPULSE_TOLERANCE
+            idx = impulse.index
+            up_tolerance[idx] = impulse.price() + tolerance
+            down_tolerance[idx] = impulse.price() - tolerance
         up_tolerance_series = pd.Series(index=df_plot.index, dtype=float)
         down_tolerance_series = pd.Series(index=df_plot.index, dtype=float)
         for i, dt in enumerate(df_plot.index):
