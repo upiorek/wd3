@@ -43,7 +43,9 @@ MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
 LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
+
 SCORE_LINES_LEVELS = 2  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
+SCORE_LINES_MIN_POINTS = 2 # Minimalna liczba punktów impulsów do uznania linii za ważną
 
 # ===== RÓŻNE =====
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
@@ -68,7 +70,7 @@ SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 1 
+DEBUG = 0 
 
 # ===== KLASY DANYCH =====
 
@@ -390,6 +392,16 @@ def calculate_line_score(slope: float,
                     f"dist {dist:.2f} "\
                     f"score contrib {p.strength * (1.0 - dist / tolerance):.2f}\n"
                 
+    # Jeżeli jeden index ma więcej impulsów, to zostaw tylko ten z najwyższą siłą
+    unique_used_impulses = {}
+    for p in used_impulses:
+        if p.index not in unique_used_impulses:
+            unique_used_impulses[p.index] = p
+        else:
+            if p.strength > unique_used_impulses[p.index].strength:
+                unique_used_impulses[p.index] = p
+    used_impulses = list(unique_used_impulses.values())
+                
     # Sprawdź ile świeczek pasuje do tej linii
     candles_score = 0
 
@@ -435,7 +447,7 @@ def calculate_lines(slope : float,
     if (debug):
         print(f"  Calculating line score for slope={slope:.4f}")
     
-    lines = [] # (intercept, score, used_points, debug_string)
+    line_candidates = [] # (intercept, score, used_points, debug_string)
     # Dla każdego punktu oblicz intercept i policz score
     for i_start in impulses:
         intercept, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
@@ -449,7 +461,7 @@ def calculate_lines(slope : float,
         # dodaj do wyników
         # UWAGA: dla linii które nie przecinają żadnego punktu 
         # score = score dla impulsu i_start
-        lines.append((intercept, impulses_score, candles_score, used_impulses, debug_string))
+        line_candidates.append((intercept, impulses_score, candles_score, used_impulses, debug_string))
 
         if (debug):
             print(f"    Line intercept {intercept:.2f} impulses score {impulses_score:.2f} "\
@@ -457,15 +469,15 @@ def calculate_lines(slope : float,
                 f"using {len(used_impulses)} points starting from index {i_start.index}")
     
     # sortuj linie po score (suma impulsów i świeczek)
-    lines.sort(key=lambda x: x[1] + x[2], reverse=True)
+    line_candidates.sort(key=lambda x: x[1] + x[2], reverse=True)
 
     # DEBUG
     if (debug):
-        print(f"    Best intercept: {lines[0][0]:.2f} with score i/c {lines[0][1]:.2f}/{lines[0][2]:.2f} "\
-              f"using {len(lines[0][3])} points")
+        print(f"    Best intercept: {line_candidates[0][0]:.2f} with score i/c {line_candidates[0][1]:.2f}/{line_candidates[0][2]:.2f} "\
+              f"using {len(line_candidates[0][3])} points")
 
     magic_lines = []
-    for line in lines:
+    for line in line_candidates:
         magic_lines.append(magic_line(
             slope=slope,
             intercept=line[0],
@@ -541,10 +553,14 @@ def find_support_lines(candles :list[candle],
         # 2 = best line + best above + best below
         def get_hierarchical_avg_score(lines, levels):
             best = lines[0]
-            above = sorted([l for l in lines if l.intercept > best.intercept + MIN_HIERARCHICAL_OFFSET],
-                          key=lambda x: x.score, reverse=True)
-            below = sorted([l for l in lines if l.intercept < best.intercept - MIN_HIERARCHICAL_OFFSET],
-                          key=lambda x: x.score, reverse=True)
+            above = sorted([l for l in lines if \
+                l.intercept > best.intercept + MIN_HIERARCHICAL_OFFSET and\
+                len(l.used_points) >= SCORE_LINES_MIN_POINTS],
+                key=lambda x: x.score, reverse=True)
+            below = sorted([l for l in lines if \
+                l.intercept < best.intercept - MIN_HIERARCHICAL_OFFSET and\
+                len(l.used_points) >= SCORE_LINES_MIN_POINTS],
+                key=lambda x: x.score, reverse=True)
             scores = [best.score]
             for n in range(1, levels):
                 if len(above) >= n:
@@ -581,16 +597,21 @@ def find_support_lines(candles :list[candle],
     # calc line score for best desc line with debug info
     # calculate_lines(best_pair['slope'], dsc_impulses, debug=1)
 
-    if (debug):
+    if (DEBUG >= 1 or debug):
+        print("DEBUG Top 5 slope scores:")
+        # best 5 lines score
+        for k in range(5):
+            if k >= len(slope_scores):
+                break
+            score, pair = slope_scores[k]
+            print(f"  Top {k+1} slope {pair['slope']:.4f} combined score {score:.4f}")
+    if (DEBUG >= 2 or debug):
         for line in best_pair['ascending']:
-            if debug:
-                print(f"  Ascending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
-                    f"using {len(line.used_points)} points")
+            print(f"  Ascending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
+                f"using {len(line.used_points)} points")
         for line in best_pair['descending']:
-            if debug:
-                print(f"  Descending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
-                    f"using {len(line.used_points)} points")
-
+            print(f"  Descending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
+                f"using {len(line.used_points)} points")
 
     best_ascending : magic_line = best_pair['ascending'][0]
     best_descending : magic_line = best_pair['descending'][0]
@@ -1014,7 +1035,8 @@ def process_single_file(csv_filepath, output_dir='charts'):
                    lookback_start_dt, lookback_end_dt)
         
     if DEBUG:
-        print(f"DEBUG: slope: {slope:.4f}")
+        combined_score = detected_lines[0].score + detected_lines[1].score
+        print(f"DEBUG: slope: {slope:.4f} score: {combined_score:.2f}")
     
     prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
     ret = prefix + " | "
