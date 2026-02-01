@@ -44,6 +44,8 @@ MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi
 LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
+MINMAX_MARGIN_FILTER = 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
+
 SCORE_LINES_LEVELS = 2  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 SCORE_LINES_MIN_POINTS = 2 # Minimalna liczba punktów impulsów do uznania linii za ważną
 
@@ -224,8 +226,14 @@ def load_csv_data(filepath):
     return df
 
 def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:   
-    impulses_minmax = []     
+    impulses_minmax = []
     for i in range(order // 2, len(candles) - order // 2):
+        # Odrzuć punkty blisko krawędzi danych 
+        # (zapobiega disco przy nagłej zmianie subtypu min/max gdy dochodzą nowe świeczki)
+        if i < MINMAX_MARGIN_FILTER or \
+           (i >= len(candles) - MINMAX_MARGIN_FILTER):
+            continue
+
         current = candles[i]
         
         # helper lambdas
@@ -647,7 +655,7 @@ def find_support_lines(candles :list[candle],
             best_line.offset = best_line.intercept - intercept
             detected_lines.append(best_line)
             # DEBUG
-            if (debug):
+            if (DEBUG >= 2 or debug):
                 print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
                     f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
             level += 1
@@ -664,7 +672,7 @@ def find_support_lines(candles :list[candle],
             best_line.offset = best_line.intercept - intercept
             detected_lines.append(best_line)
             # DEBUG
-            if (debug):
+            if (DEBUG >= 2 or debug):
                 print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
                     f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
             level += 1
