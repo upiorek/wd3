@@ -6,6 +6,7 @@ Użycie:
     python magic_lines.py <plik.csv>  # przetwarza pojedynczy plik
 """
 
+from functools import cmp_to_key
 import math
 import sys
 import os
@@ -38,12 +39,15 @@ LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 # ===== PARAMETRY LINI =====
 MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
-SLOPE_UNIQUENESS_THRESHOLD = 0.01  # Minimalna różnica procentowa między unikalnymi slope'ami
 MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
 LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 SCORE_LINES_LEVELS = 2  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
+
+# ===== RÓŻNE =====
+SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
+SCORE_CMP_THRESHOLD = 0.01  # próg porównywania score linii
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -59,6 +63,12 @@ FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
 # NOTE: zero = same impulsy
 BODY_IMPULSE_STRENGTH = 0.0 # 0.3     # siła świeczek - korpusy
 SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
+
+# poziom debugowania 
+# # 0 = brak
+# 1 = podstawowy
+# 2 = szczegółowy (pętle)
+DEBUG = 1 
 
 # ===== KLASY DANYCH =====
 
@@ -587,6 +597,18 @@ def find_support_lines(candles :list[candle],
 
     # Dodaj główne linie do wyników
     detected_lines = [best_ascending, best_descending]
+
+    # Pomocnicze funkcje porównujące linie dla wyboru hierarchicznych
+    # Sortowanie najpierw po score, potem po odległości intercept od bazowej linii
+    # UWAGA: dla bardzo podobnych score (różnica < SCORE_CMP_THRESHOLD) wybierz bliższą linię
+    def line_cmp_down(x: magic_line, y: magic_line):
+        if abs(x.score - y.score) < SCORE_CMP_THRESHOLD:
+            return -1 if abs(x.intercept) < abs(y.intercept) else 1
+        return -1 if x.score > y.score else 1 if x.score < y.score else 0
+    def line_cmp_up(x: magic_line, y: magic_line):
+        if abs(x.score - y.score) < SCORE_CMP_THRESHOLD:
+            return -1 if abs(x.intercept) > abs(y.intercept) else 1
+        return -1 if x.score > y.score else 1 if x.score < y.score else 0
     
     # Dodaj linie hierarchiczne
     for lines in [best_pair['ascending'], best_pair['descending']]:
@@ -596,16 +618,17 @@ def find_support_lines(candles :list[candle],
         level = base_line.level + 1
         intercept = base_line.intercept
         while level <= MAX_HIERARCHICAL_LEVELS:
-            lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]
+            lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]         
             if not lines_above: break
-            best_line = sorted(lines_above, key=lambda x: x.score, reverse=True)[0]
+            # Posortuj po score i wybierz najlepszą (w przypadku "remisu" wybierz bliższą do bazowej)
+            best_line = sorted(lines_above, key=cmp_to_key(line_cmp_down))[0]
             best_line.level = level
             best_line.offset = best_line.intercept - intercept
             detected_lines.append(best_line)
             # DEBUG
             if (debug):
                 print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
-                    f"at intercept {best_line.intercept:.2f} ")
+                    f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
             level += 1
             intercept = best_line.intercept
             
@@ -615,14 +638,14 @@ def find_support_lines(candles :list[candle],
         while level <= MAX_HIERARCHICAL_LEVELS:
             lines_below = [line for line in lines if line.intercept < intercept - MIN_HIERARCHICAL_OFFSET]
             if not lines_below: break
-            best_line = sorted(lines_below, key=lambda x: x.score, reverse=True)[0]
+            best_line = sorted(lines_below, key=cmp_to_key(line_cmp_up))[0]
             best_line.level = level
             best_line.offset = best_line.intercept - intercept
             detected_lines.append(best_line)
             # DEBUG
             if (debug):
                 print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
-                    f"at intercept {best_line.intercept:.2f} ")
+                    f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
             level += 1
             intercept = best_line.intercept
 
@@ -989,6 +1012,9 @@ def process_single_file(csv_filepath, output_dir='charts'):
         
         plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath, 
                    lookback_start_dt, lookback_end_dt)
+        
+    if DEBUG:
+        print(f"DEBUG: slope: {slope:.4f}")
     
     prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
     ret = prefix + " | "
