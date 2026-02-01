@@ -44,14 +44,14 @@ MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi
 LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
-MINMAX_MARGIN_FILTER = 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
+MINMAX_MARGIN_FILTER = 0 # 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
 
-SCORE_LINES_LEVELS = 2  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
-SCORE_LINES_MIN_POINTS = 2 # Minimalna liczba punktów impulsów do uznania linii za ważną
+SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
+SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania linii za ważną
 
 # ===== RÓŻNE =====
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
-SCORE_CMP_THRESHOLD = 0.01  # próg porównywania score linii
+SCORE_CMP_THRESHOLD = 0.00 # 0.01  # próg porównywania score linii
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -560,6 +560,8 @@ def find_support_lines(candles :list[candle],
         # 1 = only best line
         # 2 = best line + best above + best below
         def get_hierarchical_avg_score(lines, levels):
+            # NOTE: MIN_HIERARCHICAL_OFFSET - linie nie mogą być zbyt blisko siebie
+            # NOTE: SCORE_LINES_MIN_POINTS - linia musi mieć minimum N punktów użytych do score
             best = lines[0]
             above = sorted([l for l in lines if \
                 l.intercept > best.intercept + MIN_HIERARCHICAL_OFFSET and\
