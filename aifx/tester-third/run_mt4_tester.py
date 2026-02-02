@@ -1343,7 +1343,7 @@ def main():
 
     # For wd_tester, ensure we didn't run with a different git commit than current.
     # This checks the latest copied MT4 log in mt4_test_results/logs/*.log.
-    if 0 and config.get('expert') == 'wd_tester':
+    if config.get('expert') == 'wd_tester':
         print("\nVerifying git commit against latest copied MT4 log...")
         if not verify_wd_tester_git_hash_from_latest_log():
             return 1
