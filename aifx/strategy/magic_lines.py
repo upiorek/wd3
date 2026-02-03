@@ -39,12 +39,14 @@ LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 # ===== PARAMETRY LINI =====
 MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 5.0  # Maksymalny slope linii
-MAX_HIERARCHICAL_LEVELS = 4  # maksymalna liczba linii wsparcia / oporu poniżej głównej
+MAX_HIERARCHICAL_LEVELS = 0  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
 LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
 MINMAX_MARGIN_FILTER = 0 # 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
+
+MINMAX_DIFF_FILTER = 50  # Minimalna różnica między min/max a otoczeniem (punkty)
 
 SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania linii za ważną
@@ -72,7 +74,7 @@ SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 0 
+DEBUG = 1
 
 # ===== KLASY DANYCH =====
 
@@ -225,6 +227,36 @@ def load_csv_data(filepath):
     
     return df
 
+def get_max_diff_in_neighborhood(candles: list[candle], center_idx: int, l: int, r: int, value_getter) -> float:
+    """Oblicza maksymalną różnicę między wartością świeczki a wszystkimi świeczkami w otoczeniu.
+    
+    Args:
+        candles: Lista świeczek
+        center_idx: Indeks centralnej świeczki
+        l: Początek zakresu otoczenia (włącznie)
+        r: Koniec zakresu otoczenia (wyłącznie)
+        value_getter: Funkcja wydobywająca wartość ze świeczki (np. get_low lub get_high)
+    
+    Returns:
+        Maksymalna różnica w punktach
+    """
+    center_value = value_getter(candles[center_idx])
+    max_diff = 0.0
+    
+    # Sprawdź lewą stronę
+    for c in candles[l: center_idx]:
+        diff = abs(value_getter(c) - center_value)
+        if diff > max_diff:
+            max_diff = diff
+    
+    # Sprawdź prawą stronę
+    for c in candles[center_idx + 1: r]:
+        diff = abs(value_getter(c) - center_value)
+        if diff > max_diff:
+            max_diff = diff
+    
+    return max_diff
+
 def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:   
     impulses_minmax = []
     for i in range(order // 2, len(candles) - order // 2):
@@ -249,25 +281,32 @@ def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:
             get_low(min(candles[l: i], key=get_low)),
             get_low(min(candles[i + 1 : r], key=get_low))
         ):
-            impulses_minmax.append(
-                impulse_point(
-                    i, 
-                    current, 
-                    type=impulse_point.TYPE_MIN,
-                    subtype=order))
-        
+            # Sprawdź maksymalną różnicę ze wszystkich świeczek w otoczeniu
+            max_diff = get_max_diff_in_neighborhood(candles, i, l, r, get_low)
+            
+            if max_diff > MINMAX_DIFF_FILTER:
+                impulses_minmax.append(
+                    impulse_point(
+                        i, 
+                        current, 
+                        type=impulse_point.TYPE_MIN,
+                        subtype=order))        
         # max
         body_high = get_high(current)
         if body_high > max(
             get_high(max(candles[l: i], key=get_high)),
             get_high(max(candles[i + 1 : r], key=get_high))
         ):
-            impulses_minmax.append(
-                impulse_point(
-                    i, 
-                    current, 
-                    type=impulse_point.TYPE_MAX,
-                    subtype=order))
+            # Sprawdź maksymalną różnicę ze wszystkich świeczek w otoczeniu
+            max_diff = get_max_diff_in_neighborhood(candles, i, l, r, get_high)
+            
+            if max_diff > MINMAX_DIFF_FILTER:
+                impulses_minmax.append(
+                    impulse_point(
+                        i, 
+                        current, 
+                        type=impulse_point.TYPE_MAX,
+                        subtype=order))
             
     return impulses_minmax    
 
@@ -885,6 +924,20 @@ def plot_chart(df_plot,
     # Ustaw podpisy osi X dokładnie w miejscach linii pionowych
     ax.set_xticks(midnight_indices)
     ax.set_xticklabels(midnight_labels, rotation=0, ha='center')
+    
+    # Dodaj numery świeczek dla min/max
+    if DEBUG == 1 and SHOW_IMPULSES:
+        for impulse in impulses:
+            if impulse.type == impulse_point.TYPE_MIN or impulse.type == impulse_point.TYPE_MAX:
+                idx = impulse.index
+                price = impulse.price
+                # Offset tekstu w zależności od typu (min na dole, max na górze)
+                y_offset = -15 if impulse.type == impulse_point.TYPE_MIN else 15
+                ax.text(idx, price, str(idx), 
+                       fontsize=8, ha='center', va='center',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='gray'),
+                       transform=ax.transData,
+                       verticalalignment='top' if impulse.type == impulse_point.TYPE_MIN else 'bottom')
     
     if DUMP_IMAGES:
         fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1, dpi=IMAGE_DPI)
