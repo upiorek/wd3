@@ -1044,6 +1044,8 @@ def process_single_file(csv_filepath, output_dir='charts'):
         plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath, 
                    lookback_start_dt, lookback_end_dt)
         
+        print(f"Wykres: {chart_filepath}")
+        
     if DEBUG:
         combined_score = detected_lines[0].score + detected_lines[1].score
         print(f"DEBUG: slope: {slope:.4f} score: {combined_score:.2f}")
