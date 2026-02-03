@@ -22,7 +22,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # ===== LOGGING =====
-LOG_FILE = '/home/ubuntu/repo/magic_lines.log'
+LOG_FILE = 'magic_lines.log'
 log_file_handle = None
 
 def log(message):
