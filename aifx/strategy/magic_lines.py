@@ -45,8 +45,7 @@ LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
 MINMAX_MARGIN_FILTER = 0 # 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
-
-MINMAX_DIFF_FILTER = 50  # Minimalna różnica między min/max a otoczeniem (punkty)
+MINMAX_DIFF_FILTER = 0  # Minimalna różnica między min/max a otoczeniem (punkty)
 
 SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania linii za ważną
@@ -65,6 +64,10 @@ IMAGE_DPI = 600         # DPI dla zapisywanych obrazów
 MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max UWAGA sumuje się
 GAP_IMPULSE_STRENGTH = 1.0      # siła impulsu dla luk cenowych
 FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
+LAGA_IMPULSE_STRENGTH = 3.0     # siła impulsu dla laga
+
+LAGA_IMPULSE_TRIGGER = 50    # wielkość korpusu dla laga (punkty)
+LAGA_IMPULSE_MAX = 5         # maksymalna liczba impulsów laga (najsilniejszych)
 
 # NOTE: zero = same impulsy
 BODY_IMPULSE_STRENGTH = 0.0 # 0.3     # siła świeczek - korpusy
@@ -74,7 +77,7 @@ SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 1
+DEBUG = 0
 
 # ===== KLASY DANYCH =====
 
@@ -106,6 +109,10 @@ class impulse_point:
     TYPE_FA = 3
     SUBTYPE_FA_MIN = 0
     SUBTYPE_FA_MAX = 1
+
+    TYPE_LAGA = 4
+    SUBTYPE_LAGA_UP = 1
+    SUBTYPE_LAGA_DOWN = 2
 
     def __init__(self, 
                  index, # indeks świeczki
@@ -140,7 +147,11 @@ class impulse_point:
                 return "MIN"
             elif self.subtype == self.SUBTYPE_FA_MAX:
                 return "MAX"
-        return "UNKNOWN"
+        elif self.type == self.TYPE_LAGA:
+            if self.subtype == self.SUBTYPE_LAGA_UP:
+                return "LAGA_UP"
+        elif self.subtype == self.SUBTYPE_LAGA_DOWN:
+                return "LAGA_DOWN"
 
     def type_str(self):
         if self.type == self.TYPE_MIN:
@@ -170,6 +181,11 @@ class impulse_point:
                 return max(self.candle.open, self.candle.close)
             elif self.subtype == self.SUBTYPE_FA_MAX:
                 return min(self.candle.open, self.candle.close)
+        elif self.type == self.TYPE_LAGA:
+            if self.subtype == self.SUBTYPE_LAGA_UP:
+                return min(self.candle.open, self.candle.close)
+            elif self.subtype == self.SUBTYPE_LAGA_DOWN:
+                return max(self.candle.open, self.candle.close)
             
         assert False, "Unknown impulse point type"
             
@@ -189,6 +205,8 @@ class impulse_point:
             return GAP_IMPULSE_STRENGTH
         elif self.type == self.TYPE_FA:
             return FA_IMPULSE_STRENGTH
+        elif self.type == self.TYPE_LAGA:
+            return LAGA_IMPULSE_STRENGTH
         else:
             assert False, "Unknown impulse point type"
 
@@ -278,12 +296,11 @@ def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:
         # min
         body_low = get_low(current)
         if body_low < min(
-            get_low(min(candles[l: i], key=get_low)),
-            get_low(min(candles[i + 1 : r], key=get_low))
+            min(get_low(c) for c in candles[l: i]),
+            min(get_low(c) for c in candles[i + 1 : r])
         ):
             # Sprawdź maksymalną różnicę ze wszystkich świeczek w otoczeniu
             max_diff = get_max_diff_in_neighborhood(candles, i, l, r, get_low)
-            
             if max_diff > MINMAX_DIFF_FILTER:
                 impulses_minmax.append(
                     impulse_point(
@@ -294,12 +311,11 @@ def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:
         # max
         body_high = get_high(current)
         if body_high > max(
-            get_high(max(candles[l: i], key=get_high)),
-            get_high(max(candles[i + 1 : r], key=get_high))
+            max(get_high(c) for c in candles[l: i]),
+            max(get_high(c) for c in candles[i + 1 : r])
         ):
             # Sprawdź maksymalną różnicę ze wszystkich świeczek w otoczeniu
             max_diff = get_max_diff_in_neighborhood(candles, i, l, r, get_high)
-            
             if max_diff > MINMAX_DIFF_FILTER:
                 impulses_minmax.append(
                     impulse_point(
@@ -350,6 +366,25 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
             # "at index {i}, size: {gap_size}")
             impulses_gap.append(impulse_curr)
 
+    impulses_laga = []
+    # laga - duża świeczka - iteruj przez wszystkie świeczki
+    laga_candidates = []
+    for i in range(len(candles)):
+        current = candles[i]
+        body_size = abs(current.close - current.open)
+        if body_size > LAGA_IMPULSE_TRIGGER:
+            impulse_laga = impulse_point(
+                i, 
+                current, 
+                type=impulse_point.TYPE_LAGA,
+                subtype=impulse_point.SUBTYPE_LAGA_UP
+                    if current.close > current.open else impulse_point.SUBTYPE_LAGA_DOWN)
+            laga_candidates.append((impulse_laga, body_size))
+    
+    # Posortuj według wielkości korpusu i wybierz LAGA_IMPULSE_MAX najsilniejszych
+    laga_candidates.sort(key=lambda x: x[1], reverse=True)
+    #impulses_laga = [impulse for impulse, size in laga_candidates[:LAGA_IMPULSE_MAX]]
+
     # min max - optymalizacja: dodaj tylko jeśli nie ma lub jest silniejszy
     impulses_minmax = {}
     for order in [impulse_point.SUBTYPE_MINMAX_33,
@@ -395,7 +430,7 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     #for p in impulses_fa:
     #    print(f"  Detected FA at index {p.index}, price: {p.price():.2f}")
     
-    return impulses_gap + impulses_minmax + impulses_fa
+    return impulses_gap + impulses_minmax + impulses_fa + impulses_laga
 
 def calculate_line_score(slope: float, 
         i_start: impulse_point, 
@@ -434,14 +469,21 @@ def calculate_line_score(slope: float,
                     f"score contrib {p.strength * (1.0 - dist / tolerance):.2f}\n"
                 
     # Jeżeli jeden index ma więcej impulsów, to zostaw tylko ten z najwyższą siłą
-    unique_used_impulses = {}
-    for p in used_impulses:
-        if p.index not in unique_used_impulses:
-            unique_used_impulses[p.index] = p
+    # impulsy laga mogą się nakładać z innymi
+    laga_impulses = [p for p in used_impulses if p.type == impulse_point.TYPE_LAGA]
+    other_impulses = [p for p in used_impulses if p.type != impulse_point.TYPE_LAGA]
+    
+    # Deduplikuj tylko impulsy nie-laga
+    unique_other_impulses = {}
+    for p in other_impulses:
+        if p.index not in unique_other_impulses:
+            unique_other_impulses[p.index] = p
         else:
-            if p.strength > unique_used_impulses[p.index].strength:
-                unique_used_impulses[p.index] = p
-    used_impulses = list(unique_used_impulses.values())
+            if p.strength > unique_other_impulses[p.index].strength:
+                unique_other_impulses[p.index] = p
+    
+    # Połącz impulsy laga (wszystkie) z deduplikowanymi innymi impulsami
+    used_impulses = laga_impulses + list(unique_other_impulses.values())
                 
     # Sprawdź ile świeczek pasuje do tej linii
     candles_score = 0
@@ -765,6 +807,7 @@ def plot_chart(df_plot,
         all_minima = {}
         all_maxima = {}
         all_fa = {}
+        all_laga = {}
 
         for impulse in impulses:                     
             if impulse.type == impulse_point.TYPE_GAP:
@@ -781,12 +824,18 @@ def plot_chart(df_plot,
                 all_fa[idx] = impulse.price
                 # DEBUG
                 # print(f"  FA point at index {idx}, price {point.price():.2f}")
+            elif impulse.type == impulse_point.TYPE_LAGA:
+                idx = impulse.index
+                all_laga[idx] = impulse.price
+                # DEBUG
+                # print(f"  LAGA point at index {idx}, price {impulse.price:.2f}")
         
         # Utwórz serie dla każdego typu punktu
         impulse_series = pd.Series(index=df_plot.index, dtype=float)
         minima_series = pd.Series(index=df_plot.index, dtype=float)
         maxima_series = pd.Series(index=df_plot.index, dtype=float)
         fa_series = pd.Series(index=df_plot.index, dtype=float)
+        laga_series = pd.Series(index=df_plot.index, dtype=float)
         
         for i, dt in enumerate(df_plot.index):
             if i in all_impulses:
@@ -797,6 +846,8 @@ def plot_chart(df_plot,
                 maxima_series.iloc[i] = all_maxima[i]
             if i in all_fa:
                 fa_series.iloc[i] = all_fa[i]
+            if i in all_laga:
+                laga_series.iloc[i] = all_laga[i]
         
         # Dodaj do wykresu
         if not impulse_series.isna().all():
@@ -836,6 +887,16 @@ def plot_chart(df_plot,
                 markersize=40,
                 marker='*',
                 color='orange',
+                alpha=0.7
+            ))
+
+        if not laga_series.isna().all():
+            apds.append(mpf.make_addplot(
+                laga_series,
+                type='scatter',
+                markersize=40,
+                marker='+',
+                color='blue',
                 alpha=0.7
             ))
 
