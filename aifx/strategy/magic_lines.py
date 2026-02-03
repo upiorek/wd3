@@ -350,25 +350,19 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
             # "at index {i}, size: {gap_size}")
             impulses_gap.append(impulse_curr)
 
-    # min max
-    impulses_minmax = []
-    for order in [impulse_point.SUBTYPE_MINMAX_5,
-                  impulse_point.SUBTYPE_MINMAX_9,
+    # min max - optymalizacja: dodaj tylko jeśli nie ma lub jest silniejszy
+    impulses_minmax = {}
+    for order in [impulse_point.SUBTYPE_MINMAX_33,
                   impulse_point.SUBTYPE_MINMAX_17,
-                  impulse_point.SUBTYPE_MINMAX_33]:
+                  impulse_point.SUBTYPE_MINMAX_9,
+                  impulse_point.SUBTYPE_MINMAX_5]:
         temp = detect_minmax(candles, order=order)
-        impulses_minmax.extend(temp)
-    
-    # unique minmax - leave only the strongest (largest order)
-    unique_minmax = {}
-    for p in impulses_minmax:
-        if p.index not in unique_minmax:
-            unique_minmax[p.index] = p
-        else:
-            # keep the one with larger order (stronger)
-            if p.subtype > unique_minmax[p.index].subtype:
-                unique_minmax[p.index] = p
-    impulses_minmax = list(unique_minmax.values())
+        for p in temp:
+            if p.index not in impulses_minmax:
+                impulses_minmax[p.index] = p
+            elif p.subtype > impulses_minmax[p.index].subtype:
+                impulses_minmax[p.index] = p
+    impulses_minmax = list(impulses_minmax.values())
 
     impulses_fa = []
     # first after min/max - mark the first candle after local min/max
