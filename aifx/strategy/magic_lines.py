@@ -45,7 +45,8 @@ LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
 MINMAX_MARGIN_FILTER = 0 # 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
-MINMAX_DIFF_FILTER = 0  # Minimalna różnica między min/max a otoczeniem (punkty)
+MINMAX_DIFF_FILTER = 50  # 50 # Minimalna różnica między min/max a otoczeniem (punkty)
+FA_MIN_HEIGHT = 20  # Minimalna wysokość korpusu świeczki dla first after (punkty)
 
 SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania linii za ważną
@@ -58,7 +59,7 @@ SCORE_CMP_THRESHOLD = 0.00 # 0.01  # próg porównywania score linii
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
 SHOW_TOLERANCE = False   # Czy pokazywać tolerancję na wykresie
 DUMP_IMAGES = True      # Czy zapisywać wykresy do plików
-IMAGE_DPI = 600         # DPI dla zapisywanych obrazów
+IMAGE_DPI = 300         # DPI dla zapisywanych obrazów
 
 # ===== SIŁA IMPULSÓW =====
 MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max UWAGA sumuje się
@@ -66,7 +67,7 @@ GAP_IMPULSE_STRENGTH = 1.0      # siła impulsu dla luk cenowych
 FA_IMPULSE_STRENGTH = 2.0       # siła impulsu dla first after
 LAGA_IMPULSE_STRENGTH = 3.0     # siła impulsu dla laga
 
-LAGA_IMPULSE_TRIGGER = 50    # wielkość korpusu dla laga (punkty)
+LAGA_IMPULSE_TRIGGER = 100   # wielkość korpusu dla laga (punkty)
 LAGA_IMPULSE_MAX = 5         # maksymalna liczba impulsów laga (najsilniejszych)
 
 # NOTE: zero = same impulsy
@@ -401,16 +402,34 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
 
     impulses_fa = []
     # first after min/max - mark the first candle after local min/max
-    # min fa height = 20 points
+    # min fa height = FA_MIN_HEIGHT
     for p in impulses_minmax:
         # check bounds
         if p.index + 1 >= len(candles):
             continue
         # check min height
         next_candle = candles[p.index + 1]
-        if abs(next_candle.open - next_candle.close) < 20:
-            continue        
-
+        if abs(next_candle.open - next_candle.close) < FA_MIN_HEIGHT:
+            continue
+        
+        # dodatkowe filtry dla fa min/max		
+        if p.type == impulse_point.TYPE_MIN:
+            next_next_candle = candles[p.index + 2]
+            # jeżeli następna świeczka jest spadkowa i zakrywa fa w połowie to pomiń fa
+            if next_next_candle.close < next_next_candle.open and next_next_candle.close <= (next_candle.open + next_candle.close) / 2:
+                continue
+            # jeżeli świeczka jest spadkowa, pomiń fa
+            if next_candle.close < next_candle.open:
+                continue
+        else: # p.type == impulse_point.TYPE_MAX
+            next_next_candle = candles[p.index + 2]
+            # jeżeli następna świeczka jest wzrostowa i zakrywa fa w połowie to pomiń fa
+            if next_next_candle.close > next_next_candle.open and next_next_candle.close >= (next_candle.open + next_candle.close) / 2:
+                continue
+            # jeżeli świeczka jest wzrostowa, pomiń fa
+            if next_candle.close > next_candle.open:
+                continue
+            
         subt = impulse_point.SUBTYPE_FA_MIN if p.type == impulse_point.TYPE_MIN \
             else impulse_point.SUBTYPE_FA_MAX
         impulses_fa.append(
