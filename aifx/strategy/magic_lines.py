@@ -455,13 +455,24 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     impulses_laga = [impulse for impulse, size in laga_candidates[:LAGA_IMPULSE_MAX]]
 
     # DEBUG print impulses
-    #for p in impulses_gap:
-    #    print(f"  Detected GAP at index {p.index}, price: {p.price():.2f}")
-    #for p in impulses_minmax:
-    #    print(f"  Detected minmax {p.subtype} at index {p.index}, price: {p.price():.2f}")
-    #for p in impulses_fa:
-    #    print(f"  Detected FA at index {p.index}, price: {p.price():.2f}")
-    
+    if DEBUG == 2:        
+        print(f"  Detected gap impulses: {len(impulses_gap)}")
+        #for p in impulses_gap:
+        #    print(f"  Detected GAP at index {p.index}, price: {p.price:.2f}")
+        print(f"  Detected min/max type 33 impulses: {len([p for p in impulses_minmax if p.subtype == impulse_point.SUBTYPE_MINMAX_33])} ")
+        print(f"  Detected min/max type 17 impulses: {len([p for p in impulses_minmax if p.subtype == impulse_point.SUBTYPE_MINMAX_17])} ")
+        print(f"  Detected min/max type 9 impulses: {len([p for p in impulses_minmax if p.subtype == impulse_point.SUBTYPE_MINMAX_9])} ")
+        print(f"  Detected min/max type 5 impulses: {len([p for p in impulses_minmax if p.subtype == impulse_point.SUBTYPE_MINMAX_5])} ")
+        #for p in impulses_minmax:
+        #    print(f"  Detected minmax {p.subtype} at index {p.index}, price: {p.price:.2f}")
+        print(f"  Detected FA impulses: {len(impulses_fa)}")
+        #for p in impulses_fa:
+        #    print(f"  Detected FA at index {p.index}, price: {p.price:.2f}")
+        print(f"  Detected LAGA impulses: {len(impulses_laga)}")
+        #for p in impulses_laga:
+        #    print(f"  Detected LAGA at index {p.index}, price: {p.price:.2f}")
+    if DEBUG:        
+        print("  Total impulses detected: ", len(impulses_gap) + len(impulses_minmax) + len(impulses_fa) + len(impulses_laga))
     return impulses_gap + impulses_minmax + impulses_fa + impulses_laga
 
 def calculate_line_score(slope: float, 
@@ -1013,7 +1024,7 @@ def plot_chart(df_plot,
     ax.set_xticklabels(midnight_labels, rotation=0, ha='center')
     
     # Dodaj numery świeczek dla min/max
-    if DEBUG == 1 and SHOW_IMPULSES:
+    if DEBUG == 2 and SHOW_IMPULSES:
         for impulse in impulses:
             if impulse.type == impulse_point.TYPE_MIN or impulse.type == impulse_point.TYPE_MAX:
                 idx = impulse.index
