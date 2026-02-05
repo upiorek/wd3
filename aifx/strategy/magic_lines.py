@@ -418,6 +418,10 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
 
     impulses_fa.sort(key=lambda p: p.index)
 
+    # jeżeli fa jest na min/max to usuń fa z listy
+    impulses_fa = [p for p in impulses_fa \
+        if not any(mm.index == p.index for mm in impulses_minmax)]
+
     impulses_laga = []
     # laga - duża świeczka - iteruj przez wszystkie świeczki które nie są na liście minmax ani fa
     laga_candidates = []
