@@ -183,11 +183,7 @@ class impulse_point:
             elif self.subtype == self.SUBTYPE_FA_MAX:
                 return min(self.candle.open, self.candle.close)
         elif self.type == self.TYPE_LAGA:
-            if self.subtype == self.SUBTYPE_LAGA_UP:
-                return min(self.candle.open, self.candle.close)
-            elif self.subtype == self.SUBTYPE_LAGA_DOWN:
-                return max(self.candle.open, self.candle.close)
-            
+            return self.candle.open
         assert False, "Unknown impulse point type"
             
     def calc_strength(self):
@@ -367,25 +363,6 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
             # "at index {i}, size: {gap_size}")
             impulses_gap.append(impulse_curr)
 
-    impulses_laga = []
-    # laga - duża świeczka - iteruj przez wszystkie świeczki
-    laga_candidates = []
-    for i in range(len(candles)):
-        current = candles[i]
-        body_size = abs(current.close - current.open)
-        if body_size > LAGA_IMPULSE_TRIGGER:
-            impulse_laga = impulse_point(
-                i, 
-                current, 
-                type=impulse_point.TYPE_LAGA,
-                subtype=impulse_point.SUBTYPE_LAGA_UP
-                    if current.close > current.open else impulse_point.SUBTYPE_LAGA_DOWN)
-            laga_candidates.append((impulse_laga, body_size))
-    
-    # Posortuj według wielkości korpusu i wybierz LAGA_IMPULSE_MAX najsilniejszych
-    laga_candidates.sort(key=lambda x: x[1], reverse=True)
-    #impulses_laga = [impulse for impulse, size in laga_candidates[:LAGA_IMPULSE_MAX]]
-
     # min max - optymalizacja: dodaj tylko jeśli nie ma lub jest silniejszy
     impulses_minmax = {}
     for order in [impulse_point.SUBTYPE_MINMAX_33,
@@ -438,9 +415,41 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
                 next_candle,
                 type=impulse_point.TYPE_FA,
                 subtype=subt))
-            
+
     impulses_fa.sort(key=lambda p: p.index)
+
+    impulses_laga = []
+    # laga - duża świeczka - iteruj przez wszystkie świeczki które nie są na liście minmax ani fa
+    laga_candidates = []
+    for i in range(len(candles)):
+        # pomiń jeśli to min/max lub fa
+        if any(p.index == i for p in impulses_minmax):
+            continue
+        if any(p.index == i for p in impulses_fa):
+            continue
         
+        current = candles[i]
+        body_size = abs(current.close - current.open)
+        # następna świeczka jeżeli jest innego kierunku jej wielkość musi być mniejsza niż pół obecnej
+        if i + 1 < len(candles):
+            next_candle = candles[i + 1]
+            if (current.close > current.open) != (next_candle.close > next_candle.open):
+                if abs(next_candle.close - next_candle.open) >= body_size / 2:
+                    continue
+        # laga trigger
+        if body_size > LAGA_IMPULSE_TRIGGER:
+            impulse_laga = impulse_point(
+                i, 
+                current, 
+                type=impulse_point.TYPE_LAGA,
+                subtype=impulse_point.SUBTYPE_LAGA_UP
+                    if current.close > current.open else impulse_point.SUBTYPE_LAGA_DOWN)
+            laga_candidates.append((impulse_laga, body_size))
+    
+    # Posortuj według wielkości korpusu i wybierz LAGA_IMPULSE_MAX najsilniejszych
+    laga_candidates.sort(key=lambda x: x[1], reverse=True)    
+    impulses_laga = [impulse for impulse, size in laga_candidates[:LAGA_IMPULSE_MAX]]
+
     # DEBUG print impulses
     #for p in impulses_gap:
     #    print(f"  Detected GAP at index {p.index}, price: {p.price():.2f}")
