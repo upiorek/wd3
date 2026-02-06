@@ -754,7 +754,6 @@ def main():
         print(f"  Total periods processed: {total_periods_processed}")
         print(f"  Unique slopes detected: {quality_stats['num_slopes']}")
         print(f"  Avg periods per slope: {avg_slope_live:.2f}")
-        print(f"  Slope changes: {quality_stats['num_slopes'] - 1}")
         print(f"  Line add/remove events: {quality_stats['add_remove_line']}")
         print(f"  Bonuses applied: {quality_stats['bonus_count']}")
         
@@ -771,7 +770,6 @@ def main():
             f.write(f"  Total periods processed: {total_periods_processed}\n")
             f.write(f"  Unique slopes detected: {quality_stats['num_slopes']}\n")
             f.write(f"  Avg periods per slope: {avg_slope_live:.2f}\n")
-            f.write(f"  Slope changes: {quality_stats['num_slopes'] - 1}\n")
             f.write(f"  Line add/remove events: {quality_stats['add_remove_line']}\n")
             f.write(f"  Bonuses applied: {quality_stats['bonus_count']}\n")
 

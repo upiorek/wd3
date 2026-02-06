@@ -53,7 +53,8 @@ SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania lini
 
 # ===== RÓŻNE =====
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
-SCORE_CMP_THRESHOLD = 0.01 # 0.01  # próg porównywania score linii
+SCORE_CMP_THRESHOLD = 0.01  # 0.01  # próg porównywania score linii
+PREV_SLOPE_BONUS_FACTOR = 1.2  # mnożnik bonusu za powtarzalność slope względem poprzedniego wykresu
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -78,7 +79,7 @@ SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 0
+DEBUG = 1
 
 # ===== KLASY DANYCH =====
 
@@ -708,13 +709,13 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
                 print(f"  Comparing abs_slope {abs_slope:.4f} with prev_chart_slope {abs(prev_chart_slope):.4f}")
             if abs(abs_slope - abs(prev_chart_slope)) / abs(prev_chart_slope) < 0.001:
                 bonus_applied = True
-                avg_asc_score *= 1.01
-                avg_desc_score *= 1.01
+                avg_asc_score *= PREV_SLOPE_BONUS_FACTOR
+                avg_desc_score *= PREV_SLOPE_BONUS_FACTOR
                 # uaktualnij asc_line score
-                asc_lines[0].score *= 1.01
-                desc_lines[0].score *= 1.01
-                if DEBUG:
-                  print(f"Bonus za powtarzalnosc dla slope {abs_slope:.4f}")
+                asc_lines[0].score *= PREV_SLOPE_BONUS_FACTOR
+                desc_lines[0].score *= PREV_SLOPE_BONUS_FACTOR
+                if DEBUG > 1:
+                  print(f"Bonus za powtarzalnosc dla slope {abs_slope:.4f}, score: {avg_asc_score + avg_desc_score:.4f}")
         elif DEBUG > 1:
             print("Brak poprzedniego slope do porownania")
 
@@ -731,10 +732,14 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
     slope_scores.sort(key=lambda x: x[0], reverse=True)
 
     best_pair = slope_scores[0][1]
-    # print best_pair score
+
+    # print best_pair score + bonus info
     if DEBUG > 1:
         print(f"Best ascending line score: {best_pair['ascending'][0].score:.2f}")
-        print(f"Best descending line score: {best_pair['descending'][0].score:.2f}")
+        print(f"Best descending line score: {best_pair['descending'][0].score:.2f}")        
+        # Sprawdź czy best_pair to jest slope z bonusem i wypisz info
+        if best_pair['bonus_applied']:
+            print(f"Best pair slope {best_pair['slope']:.4f} has bonus applied for repeatability")    
 
     # DEBUG
     # calc line score for best desc line with debug info
@@ -747,7 +752,8 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
             if k >= len(slope_scores):
                 break
             score, pair = slope_scores[k]
-            print(f"  Top {k+1} slope {pair['slope']:.4f} combined score {score:.4f}")
+            # only if pair has bonus applied print info about it
+            print(f"  Top {k+1} slope {pair['slope']:.4f} combined score {score:.4f} {'(bonus applied)' if pair['bonus_applied'] else ''}") 
     if (DEBUG >= 2 or debug):
         for line in best_pair['ascending']:
             print(f"  Ascending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
@@ -1196,8 +1202,6 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None):
                       lookback_df_for_lines.iloc[i]['Close']) 
                for i in range(len(lookback_df_for_lines))]
     detected_lines, points, bonus_added = find_support_lines(candles, prev_slope)
-    if DEBUG:
-        print(f"Bonus applied: {bonus_added}")
     if not detected_lines:
         return "NONE"
     
