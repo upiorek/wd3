@@ -78,7 +78,7 @@ SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 0
+DEBUG = 1
 
 # ===== KLASY DANYCH =====
 
@@ -498,9 +498,9 @@ def calculate_line_score(slope: float,
 
         expected_price = slope * p.index + intercept
         dist = abs(p.price - expected_price)
-        if dist <= tolerance: 
-            # ważone przez odległość
-            impulses_score += p.strength * (1.0 - dist / tolerance) 
+        if tolerance > 0 and dist <= tolerance: 
+            # ważone przez odległość z kwadratem odległości
+            impulses_score += p.strength * (1.0 - (dist / tolerance) ** 2)
             used_impulses.append(p)
 
             # DEBUG
