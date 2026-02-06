@@ -44,4 +44,5 @@ aifx/tester-third/wd_tester_hash.mqh
 .vscode/launch.json
 .vscode/tasks.json
 
-aifx/data/**/processing_stats.txt
+aifx/data/**/*_stats.txt
+aifx/data/2025.01/charts/*_stats.txt

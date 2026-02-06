@@ -7,6 +7,7 @@ import shutil
 import argparse
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 # Prefer importing via the aifx package (works well with VS Code/Pylance).
 # When launched from inside aifx/tester-third, ensure repo root is on sys.path.
@@ -545,6 +546,14 @@ def main():
         action="store_true",
         help="Process files but keep result and chart PNG files, create decision files only",
     )
+    parser.add_argument(
+        "--start-date",
+        help="Start date in YYYY-MM-DD format (e.g., 2025-01-02)",
+    )
+    parser.add_argument(
+        "--end-date",
+        help="End date in YYYY-MM-DD format (e.g., 2025-01-31)",
+    )
     args = parser.parse_args()
 
     revert = args.revert
@@ -554,6 +563,8 @@ def main():
     cleanup = args.cleanup
     mt = args.mt
     keep_results = args.keep_results
+    start_date = args.start_date
+    end_date = args.end_date
 
     mt_workers = (os.cpu_count() or 4) if mt else None
 
@@ -617,6 +628,43 @@ def main():
     pattern = "*_mod.csv" if revert else "*.csv"
     csv_files = sorted([f for f in candles_dir.glob(pattern) 
                         if revert or not f.stem.endswith("_mod")])
+    
+    # Filter by date range if specified
+    if start_date or end_date:
+        try:
+            # Parse date arguments (format: YYYY-MM-DD)
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else None
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") if end_date else None
+            
+            filtered_files = []
+            for csv_file in csv_files:
+                # Extract date from filename (format: YY-MM-DD-HH-MM.csv)
+                stem = csv_file.stem.replace("_mod", "").replace("_temp", "")
+                try:
+                    # Parse the date portion (first 8 chars: YY-MM-DD)
+                    file_date_str = stem[:8]  # "25-01-02"
+                    file_dt = datetime.strptime(file_date_str, "%y-%m-%d")
+                    
+                    # Check if file is within date range
+                    if start_dt and file_dt < start_dt:
+                        continue
+                    if end_dt and file_dt > end_dt:
+                        continue
+                    
+                    filtered_files.append(csv_file)
+                except (ValueError, IndexError):
+                    # Skip files that don't match expected format
+                    continue
+            
+            csv_files = filtered_files
+            if start_date:
+                print(f"Start date filter: {start_date}")
+            if end_date:
+                print(f"End date filter: {end_date}")
+        except ValueError as e:
+            print(f"Error parsing date: {e}")
+            print("Date format should be YYYY-MM-DD (e.g., 2025-01-02)")
+            return
     
     print(f"Found {len(csv_files)} files\n")
 
