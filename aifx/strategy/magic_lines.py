@@ -38,10 +38,10 @@ LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 
 # ===== PARAMETRY LINI =====
 MIN_SLOPE = 0.3  # Minimalny slope linii
-MAX_SLOPE = 5.0  # Maksymalny slope linii
+MAX_SLOPE = 4.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 0  # maksymalna liczba linii wsparcia / oporu poniżej głównej
 MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
-LINE_IMPULSE_TOLERANCE = 2.0  # Tolerancja dla dopasowania impulsów do linii
+LINE_IMPULSE_TOLERANCE = 1.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
 MINMAX_MARGIN_FILTER = 0 # 16 # Minimalna odległość od brzegu danych dla punktów min/max (33/2)
@@ -53,7 +53,7 @@ SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania lini
 
 # ===== RÓŻNE =====
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
-SCORE_CMP_THRESHOLD = 0.00 # 0.01  # próg porównywania score linii
+SCORE_CMP_THRESHOLD = 0.01 # 0.01  # próg porównywania score linii
 
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
@@ -388,8 +388,8 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
         next_candle = candles[p.index + 1]
         if abs(next_candle.open - next_candle.close) < FA_MIN_HEIGHT:
             continue
-        
-        # dodatkowe filtry dla fa min/max		
+
+        # dodatkowe filtry dla fa min/max
         if p.type == impulse_point.TYPE_MIN:
             next_next_candle = candles[p.index + 2]
             # jeżeli następna świeczka jest spadkowa i zakrywa fa w połowie to pomiń fa
@@ -471,8 +471,8 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
         print(f"  Detected LAGA impulses: {len(impulses_laga)}")
         #for p in impulses_laga:
         #    print(f"  Detected LAGA at index {p.index}, price: {p.price:.2f}")
-    if DEBUG:        
-        print("  Total impulses detected: ", len(impulses_gap) + len(impulses_minmax) + len(impulses_fa) + len(impulses_laga))
+    if DEBUG:
+        print("Total impulses detected: ", len(impulses_gap) + len(impulses_minmax) + len(impulses_fa) + len(impulses_laga))
     return impulses_gap + impulses_minmax + impulses_fa + impulses_laga
 
 def calculate_line_score(slope: float, 
@@ -607,7 +607,7 @@ def calculate_lines(slope : float,
             
     return magic_lines
 
-def find_support_lines(candles :list[candle], 
+def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
         debug: int = 0) -> tuple[list[magic_line], list[impulse_point]]:
     """
     Znajduje główną linię support/resistance oraz hierarchiczne linie równoległe.    
@@ -616,8 +616,7 @@ def find_support_lines(candles :list[candle],
     
     # Wykryj impulsy
     points = detect_impulses(candles)
-    # print(f"  Wykryto {len(points)} punktów impulsów/min/max")
-    
+
     # asc impulses nie zawiera impulsów FA_MAX
     asc_impulses = [p for p in points \
                   if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MAX)]
@@ -699,11 +698,23 @@ def find_support_lines(candles :list[candle],
         # DEBUG
         if (debug):
             print(f"    Slope {abs_slope:.4f} asc scores: {[f'{s:.2f}' for s in asc_scores]} avg {avg_asc_score:.2f} | "
-                f"desc scores: {[f'{s:.2f}' for s in desc_scores]} avg {avg_desc_score:.2f}")
-     
+                f"desc scores: {[f'{s:.2f}' for s in desc_scores]} avg {avg_desc_score:.2f}")    
+
+        # Jeżeli slope linii jest identyczny jak prev_chart_slope
+        # pomnóż score przez 1.1 (bonus za powtarzalność)
+        if prev_chart_slope is not None:
+            if abs(abs_slope - abs(prev_chart_slope)) / abs(prev_chart_slope) < 0.01:
+                avg_asc_score *= 1.1
+                avg_desc_score *= 1.1
+                # uaktualnij asc_line score             
+                asc_lines[0].score *= 1.1
+                desc_lines[0].score *= 1.1
+                print(f"Bonus za powtarzalność dla slope {abs_slope:.4f}")   
+        elif DEBUG > 1:
+            print("Brak poprzedniego slope do porównania")
+
         # Get score from best lines
         combined_score = avg_asc_score + avg_desc_score
-        
         slope_scores.append((combined_score, {
             'ascending': asc_lines,
             'descending': desc_lines,
@@ -712,7 +723,12 @@ def find_support_lines(candles :list[candle],
 
     # Wybierz parę z najwyższym combined_score
     slope_scores.sort(key=lambda x: x[0], reverse=True)
+
     best_pair = slope_scores[0][1]
+    # print best_pair score
+    if DEBUG > 1:
+        print(f"Best ascending line score: {best_pair['ascending'][0].score:.2f}")
+        print(f"Best descending line score: {best_pair['descending'][0].score:.2f}")
 
     # DEBUG
     # calc line score for best desc line with debug info
@@ -1093,7 +1109,58 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
     result = crossed_lines if crossed else []    
     return result
 
-def process_single_file(csv_filepath, output_dir='charts'):
+def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
+    """
+    Wczytuje poprzedni slope z pliku wynikowego dla poprzedniej świeczki (15 minut wcześniej).
+    
+    Args:
+        csv_path: Ścieżka do aktualnego pliku CSV
+        output_dir: Katalog z plikami wynikowymi
+    
+    Returns:
+        Poprzedni slope lub None jeśli nie można wczytać
+    """
+    try:
+        from datetime import datetime, timedelta
+        # Parse filename: YY-MM-DD-HH-MM.csv
+        stem_parts = csv_path.stem.split('-')
+        if len(stem_parts) == 5:
+            year = int('20' + stem_parts[0])
+            month = int(stem_parts[1])
+            day = int(stem_parts[2])
+            hour = int(stem_parts[3])
+            minute = int(stem_parts[4])
+            current_dt = datetime(year, month, day, hour, minute)
+            prev_dt = current_dt - timedelta(minutes=15)
+            prev_filename = prev_dt.strftime('%y-%m-%d-%H-%M') + '_result.txt'
+            prev_result_file = output_dir / prev_filename
+        else:
+            return None
+    except Exception as e:
+        log(f"  Błąd parsowania nazwy pliku: {e}")
+        return None
+    
+    if prev_result_file.exists():
+        if DEBUG > 1: 
+            log(f"Sprawdzam poprzedni plik wynikowy: {prev_result_file}")
+        try:
+            with open(prev_result_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if 'SLOPE:' in line:
+                        parts = line.split('SLOPE:')
+                        if len(parts) == 2:
+                            slope_str = parts[1].split('|')[0].strip()
+                            prev_slope = float(slope_str)
+                            if DEBUG > 1: 
+                                log(f"  Poprzedni slope: {prev_slope:.4f}")
+                            return prev_slope
+        except Exception as e:
+            log(f"  Błąd wczytania poprzedniego pliku wynikowego: {e}")
+    
+    return None
+
+
+def process_single_file(csv_filepath, output_dir='charts', prev_slope=None):
     """
     Przetwarza pojedynczy plik CSV:
     1. Wczytuje dane
@@ -1120,7 +1187,7 @@ def process_single_file(csv_filepath, output_dir='charts'):
                       lookback_df_for_lines.iloc[i]['Low'],
                       lookback_df_for_lines.iloc[i]['Close']) 
                for i in range(len(lookback_df_for_lines))]
-    detected_lines, points = find_support_lines(candles)
+    detected_lines, points = find_support_lines(candles, prev_slope)
     
     if not detected_lines:
         return "NONE"
@@ -1190,7 +1257,7 @@ def process_single_file(csv_filepath, output_dir='charts'):
         if DEBUG:
             print(f"Wykres: {chart_filepath}")
 
-    if DEBUG:
+    if DEBUG > 1:
         combined_score = detected_lines[0].score + detected_lines[1].score
         print(f"DEBUG: slope: {slope:.4f} score: {combined_score:.2f}")
 
@@ -1226,7 +1293,8 @@ def process_all_files(input_dir, output_file='support_lines_results.txt', output
         log(f"[{idx}/{len(csv_files)}] Przetwarzam: {csv_file.name}")
         
         try:
-            result = process_single_file(str(csv_file), output_charts_dir)
+            prev_slope = load_previous_slope(csv_file, output_charts_dir)
+            result = process_single_file(str(csv_file), output_charts_dir, prev_slope)            
             results.append(f"{csv_file.name}: {result}")
         except Exception as e:
             log(f"  BŁĄD: {e}")
@@ -1278,9 +1346,13 @@ def main():
             csv_path = Path(csv_file)
             output_dir = csv_path.parent / 'charts'
             output_dir.mkdir(exist_ok=True)
-            
+
+            # Wczytaj poprzedni slope
+            prev_slope = load_previous_slope(csv_path, output_dir)
+
             log(f"Przetwarzam: {csv_path.name}")
-            result = process_single_file(csv_file, str(output_dir))
+            result = process_single_file(csv_file, str(output_dir), prev_slope)
+
             log(f"Wynik: {result}")
             full_output_path = output_dir.resolve()
             png_filename = f"{csv_path.stem}.png"
