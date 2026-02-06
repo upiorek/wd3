@@ -78,7 +78,7 @@ SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 1
+DEBUG = 0
 
 # ===== KLASY DANYCH =====
 
@@ -658,6 +658,7 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
 
     # Dla każdego |slope| oblicz combined_score
     best_pair = None
+    bonus_applied = False
     
     slope_scores = [] # [(combined_score, {'ascending': , 'descending':}), ...]
     for i, abs_slope in enumerate(unique_slopes):
@@ -700,25 +701,30 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
             print(f"    Slope {abs_slope:.4f} asc scores: {[f'{s:.2f}' for s in asc_scores]} avg {avg_asc_score:.2f} | "
                 f"desc scores: {[f'{s:.2f}' for s in desc_scores]} avg {avg_desc_score:.2f}")    
 
-        # Jeżeli slope linii jest identyczny jak prev_chart_slope
-        # pomnóż score przez 1.1 (bonus za powtarzalność)
+        # Jeżeli slope linii jest identyczny jak prev_chart_slope dodaj bonus za powtarzalność
+        bonus_applied = False
         if prev_chart_slope is not None:
-            if abs(abs_slope - abs(prev_chart_slope)) / abs(prev_chart_slope) < 0.01:
-                avg_asc_score *= 1.1
-                avg_desc_score *= 1.1
-                # uaktualnij asc_line score             
-                asc_lines[0].score *= 1.1
-                desc_lines[0].score *= 1.1
-                print(f"Bonus za powtarzalność dla slope {abs_slope:.4f}")   
+            if DEBUG > 1:
+                print(f"  Comparing abs_slope {abs_slope:.4f} with prev_chart_slope {abs(prev_chart_slope):.4f}")
+            if abs(abs_slope - abs(prev_chart_slope)) / abs(prev_chart_slope) < 0.001:
+                bonus_applied = True
+                avg_asc_score *= 1.01
+                avg_desc_score *= 1.01
+                # uaktualnij asc_line score
+                asc_lines[0].score *= 1.01
+                desc_lines[0].score *= 1.01
+                if DEBUG:
+                  print(f"Bonus za powtarzalnosc dla slope {abs_slope:.4f}")
         elif DEBUG > 1:
-            print("Brak poprzedniego slope do porównania")
+            print("Brak poprzedniego slope do porownania")
 
         # Get score from best lines
         combined_score = avg_asc_score + avg_desc_score
         slope_scores.append((combined_score, {
             'ascending': asc_lines,
             'descending': desc_lines,
-            'slope': abs_slope
+            'slope': abs_slope,
+            'bonus_applied': bonus_applied
         }))
 
     # Wybierz parę z najwyższym combined_score
@@ -807,7 +813,7 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
             level += 1
             intercept = best_line.intercept
 
-    return detected_lines, points
+    return detected_lines, points, best_pair.get('bonus_applied', False)
 
 def plot_chart(df_plot, 
                impulses : list[impulse_point],
@@ -1123,7 +1129,9 @@ def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
     try:
         from datetime import datetime, timedelta
         # Parse filename: YY-MM-DD-HH-MM.csv
-        stem_parts = csv_path.stem.split('-')
+        # Strip _temp suffix if present (from process_candles.py)
+        stem = csv_path.stem.replace('_temp', '')
+        stem_parts = stem.split('-')
         if len(stem_parts) == 5:
             year = int('20' + stem_parts[0])
             month = int(stem_parts[1])
@@ -1187,8 +1195,9 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None):
                       lookback_df_for_lines.iloc[i]['Low'],
                       lookback_df_for_lines.iloc[i]['Close']) 
                for i in range(len(lookback_df_for_lines))]
-    detected_lines, points = find_support_lines(candles, prev_slope)
-    
+    detected_lines, points, bonus_added = find_support_lines(candles, prev_slope)
+    if DEBUG:
+        print(f"Bonus applied: {bonus_added}")
     if not detected_lines:
         return "NONE"
     
@@ -1243,6 +1252,19 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None):
             print(f"ERROR: Duplicate line ID detected: {line_id}")
             assert False, "Duplicate line ID detected"
         unique_ids.add(line_id)
+        
+    # Wygeneruj plik _stats.txt z informacjami o impulsach i liniach
+    stats_filename = f"{Path(csv_filepath).stem}_stats.txt"
+    stats_filepath = os.path.join(output_dir, stats_filename)
+    with open(stats_filepath, 'w', encoding='utf-8') as f:
+        #f.write(f"Detected lines for {csv_filepath}:\n")
+        #for line_info in detected_lines:
+        #    f.write(f"  Line slope: {line_info.slope:.4f} intercept: {line_info.intercept:.2f} score: {line_info.score:.4f} "
+        #            f"using {len(line_info.used_points)} points\n")
+        #f.write("\nImpulse points:\n")
+        #for point in points:
+        #    f.write(f"  Type: {point.type} Subtype: {point.subtype} Index: {point.index} Price: {point.price:.2f}\n")
+        f.write(f"Bonus added: {bonus_added} for slope {detected_lines[0].slope:.4f}\n")
     
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:

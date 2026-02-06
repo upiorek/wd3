@@ -30,6 +30,7 @@ quality_stats = {
     "num_slopes": 0, # num of unique slopes in month
     "add_remove_line": 0, # num of add/remove lines in month
     "avg_slope_live": 0.0, # average num of period where slope doesn't change
+    "bonus_count": 0, # num of periods where bonus was applied
 
     # data
     "slopes": [], # (val, num_periods)
@@ -58,7 +59,14 @@ def calculate_quality_stats():
         #   DS3: 107.10 | A0: 1308.55 | AR1: 326.98 | AR2: 230.42 | AR3: -80.66 | AS1: 1633.04 | 
         #   SLOPE: -3.0385 | BASE: 21299.18'
 
-        result_slope = float(result.split('| SLOPE: ')[-1].split(' |')[0].strip())
+        try:
+            result_slope = float(result.split('| SLOPE: ')[-1].split(' |')[0].strip())
+        except (ValueError, IndexError):
+            # Skip malformed results
+            with PRINT_LOCK:
+                print(f"Warning: Skipping malformed result for {filename}: {result[:100]}")
+            continue
+            
         result_line_ids = [] # e.g. ['DS2', 'D0', ...]
         for part in result.split('|'):
             part = part.strip()
@@ -205,9 +213,17 @@ def magic_lines_decision(file_path, lines, i, keep_results):
         if STOP_EVENT.is_set():
             temp_path.unlink(missing_ok=True)
             return None
+        
+        # Load previous slope for bonus detection
+        prev_slope = magic_lines.load_previous_slope(
+            Path(file_path), 
+            file_path.parent / "charts"
+        )
+        
         result = magic_lines.process_single_file(
             str(temp_path), 
-            output_dir=str(file_path.parent / "charts"))
+            output_dir=str(file_path.parent / "charts"),
+            prev_slope=prev_slope)
 
         # save result data to txt file next to charts
         with open(result_txt_path, 'w') as result_f:
@@ -220,6 +236,27 @@ def magic_lines_decision(file_path, lines, i, keep_results):
             if new_chart_path.exists():
                 new_chart_path.unlink()
             chart_path.rename(new_chart_path)
+        
+        # rename stats file to match current file
+        # Source: {temp_path.stem}_stats.txt (e.g., "25-01-02-00-15_temp_stats.txt")
+        # Target: {file_path.stem}_stats.txt (e.g., "25-01-02-00-15_stats.txt")
+        stats_path = file_path.parent / "charts" / f"{temp_path.stem}_stats.txt"
+        new_stats_path = file_path.parent / "charts" / f"{file_path.stem}_stats.txt"
+        if stats_path.exists():
+            if new_stats_path.exists():
+                new_stats_path.unlink()
+            stats_path.rename(new_stats_path)
+            
+            # Check if bonus was applied and update counter
+            try:
+                with open(new_stats_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if "Bonus added: True" in content:
+                        with PRINT_LOCK:
+                            quality_stats["bonus_count"] += 1
+            except Exception as e:
+                with PRINT_LOCK:
+                    print(f"Warning: Could not read stats file {new_stats_path.name}: {e}")
 
     temp_path.unlink()
 
@@ -331,7 +368,10 @@ def process_files(csv_files, candles_dir, compare_mode, orders_dir, mt, mt_worke
     if mt:
         errors = 0
         futures = []
-        inflight_limit = max(1, (mt_workers or 1) * 2)
+        # For bonus calculation to work correctly, files must be processed in strict
+        # chronological order. Set inflight_limit to 1 to ensure previous file completes
+        # before next file starts processing.
+        inflight_limit = 1
 
         executor = ThreadPoolExecutor(max_workers=mt_workers)
         try:
@@ -700,8 +740,9 @@ def main():
     # quality stats output
     if not revert and ALGO == "magic_lines":
         quality_stats["num_slopes"] = len(quality_stats["slopes"])
-        num_m15_in_month = 4 * 24 * 30
-        avg_slope_live = num_m15_in_month / quality_stats["num_slopes"] \
+        # Calculate average based on actual periods processed, not assumed month
+        total_periods_processed = processed_count
+        avg_slope_live = total_periods_processed / quality_stats["num_slopes"] \
             if quality_stats["num_slopes"] != 0 else 0
         
         elapsed_time = time.time() - start_time
@@ -710,8 +751,12 @@ def main():
         
         print("\nQuality Statistics:")
         print(f"  Processing time: {minutes}m {seconds:.2f}s")
-        print(f"  Avg slope live (x m15): {avg_slope_live:.2f}")
-        print(f"  Number of add/remove lines in month: {quality_stats['add_remove_line']}")
+        print(f"  Total periods processed: {total_periods_processed}")
+        print(f"  Unique slopes detected: {quality_stats['num_slopes']}")
+        print(f"  Avg periods per slope: {avg_slope_live:.2f}")
+        print(f"  Slope changes: {quality_stats['num_slopes'] - 1}")
+        print(f"  Line add/remove events: {quality_stats['add_remove_line']}")
+        print(f"  Bonuses applied: {quality_stats['bonus_count']}")
         
         # Write stats to file
         stats_file = candles_dir / "processing_stats.txt"
@@ -723,8 +768,13 @@ def main():
             f.write(f"\n")
             f.write(f"Quality Statistics:\n")
             f.write(f"  Processing time: {minutes}m {seconds:.2f}s\n")
-            f.write(f"  Avg slope live (x m15): {avg_slope_live:.2f}\n")
-            f.write(f"  Number of add/remove lines in month: {quality_stats['add_remove_line']}\n")
+            f.write(f"  Total periods processed: {total_periods_processed}\n")
+            f.write(f"  Unique slopes detected: {quality_stats['num_slopes']}\n")
+            f.write(f"  Avg periods per slope: {avg_slope_live:.2f}\n")
+            f.write(f"  Slope changes: {quality_stats['num_slopes'] - 1}\n")
+            f.write(f"  Line add/remove events: {quality_stats['add_remove_line']}\n")
+            f.write(f"  Bonuses applied: {quality_stats['bonus_count']}\n")
+
         print(f"\nStats written to: {stats_file}")
 
     print("\nComplete!")
