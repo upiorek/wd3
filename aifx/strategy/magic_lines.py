@@ -512,21 +512,14 @@ def calculate_line_score(slope: float,
                     f"score contrib {p.strength * (1.0 - dist / tolerance):.2f}\n"
                 
     # Jeżeli jeden index ma więcej impulsów, to zostaw tylko ten z najwyższą siłą
-    # impulsy laga mogą się nakładać z innymi
-    laga_impulses = [p for p in used_impulses if p.type == impulse_point.TYPE_LAGA]
-    other_impulses = [p for p in used_impulses if p.type != impulse_point.TYPE_LAGA]
-    
-    # Deduplikuj tylko impulsy nie-laga
-    unique_other_impulses = {}
-    for p in other_impulses:
-        if p.index not in unique_other_impulses:
-            unique_other_impulses[p.index] = p
+    unique_used_impulses = {}
+    for p in used_impulses:
+        if p.index not in unique_used_impulses:
+            unique_used_impulses[p.index] = p
         else:
-            if p.strength > unique_other_impulses[p.index].strength:
-                unique_other_impulses[p.index] = p
-    
-    # Połącz impulsy laga (wszystkie) z deduplikowanymi innymi impulsami
-    used_impulses = laga_impulses + list(unique_other_impulses.values())
+            if p.strength > unique_used_impulses[p.index].strength:
+                unique_used_impulses[p.index] = p
+    used_impulses = list(unique_used_impulses.values())
                 
     # Sprawdź ile świeczek pasuje do tej linii
     candles_score = 0
@@ -1193,14 +1186,14 @@ def process_single_file(csv_filepath, output_dir='charts'):
         lookback_end_dt = df.iloc[-1]['DateTime']
         
         plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath, 
-                   lookback_start_dt, lookback_end_dt)
-        
-        print(f"Wykres: {chart_filepath}")
-        
+                   lookback_start_dt, lookback_end_dt)        
+        if DEBUG:
+            print(f"Wykres: {chart_filepath}")
+
     if DEBUG:
         combined_score = detected_lines[0].score + detected_lines[1].score
         print(f"DEBUG: slope: {slope:.4f} score: {combined_score:.2f}")
-    
+
     prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
     ret = prefix + " | "
     # offset z dokładnością do 2 miejsca po przecinku
