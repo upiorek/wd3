@@ -59,9 +59,11 @@ PREV_SLOPE_BONUS_FACTOR = 1.2  # mnożnik bonusu za powtarzalność slope wzglę
 # ===== WYKRESY =====
 SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
 SHOW_TOLERANCE = False   # Czy pokazywać tolerancję na wykresie
+
 DUMP_IMAGES = True      # Czy zapisywać wykresy do plików
 IMAGE_DPI = 300         # DPI dla zapisywanych obrazów
 NEXT_CANDLES = 30       # liczba świeczek do przodu do rysowania linii (poza zakresem danych)
+DUMP_IMAGES_NUM = 1     # Zrzuca top NUM obrazków
 
 # ===== SIŁA IMPULSÓW =====
 MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max UWAGA sumuje się
@@ -609,8 +611,8 @@ def calculate_lines(slope : float,
             
     return magic_lines
 
-def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
-        debug: int = 0) -> tuple[list[magic_line], list[impulse_point]]:
+def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
+        debug: int = 0) -> tuple[list[list[magic_line]], list[impulse_point], float]:
     """
     Znajduje główną linię support/resistance oraz hierarchiczne linie równoległe.    
     Zwraca listę wykrytych linii (od 0 do HIERARCHICAL_LEVELS - wznosząca i/lub opadająca).
@@ -730,97 +732,109 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
         }))
 
     # Wybierz parę z najwyższym combined_score
+    # UWAGA: dla DUMP_IMAGES_NUM > 0 wybierze więcej
     slope_scores.sort(key=lambda x: x[0], reverse=True)
 
-    best_pair = slope_scores[0][1]
-
-    # print best_pair score + bonus info
-    if DEBUG > 1:
-        print(f"Best ascending line score: {best_pair['ascending'][0].score:.2f}")
-        print(f"Best descending line score: {best_pair['descending'][0].score:.2f}")        
-        # Sprawdź czy best_pair to jest slope z bonusem i wypisz info
-        if best_pair['bonus_applied']:
-            print(f"Best pair slope {best_pair['slope']:.4f} has bonus applied for repeatability")    
-
-    # DEBUG
-    # calc line score for best desc line with debug info
-    # calculate_lines(best_pair['slope'], dsc_impulses, debug=1)
+    detected_lines = []
+    bonus_applied = False
+    range_limit = min(DUMP_IMAGES_NUM, len(slope_scores))
 
     if (DEBUG >= 1 or debug):
-        print("DEBUG Top 5 slope scores:")
-        # best 5 lines score
-        for k in range(5):
+        print(f"DEBUG Top {range_limit} slope scores:")
+        # best range_limit lines score
+        for k in range(range_limit):
             if k >= len(slope_scores):
                 break
             score, pair = slope_scores[k]
             # only if pair has bonus applied print info about it
-            print(f"  Top {k+1} slope {pair['slope']:.4f} combined score {score:.4f} {'(bonus applied)' if pair['bonus_applied'] else ''}") 
-    if (DEBUG >= 2 or debug):
-        for line in best_pair['ascending']:
-            print(f"  Ascending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
-                f"using {len(line.used_points)} points")
-        for line in best_pair['descending']:
-            print(f"  Descending line slope {line.slope:.4f} intercept {line.intercept:.2f} score {line.score:.4f} "
-                f"using {len(line.used_points)} points")
-
-    best_ascending : magic_line = best_pair['ascending'][0]
-    best_descending : magic_line = best_pair['descending'][0]
-
-    # Dodaj główne linie do wyników
-    detected_lines = [best_ascending, best_descending]
-
-    # Pomocnicze funkcje porównujące linie dla wyboru hierarchicznych
-    # Sortowanie najpierw po score, potem po odległości intercept od bazowej linii
-    # UWAGA: dla bardzo podobnych score (różnica < SCORE_CMP_THRESHOLD) wybierz bliższą linię
-    def line_cmp_down(x: magic_line, y: magic_line):
-        if abs(x.score - y.score) < SCORE_CMP_THRESHOLD:
-            return -1 if abs(x.intercept) < abs(y.intercept) else 1
-        return -1 if x.score > y.score else 1 if x.score < y.score else 0
-    def line_cmp_up(x: magic_line, y: magic_line):
-        if abs(x.score - y.score) < SCORE_CMP_THRESHOLD:
-            return -1 if abs(x.intercept) > abs(y.intercept) else 1
-        return -1 if x.score > y.score else 1 if x.score < y.score else 0
-    
-    # Dodaj linie hierarchiczne
-    for lines in [best_pair['ascending'], best_pair['descending']]:
-        base_line = lines[0]
-
-        # Wszystkie linie powyżej 
-        level = base_line.level + 1
-        intercept = base_line.intercept
-        while level <= MAX_HIERARCHICAL_LEVELS:
-            lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]         
-            if not lines_above: break
-            # Posortuj po score i wybierz najlepszą (w przypadku "remisu" wybierz bliższą do bazowej)
-            best_line = sorted(lines_above, key=cmp_to_key(line_cmp_down))[0]
-            best_line.level = level
-            best_line.offset = best_line.intercept - intercept
-            detected_lines.append(best_line)
-            # DEBUG
-            if (DEBUG >= 2 or debug):
-                print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
-                    f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
-            level += 1
-            intercept = best_line.intercept
+            print(f"  Top {k+1} slope {pair['slope']:.4f} combined score {score:.4f} "\
+                f"{'(bonus applied)' if pair['bonus_applied'] else ''}") 
             
-        # Wszystkie linie poniżej
-        level = base_line.level + 1
-        intercept = base_line.intercept
-        while level <= MAX_HIERARCHICAL_LEVELS:
-            lines_below = [line for line in lines if line.intercept < intercept - MIN_HIERARCHICAL_OFFSET]
-            if not lines_below: break
-            best_line = sorted(lines_below, key=cmp_to_key(line_cmp_up))[0]
-            best_line.level = level
-            best_line.offset = best_line.intercept - intercept
-            detected_lines.append(best_line)
-            # DEBUG
-            if (DEBUG >= 2 or debug):
-                print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
-                    f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
-            level += 1
-            intercept = best_line.intercept
+    for k in range(range_limit):
+        score, pair = slope_scores[k]
+        pair_lines = []
 
-    return detected_lines, points, best_pair.get('bonus_applied', False)
+        # print best_pair (k == 0) score + bonus info
+        if k == 0 and DEBUG > 1:
+            print(f"Best ascending line score: {pair['ascending'][0].score:.2f}")
+            print(f"Best descending line score: {pair['descending'][0].score:.2f}")        
+            # Sprawdź czy best_pair to jest slope z bonusem i wypisz info
+            if pair['bonus_applied']:
+                bonus_applied = True
+                print(f"Best pair slope {pair['slope']:.4f} has bonus applied for repeatability")    
+
+        # DEBUG
+        # calc line score for best desc line with debug info
+        # calculate_lines(best_pair['slope'], dsc_impulses, debug=1)
+
+        if (DEBUG >= 2 or debug):
+            for line in pair['ascending']:
+                print(f"  Ascending line slope {line.slope:.4f} intercept {line.intercept:.2f} "
+                    f"score {line.score:.4f} using {len(line.used_points)} points")
+            for line in pair['descending']:
+                print(f"  Descending line slope {line.slope:.4f} intercept {line.intercept:.2f} "
+                    f"score {line.score:.4f} using {len(line.used_points)} points")
+
+        best_ascending : magic_line = pair['ascending'][0]
+        best_descending : magic_line = pair['descending'][0]
+
+        # Dodaj główne linie do wyników
+        pair_lines += [best_ascending, best_descending]
+
+        # Pomocnicze funkcje porównujące linie dla wyboru hierarchicznych
+        # Sortowanie najpierw po score, potem po odległości intercept od bazowej linii
+        # UWAGA: dla bardzo podobnych score (różnica < SCORE_CMP_THRESHOLD) wybierz bliższą linię
+        def line_cmp_down(x: magic_line, y: magic_line):
+            if abs(x.score - y.score) < SCORE_CMP_THRESHOLD:
+                return -1 if abs(x.intercept) < abs(y.intercept) else 1
+            return -1 if x.score > y.score else 1 if x.score < y.score else 0
+        def line_cmp_up(x: magic_line, y: magic_line):
+            if abs(x.score - y.score) < SCORE_CMP_THRESHOLD:
+                return -1 if abs(x.intercept) > abs(y.intercept) else 1
+            return -1 if x.score > y.score else 1 if x.score < y.score else 0
+        
+        # Dodaj linie hierarchiczne
+        for lines in [pair['ascending'], pair['descending']]:
+            base_line : magic_line = lines[0]
+
+            # Wszystkie linie powyżej 
+            level = base_line.level + 1
+            intercept = base_line.intercept
+            while level <= MAX_HIERARCHICAL_LEVELS:
+                lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]         
+                if not lines_above: break
+                # Posortuj po score i wybierz najlepszą (w przypadku "remisu" wybierz bliższą do bazowej)
+                best_line = sorted(lines_above, key=cmp_to_key(line_cmp_down))[0]
+                best_line.level = level
+                best_line.offset = best_line.intercept - intercept
+                pair_lines.append(best_line)
+                # DEBUG
+                if (DEBUG >= 2 or debug):
+                    print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
+                        f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
+                level += 1
+                intercept = best_line.intercept
+                
+            # Wszystkie linie poniżej
+            level = base_line.level + 1
+            intercept = base_line.intercept
+            while level <= MAX_HIERARCHICAL_LEVELS:
+                lines_below = [line for line in lines if line.intercept < intercept - MIN_HIERARCHICAL_OFFSET]
+                if not lines_below: break
+                best_line = sorted(lines_below, key=cmp_to_key(line_cmp_up))[0]
+                best_line.level = level
+                best_line.offset = best_line.intercept - intercept
+                pair_lines.append(best_line)
+                # DEBUG
+                if (DEBUG >= 2 or debug):
+                    print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
+                        f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
+                level += 1
+                intercept = best_line.intercept
+        
+        detected_lines.append(pair_lines)
+
+    return detected_lines, points, bonus_applied
 
 def plot_chart(df_plot, 
                impulses : list[impulse_point],
@@ -1166,10 +1180,10 @@ def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
             prev_filename = prev_dt.strftime('%y-%m-%d-%H-%M') + '_result.txt'
             prev_result_file = output_dir / prev_filename
         else:
-            return None
+            return -100
     except Exception as e:
         log(f"  Błąd parsowania nazwy pliku: {e}")
-        return None
+        return -100
     
     if prev_result_file.exists():
         if DEBUG > 1: 
@@ -1188,8 +1202,7 @@ def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
         except Exception as e:
             log(f"  Błąd wczytania poprzedniego pliku wynikowego: {e}")
     
-    return None
-
+    return -100
 
 def get_next_filepath(csv_filepath: str) -> str:
     """
@@ -1208,7 +1221,7 @@ def get_next_filepath(csv_filepath: str) -> str:
         stem = csv_path.stem.replace('_temp', '')
         stem_parts = stem.split('-')
         if len(stem_parts) != 5:
-            return None
+            return ""
         year = int('20' + stem_parts[0])
         month = int(stem_parts[1])
         day = int(stem_parts[2])
@@ -1234,8 +1247,7 @@ def get_next_filepath(csv_filepath: str) -> str:
         return str(next_filepath)
     except Exception as e:
         log(f"  Błąd get_next_filepath: {e}")
-        return None
-
+        return ""
 
 def load_next_candles(csv_filepath: str, base_idx: int, count: int = NEXT_CANDLES) -> tuple[list, pd.DataFrame]:
     """
@@ -1279,7 +1291,6 @@ def load_next_candles(csv_filepath: str, base_idx: int, count: int = NEXT_CANDLE
     next_df_full = pd.DataFrame(next_rows_list) if next_rows_list else pd.DataFrame()
     return next_candles, next_df_full
 
-
 def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next=False):
     """
     Przetwarza pojedynczy plik CSV:
@@ -1307,6 +1318,8 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
                       lookback_df_for_lines.iloc[i]['Low'],
                       lookback_df_for_lines.iloc[i]['Close']) 
                for i in range(len(lookback_df_for_lines))]
+    if prev_slope is None:
+        prev_slope = -100.0
     detected_lines, points, bonus_added = find_support_lines(candles, prev_slope)
     if not detected_lines:
         return "NONE"
@@ -1322,7 +1335,9 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     crossed = False
     crossed_id = ""
     line_offsets = []
-    for line_info in detected_lines:
+    # Dla DUMP_IMAGES_NUM > 0 może być więcej niż jeden zestaw linii -
+    # sprawdź przecięcia tylko najlepszego zestawu
+    for line_info in detected_lines[0]: 
         slope = line_info.slope
         intercept = line_info.intercept
         line_type = 'ascending' if slope > 0 else 'descending'
@@ -1351,7 +1366,7 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
 
         line_offsets.append((line_id, line_offset))
 
-    slope = detected_lines[0].slope
+    slope = detected_lines[0][0].slope
     
     # TEST
     # wszystkie ID linii powinny być unikalne
@@ -1368,40 +1383,41 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     stats_filepath = os.path.join(output_dir, stats_filename)
     with open(stats_filepath, 'w', encoding='utf-8') as f:
         #f.write(f"Detected lines for {csv_filepath}:\n")
-        #for line_info in detected_lines:
+        #for line_info in detected_lines[0][0]:
         #    f.write(f"  Line slope: {line_info.slope:.4f} intercept: {line_info.intercept:.2f} score: {line_info.score:.4f} "
         #            f"using {len(line_info.used_points)} points\n")
         #f.write("\nImpulse points:\n")
         #for point in points:
         #    f.write(f"  Type: {point.type} Subtype: {point.subtype} Index: {point.index} Price: {point.price:.2f}\n")
-        f.write(f"Bonus added: {bonus_added} for slope {detected_lines[0].slope:.4f}\n")
+        f.write(f"Bonus added: {bonus_added} for slope {detected_lines[0][0].slope:.4f}\n")
     
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
-        chart_filename = f"{Path(csv_filepath).stem}.png"
-        # dla next dodaj suffix
-        if next:
-            chart_filename = f"{Path(csv_filepath).stem}_next.png"
-        chart_filepath = os.path.join(output_dir, chart_filename)
-        
-        lookback_start_dt = df.iloc[start_idx]['DateTime']
-        lookback_end_dt = df.iloc[-1]['DateTime']
-        
-        # jeżeli next jest włączone, wczytaj następne świeczki
-        if next:
-            next_candles, next_df_full = load_next_candles(
-                csv_filepath, base_idx=len(lookback_df_for_lines), count=NEXT_CANDLES)
-            if not next_df_full.empty:
-                lookback_df_full = pd.concat([lookback_df_full, next_df_full], ignore_index=True)
-        
-        plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath,
-                   lookback_start_dt, lookback_end_dt,
-                   next_count=len(next_candles) if (next and 'next_candles' in locals() and next_candles) else 0)
-        if DEBUG:
-            print(f"Wykres: {chart_filepath}")
+        for n in range(min(DUMP_IMAGES_NUM, len(detected_lines))):
+            chart_filename = f"{Path(csv_filepath).stem}_{n}.png"
+            # dla next dodaj suffix
+            if next:
+                chart_filename = f"{Path(csv_filepath).stem}_next.png"
+            chart_filepath = os.path.join(output_dir, chart_filename)
+            
+            lookback_start_dt = df.iloc[start_idx]['DateTime']
+            lookback_end_dt = df.iloc[-1]['DateTime']
+            
+            # jeżeli next jest włączone, wczytaj następne świeczki
+            if next:
+                next_candles, next_df_full = load_next_candles(
+                    csv_filepath, base_idx=len(lookback_df_for_lines), count=NEXT_CANDLES)
+                if not next_df_full.empty:
+                    lookback_df_full = pd.concat([lookback_df_full, next_df_full], ignore_index=True)
+            
+            plot_chart(lookback_df_full.copy(), points, detected_lines[n], chart_filepath,
+                    lookback_start_dt, lookback_end_dt,
+                    next_count=len(next_candles) if (next and 'next_candles' in locals() and next_candles) else 0)
+            if DEBUG:
+                print(f"Wykres: {chart_filepath}")
 
     if DEBUG > 1:
-        combined_score = detected_lines[0].score + detected_lines[1].score
+        combined_score = detected_lines[0][0].score + detected_lines[0][1].score
         print(f"DEBUG: slope: {slope:.4f} score: {combined_score:.2f}")
 
     prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
@@ -1411,7 +1427,6 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     ret += " | SLOPE: {:.4f}".format(slope)
     ret += " | BASE: {:.2f}".format(base_price)
     return ret
-
 
 def process_all_files(input_dir, output_file='support_lines_results.txt', output_charts_dir='charts'):
     """
