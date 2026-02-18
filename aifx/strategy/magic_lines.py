@@ -75,8 +75,9 @@ LAGA_IMPULSE_TRIGGER = 100   # wielkość korpusu dla laga (punkty)
 LAGA_IMPULSE_MAX = 5         # maksymalna liczba impulsów laga (najsilniejszych)
 
 # NOTE: zero = same impulsy
-BODY_IMPULSE_STRENGTH = 0.0 # 0.3     # siła świeczek - korpusy
-SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - cienie
+BODY_IMPULSE_STRENGTH = 0.0 # 0.3     # siła świeczek - końcówki korpusów
+SHADOW_IMPULSE_STRENGTH = 0.0 # 0.1   # siła świeczek - końcówki cieni
+CROSS_IMPULSE_STRENGTH = 0.0 # -0.1   # siła świeczek - przecięcie linii w korpusie
 
 # poziom debugowania 
 # # 0 = brak
@@ -529,7 +530,9 @@ def calculate_line_score(slope: float,
     candles_score = 0
 
     # jeśli siła świeczek/cieni = 0 to pomiń tę część
-    if BODY_IMPULSE_STRENGTH == 0.0 and SHADOW_IMPULSE_STRENGTH == 0.0:
+    if BODY_IMPULSE_STRENGTH == 0.0 and \
+        SHADOW_IMPULSE_STRENGTH == 0.0 and \
+        CROSS_IMPULSE_STRENGTH == 0.0:
         return intercept, impulses_score, candles_score, used_impulses, debug_string
     else:
         for candle in candles:
@@ -546,6 +549,7 @@ def calculate_line_score(slope: float,
                 # DEBUG
                 if (debug):
                     debug_string += f"    Candle at index {candle.index} body matches line "
+
             # sprawd cień
             elif abs(candle.low - expected_price) <= LINE_CANDLE_TOLERANCE \
                 or abs(candle.high - expected_price) <= LINE_CANDLE_TOLERANCE:
@@ -555,6 +559,15 @@ def calculate_line_score(slope: float,
                 # DEBUG
                 if (debug):
                     debug_string += f"    Candle at index {candle.index} shadow matches line "
+
+            # sprawdź przecięcie linii z korpusem - ujemne punkty
+            # UWAGA zawsze ten sam score
+            elif (candle.open < expected_price < candle.close) or (candle.close < expected_price < candle.open):
+                candles_score += CROSS_IMPULSE_STRENGTH
+
+                # DEBUG
+                if (debug):
+                    debug_string += f"    Candle at index {candle.index} crosses line in body "
 
     return intercept, impulses_score, candles_score, used_impulses, debug_string
 
@@ -1394,10 +1407,13 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
         for n in range(min(DUMP_IMAGES_NUM, len(detected_lines))):
-            chart_filename = f"{Path(csv_filepath).stem}_{n}.png"
+            chart_filename = f"{Path(csv_filepath).stem}_{n}"            
+            if DUMP_IMAGES_NUM == 1:
+                chart_filename = f"{Path(csv_filepath).stem}"
             # dla next dodaj suffix
             if next:
-                chart_filename = f"{Path(csv_filepath).stem}_next.png"
+                chart_filename += "_next"
+            chart_filename += ".png"
             chart_filepath = os.path.join(output_dir, chart_filename)
             
             lookback_start_dt = df.iloc[start_idx]['DateTime']
