@@ -61,6 +61,7 @@ SHOW_IMPULSES = True    # Czy pokazywać impulsy na wykresie
 SHOW_TOLERANCE = False   # Czy pokazywać tolerancję na wykresie
 DUMP_IMAGES = True      # Czy zapisywać wykresy do plików
 IMAGE_DPI = 300         # DPI dla zapisywanych obrazów
+NEXT_CANDLES = 30       # liczba świeczek do przodu do rysowania linii (poza zakresem danych)
 
 # ===== SIŁA IMPULSÓW =====
 MINMAX_IMPULSE_STRENGTH = 1.0   # siła impulsu dla korpusów lokalnych min/max UWAGA sumuje się
@@ -824,7 +825,8 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = None,
 def plot_chart(df_plot, 
                impulses : list[impulse_point],
                detected_lines : list[magic_line], 
-               output_filepath, lookback_start_dt, lookback_end_dt):
+               output_filepath, lookback_start_dt, lookback_end_dt,
+               next_count: int = 0):
     """
     Generuje wykres świeczkowy z liniami wsparcia/oporu.
     """
@@ -1058,6 +1060,22 @@ def plot_chart(df_plot,
                        transform=ax.transData,
                        verticalalignment='top' if impulse.type == impulse_point.TYPE_MIN else 'bottom')
     
+    # Nałóż jasnoszary przezroczysty prostokąt na obszar świeczek "next"
+    if next_count > 0:
+        import matplotlib.patches as mpatches
+        total = len(df_plot)
+        x_start = total - next_count - 0.5
+        x_end = total - 0.5
+        ymin, ymax = ax.get_ylim()
+        rect = mpatches.Rectangle(
+            (x_start, ymin), x_end - x_start, ymax - ymin,
+            facecolor='#cccccc', edgecolor='none', alpha=0.35, zorder=5,
+            transform=ax.transData
+        )
+        ax.add_patch(rect)
+        # pionowa linia oddzielająca dane historyczne od next
+        ax.axvline(x=x_start, color='#888888', linestyle='--', linewidth=1.0, alpha=0.7, zorder=6)
+
     if DUMP_IMAGES:
         fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1, dpi=IMAGE_DPI)
     plt.close(fig)
@@ -1076,7 +1094,6 @@ def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_
     last_candle_idx = len(lookback_df_for_lines)  # Index ostatniej świeczki (299 dla 300 świeczek)
     
     crossed_lines = []
-    offsets = {}  # Przechowuj offset dla każdej linii
     
     crossed = False
     crossed_id = ""
@@ -1174,7 +1191,96 @@ def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
     return None
 
 
-def process_single_file(csv_filepath, output_dir='charts', prev_slope=None):
+def get_next_filepath(csv_filepath: str) -> str:
+    """
+    Zwraca ścieżkę do następnego pliku CSV (15 minut później).
+    Obsługuje przejście między folderami miesięcznymi (np. 2023.09 -> 2023.10).
+
+    Args:
+        csv_filepath: Ścieżka do aktualnego pliku CSV
+
+    Returns:
+        Ścieżka do następnego pliku CSV lub None jeśli nie można obliczyć
+    """
+    try:
+        from datetime import datetime, timedelta
+        csv_path = Path(csv_filepath)
+        stem = csv_path.stem.replace('_temp', '')
+        stem_parts = stem.split('-')
+        if len(stem_parts) != 5:
+            return None
+        year = int('20' + stem_parts[0])
+        month = int(stem_parts[1])
+        day = int(stem_parts[2])
+        hour = int(stem_parts[3])
+        minute = int(stem_parts[4])
+        current_dt = datetime(year, month, day, hour, minute)
+        next_dt = current_dt + timedelta(minutes=15)
+        next_filename = next_dt.strftime('%y-%m-%d-%H-%M') + '.csv'
+        # Folder miesięczny: YYYY.MM
+        next_month_folder = next_dt.strftime('%Y.%m')
+        # Szukaj w folderze miesiąca względem katalogu rodzica rodzica (data/)
+        parent = csv_path.parent
+        # Jeśli plik jest w folderze miesięcznym, parent to np. .../data/2023.09
+        # next file może być w tym samym lub następnym folderze
+        # Sprawdź czy parent to folder miesięczny
+        if parent.name and len(parent.name) == 7 and '.' in parent.name:
+            # folder miesięczny np. 2023.09
+            data_dir = parent.parent
+            next_filepath = data_dir / next_month_folder / next_filename
+        else:
+            # pliki płasko w tym samym katalogu
+            next_filepath = parent / next_filename
+        return str(next_filepath)
+    except Exception as e:
+        log(f"  Błąd get_next_filepath: {e}")
+        return None
+
+
+def load_next_candles(csv_filepath: str, base_idx: int, count: int = NEXT_CANDLES) -> tuple[list, pd.DataFrame]:
+    """
+    Wczytuje kolejne `count` świeczek z plików następujących po csv_filepath (co 15 min).
+
+    Args:
+        csv_filepath: Ścieżka do aktualnego pliku CSV
+        base_idx: Indeks pierwszej następnej świeczki (len lookback)
+        count: Liczba świeczek do wczytania
+
+    Returns:
+        (next_candles, next_df_full) gdzie:
+          next_candles - lista obiektów candle
+          next_df_full - DataFrame z kolumnami DateTime/Open/High/Low/Close/Volume/Color
+    """
+    next_candles = []
+    next_rows_list = []
+    current_path = csv_filepath
+    for _ in range(count):
+        npath = get_next_filepath(current_path)
+        if not npath or not os.path.exists(npath):
+            break
+        ndf = load_csv_data(npath)
+        if len(ndf) == 0:
+            break
+        row = ndf.iloc[-1]
+        idx = base_idx + len(next_candles)
+        nc = candle(idx, float(row['Open']), float(row['High']),
+                    float(row['Low']), float(row['Close']))
+        next_candles.append(nc)
+        next_rows_list.append({
+            'DateTime': row['DateTime'],
+            'Open': nc.open,
+            'High': nc.high,
+            'Low': nc.low,
+            'Close': nc.close,
+            'Volume': 0,
+            'Color': 'gray'
+        })
+        current_path = npath
+    next_df_full = pd.DataFrame(next_rows_list) if next_rows_list else pd.DataFrame()
+    return next_candles, next_df_full
+
+
+def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next=False):
     """
     Przetwarza pojedynczy plik CSV:
     1. Wczytuje dane
@@ -1273,13 +1379,24 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None):
     # Wygeneruj wykres tylko gdy DUMP_IMAGES=True
     if DUMP_IMAGES:
         chart_filename = f"{Path(csv_filepath).stem}.png"
+        # dla next dodaj suffix
+        if next:
+            chart_filename = f"{Path(csv_filepath).stem}_next.png"
         chart_filepath = os.path.join(output_dir, chart_filename)
         
         lookback_start_dt = df.iloc[start_idx]['DateTime']
         lookback_end_dt = df.iloc[-1]['DateTime']
         
-        plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath, 
-                   lookback_start_dt, lookback_end_dt)        
+        # jeżeli next jest włączone, wczytaj następne świeczki
+        if next:
+            next_candles, next_df_full = load_next_candles(
+                csv_filepath, base_idx=len(lookback_df_for_lines), count=NEXT_CANDLES)
+            if not next_df_full.empty:
+                lookback_df_full = pd.concat([lookback_df_full, next_df_full], ignore_index=True)
+        
+        plot_chart(lookback_df_full.copy(), points, detected_lines, chart_filepath,
+                   lookback_start_dt, lookback_end_dt,
+                   next_count=len(next_candles) if (next and 'next_candles' in locals() and next_candles) else 0)
         if DEBUG:
             print(f"Wykres: {chart_filepath}")
 
@@ -1357,11 +1474,15 @@ def main():
     except Exception:
         pass
 
-    if len(sys.argv) > 1 and sys.argv[1] != '--help':
+    args = [a for a in sys.argv[1:] if not a.startswith('-')]
+    flags = [a for a in sys.argv[1:] if a.startswith('-')]
+    show_next = '-next' in flags
+
+    if args and args[0] != '--help':
         # Tryb pojedynczego pliku/folderu
 
         # sprawdź czy podany argument to plik CSV czy folder
-        input_path = Path(sys.argv[1])
+        input_path = Path(args[0])
         if input_path.is_dir():
             process_all_files(str(input_path))
             sys.exit(0)
@@ -1377,7 +1498,7 @@ def main():
             prev_slope = load_previous_slope(csv_path, output_dir)
 
             log(f"Przetwarzam: {csv_path.name}")
-            result = process_single_file(csv_file, str(output_dir), prev_slope)
+            result = process_single_file(csv_file, str(output_dir), prev_slope, next=show_next)
 
             log(f"Wynik: {result}")
             full_output_path = output_dir.resolve()
@@ -1393,7 +1514,7 @@ def main():
         
     else:
         # Tryb batch - przetwarzanie wszystkich plików CSV w domyślnym katalogu
-        if len(sys.argv) > 1 and sys.argv[1] == '--help':
+        if args and args[0] == '--help':
             print(__doc__)
             sys.exit(0)
         
