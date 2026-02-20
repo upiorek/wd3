@@ -51,6 +51,8 @@ FA_MIN_HEIGHT = 20  # Minimalna wysokość korpusu świeczki dla first after (pu
 SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania linii za ważną
 
+FLAT_SEQUENCES = True  # Czy wykrywać płaskie ciągi sąsiednich impulsów tego samego typu (pary, trójki itd.) i oznaczać je
+
 # ===== RÓŻNE =====
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
 SCORE_CMP_THRESHOLD = 0.01  # 0.01  # próg porównywania score linii
@@ -99,6 +101,7 @@ class impulse_point:
     # typy
     TYPE_MIN = 0 
     TYPE_MAX = 1
+    TYPE_SKIP = 2
     # podtypy min/max - rozmiar okna
     SUBTYPE_MINMAX_5 = 5
     SUBTYPE_MINMAX_9 = 9
@@ -124,7 +127,8 @@ class impulse_point:
                  index, # indeks świeczki
                  candle : candle, # świeczka
                  type=-1,
-                 subtype=-1):
+                 subtype=-1,
+                 for_type=-1): # czy punkt jest dla linii wznoszącej czy opadającej - TYPE_MIN lub TYPE_MAX lub TYPE_SKIP (jeżeli punkt ma być pominięty)
         assert(type >= 0)
         assert(subtype >= 0)
 
@@ -132,7 +136,7 @@ class impulse_point:
         self.candle = candle 
         self.type = type
         self.subtype = subtype
-
+        self.for_type = for_type
         self.price = self.calc_price()
         self.strength = self.calc_strength()
 
@@ -328,6 +332,63 @@ def detect_minmax(candles :list[candle], order:int) -> list[impulse_point]:
             
     return impulses_minmax    
 
+def detect_flat_sequences(impulses_minmax: list[impulse_point], candles: list[candle]) -> None:
+    """
+    Wykrywa płaskie ciągi sąsiednich impulsów tego samego typu (pary, trójki itd.)
+    i oznacza je: pierwszy/ostatni dostają for_type, środkowe dostają TYPE_SKIP.
+    """
+    sorted_minmax = sorted(impulses_minmax, key=lambda x: x.index)
+
+    # Krok 1: wyznacz czy każda krawędź (k, k+1) jest płaska
+    flat_edge = []
+    for k in range(len(sorted_minmax) - 1):
+        p1 = sorted_minmax[k]
+        p2 = sorted_minmax[k + 1]
+        if p1.type != p2.type:
+            flat_edge.append(False)
+            continue
+        level_ok = abs(p1.price - p2.price) <= FA_MIN_HEIGHT
+        if not level_ok:
+            flat_edge.append(False)
+            continue
+        i_from = p1.index + 1
+        i_to = p2.index
+        between_ok = all(abs(c.close - c.open) <= FA_MIN_HEIGHT * 2 for c in candles[i_from:i_to])
+        flat_edge.append(between_ok)
+
+    # Krok 2: złącz sąsiednie płaskie krawędzie w ciągi
+    k = 0
+    while k < len(flat_edge):
+        if not flat_edge[k]:
+            k += 1
+            continue
+        # Zbierz ciąg zaczynając od krawędzi k
+        seq = [sorted_minmax[k]]
+        while k < len(flat_edge) and flat_edge[k] and sorted_minmax[k + 1].type == seq[0].type:
+            seq.append(sorted_minmax[k + 1])
+            k += 1
+        # seq ma co najmniej 2 elementy (płaska para lub dłuższy ciąg)
+        if DEBUG > 0:
+            print(f"Detected flat sequence of length {len(seq)} at indices {[x.index for x in seq]} ")
+        if DEBUG >= 2:
+            label = "flat pair" if len(seq) == 2 else f"flat sequence of {len(seq)}"
+            print(f"Detected {label} {seq[0].type_str()} at indices {[x.index for x in seq]} "
+                  f"prices {[f'{x.price:.1f}' for x in seq]}")
+        if seq[0].type == impulse_point.TYPE_MAX:
+            seq[0].for_type = 1
+            seq[-1].for_type = 0
+            for mid in seq[1:-1]:
+                mid.for_type = impulse_point.TYPE_SKIP
+        elif seq[0].type == impulse_point.TYPE_MIN:
+            seq[0].for_type = 0
+            seq[-1].for_type = 1
+            for mid in seq[1:-1]:
+                mid.for_type = impulse_point.TYPE_SKIP
+        if DEBUG >= 2:
+            mid_info = f", middle {[x.index for x in seq[1:-1]]} → TYPE_SKIP" if len(seq) > 2 else ""
+            print(f"  Marking: first {seq[0].index} for_type={'1' if seq[0].type == impulse_point.TYPE_MAX else '0'}, "
+                  f"last {seq[-1].index} for_type={'0' if seq[0].type == impulse_point.TYPE_MAX else '1'}{mid_info}")
+
 def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     """
     Wykrywa impulsy rynkowe na podstawie różnych kryteriów.
@@ -427,6 +488,10 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     impulses_fa = [p for p in impulses_fa \
         if not any(mm.index == p.index for mm in impulses_minmax)]
 
+    # Wykryj płaskie ciągi sąsiednich impulsów tego samego typu
+    if FLAT_SEQUENCES:
+        detect_flat_sequences(impulses_minmax, candles)
+
     impulses_laga = []
     # laga - duża świeczka - iteruj przez wszystkie świeczki które nie są na liście minmax ani fa
     laga_candidates = []
@@ -501,6 +566,14 @@ def calculate_line_score(slope: float,
         if p.index < i_start.index:
             continue
 
+        # pomiń jeżeli punkt jest przeznaczony dla innego slope (np. dla linii wznoszącej vs opadającej)
+        if p.for_type != -1 \
+           and p.for_type != impulse_point.TYPE_SKIP \
+           and p.for_type != (1 if slope > 0 else 0):
+            # DEBUG
+            # print(f"    Skipping impulse at index {p.index} type {p.type_str()} ")
+            continue
+        
         expected_price = slope * p.index + intercept
         dist = abs(p.price - expected_price)
         if tolerance > 0 and dist <= tolerance: 
