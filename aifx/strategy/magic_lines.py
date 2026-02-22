@@ -101,7 +101,7 @@ class impulse_point:
     # typy
     TYPE_MIN = 0 
     TYPE_MAX = 1
-    TYPE_SKIP = 2
+
     # podtypy min/max - rozmiar okna
     SUBTYPE_MINMAX_5 = 5
     SUBTYPE_MINMAX_9 = 9
@@ -122,6 +122,8 @@ class impulse_point:
     TYPE_LAGA = 4
     SUBTYPE_LAGA_UP = 1
     SUBTYPE_LAGA_DOWN = 2
+
+    TYPE_SKIP = 5
 
     def __init__(self, 
                  index, # indeks świeczki
@@ -172,6 +174,10 @@ class impulse_point:
             return f"GAP_{self.subtype_str()}"
         elif self.type == self.TYPE_FA:
             return f"FA_{self.subtype_str()}"
+        elif self.type == self.TYPE_LAGA:
+            return f"LAGA_{self.subtype_str()}"
+        elif self.type == self.TYPE_SKIP:
+            return "SKIP"
         else:
             return "UNKNOWN"
 
@@ -193,7 +199,7 @@ class impulse_point:
                 return min(self.candle.open, self.candle.close)
         elif self.type == self.TYPE_LAGA:
             return self.candle.open
-        assert False, "Unknown impulse point type"
+        assert False, f"Unknown or bad impulse point type: {self.type_str()}"
             
     def calc_strength(self):
         if self.type == self.TYPE_MIN or self.type == self.TYPE_MAX:
@@ -213,8 +219,7 @@ class impulse_point:
             return FA_IMPULSE_STRENGTH
         elif self.type == self.TYPE_LAGA:
             return LAGA_IMPULSE_STRENGTH
-        else:
-            assert False, "Unknown impulse point type"
+        assert False, "Unknown or invalid impulse point type: {self.type_str()}"
 
 class magic_line:
     def __init__(self, 
@@ -375,19 +380,19 @@ def detect_flat_sequences(impulses_minmax: list[impulse_point], candles: list[ca
             print(f"Detected {label} {seq[0].type_str()} at indices {[x.index for x in seq]} "
                   f"prices {[f'{x.price:.1f}' for x in seq]}")
         if seq[0].type == impulse_point.TYPE_MAX:
-            seq[0].for_type = 1
-            seq[-1].for_type = 0
+            seq[0].for_type = impulse_point.TYPE_MAX
+            seq[-1].for_type = impulse_point.TYPE_MIN
             for mid in seq[1:-1]:
                 mid.for_type = impulse_point.TYPE_SKIP
         elif seq[0].type == impulse_point.TYPE_MIN:
-            seq[0].for_type = 0
-            seq[-1].for_type = 1
+            seq[0].for_type = impulse_point.TYPE_MIN
+            seq[-1].for_type = impulse_point.TYPE_MAX
             for mid in seq[1:-1]:
                 mid.for_type = impulse_point.TYPE_SKIP
         if DEBUG >= 2:
             mid_info = f", middle {[x.index for x in seq[1:-1]]} → TYPE_SKIP" if len(seq) > 2 else ""
-            print(f"  Marking: first {seq[0].index} for_type={'1' if seq[0].type == impulse_point.TYPE_MAX else '0'}, "
-                  f"last {seq[-1].index} for_type={'0' if seq[0].type == impulse_point.TYPE_MAX else '1'}{mid_info}")
+            print(f"  Marking: first {seq[0].index} for_type={'MAX' if seq[0].type == impulse_point.TYPE_MAX else 'MIN'}, "
+                  f"last {seq[-1].index} for_type={'MIN' if seq[0].type == impulse_point.TYPE_MAX else 'MAX'}{mid_info}")
 
 def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     """
@@ -569,7 +574,7 @@ def calculate_line_score(slope: float,
         # pomiń jeżeli punkt jest przeznaczony dla innego slope (np. dla linii wznoszącej vs opadającej)
         if p.for_type != -1 \
            and p.for_type != impulse_point.TYPE_SKIP \
-           and p.for_type != (1 if slope > 0 else 0):
+           and p.for_type != (impulse_point.TYPE_MAX if slope > 0 else impulse_point.TYPE_MIN):
             # DEBUG
             # print(f"    Skipping impulse at index {p.index} type {p.type_str()} ")
             continue
