@@ -635,7 +635,8 @@ def calculate_line_score(slope: float,
 
             # sprawdź przecięcie linii z korpusem - ujemne punkty
             # UWAGA zawsze ten sam score
-            elif (candle.open < expected_price < candle.close) or (candle.close < expected_price < candle.open):
+            elif (candle.open + LINE_CANDLE_TOLERANCE < expected_price < candle.close - LINE_CANDLE_TOLERANCE) or \
+                (candle.close + LINE_CANDLE_TOLERANCE < expected_price < candle.open - LINE_CANDLE_TOLERANCE):
                 candles_score += CROSS_IMPULSE_STRENGTH
 
                 # DEBUG
@@ -710,6 +711,7 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
     # asc impulses nie zawiera impulsów FA_MAX
     asc_impulses = [p for p in points \
                   if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MAX)]
+
     # dsc impulses nie zawiera impulsów FA_MIN
     dsc_impulses = [p for p in points \
                   if not (p.type == impulse_point.TYPE_FA and p.subtype == impulse_point.SUBTYPE_FA_MIN)]
