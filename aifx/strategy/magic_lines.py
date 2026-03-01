@@ -1160,8 +1160,8 @@ def plot_chart(df_plot,
                 idx = impulse.index
                 price = impulse.price
                 # Offset tekstu w zależności od typu (min na dole, max na górze)
-                y_offset = -15 if impulse.type == impulse_point.TYPE_MIN else 15
-                ax.text(idx, price, str(idx), 
+                y_offset = -100 if impulse.type == impulse_point.TYPE_MIN else 100
+                ax.text(idx, price + y_offset, str(idx), 
                        fontsize=8, ha='center', va='center',
                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='gray'),
                        transform=ax.transData,
