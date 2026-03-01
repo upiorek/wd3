@@ -1519,7 +1519,9 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
     ret = prefix + " | "
     # offset z dokładnością do 2 miejsca po przecinku
-    ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in line_offsets])
+    # sortuj po offsetach (oddzielnie wszystkie A, potem D) malejąco
+    line_offsets_sorted = sorted(line_offsets, key=lambda x: (x[0][0], -x[1]))
+    ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in line_offsets_sorted])
     ret += " | SLOPE: {:.4f}".format(slope)
     ret += " | BASE: {:.2f}".format(base_price)
     return ret
