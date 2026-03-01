@@ -40,7 +40,7 @@ LOOKBACK_CANDLES = 300  # Liczba świeczek do analizy
 MIN_SLOPE = 0.3  # Minimalny slope linii
 MAX_SLOPE = 4.0  # Maksymalny slope linii
 MAX_HIERARCHICAL_LEVELS = 0  # maksymalna liczba linii wsparcia / oporu poniżej głównej
-MIN_HIERARCHICAL_OFFSET = 20  # Minimalny offset między liniami hierarchicznymi (punkty)
+MIN_HIERARCHICAL_OFFSET = 100  # Minimalny offset między liniami hierarchicznymi (punkty)
 LINE_IMPULSE_TOLERANCE = 1.0  # Tolerancja dla dopasowania impulsów do linii
 LINE_CANDLE_TOLERANCE = 1.0  # Tolerancja dla dopasowania świeczek do linii
 
@@ -51,7 +51,9 @@ FA_MIN_HEIGHT = 20  # Minimalna wysokość korpusu świeczki dla first after (pu
 SCORE_LINES_LEVELS = 1  # Liczba linii do uwzględnienia przy obliczaniu score (główna + ile hierarchicznych)
 SCORE_LINES_MIN_POINTS = 1 # Minimalna liczba punktów impulsów do uznania linii za ważną
 
-FLAT_SEQUENCES = True  # Czy wykrywać płaskie ciągi sąsiednich impulsów tego samego typu (pary, trójki itd.) i oznaczać je
+FLAT_SEQUENCES = True  # Wykrywanie płaskich ciągi sąsiednich impulsów tego samego typu (pary, trójki itd.)
+
+MINMAX_HIERARCHICAL_LINES = True  # Czy generować linie hierarchiczne oparte o min/max
 
 # ===== RÓŻNE =====
 SLOPE_UNIQUENESS_THRESHOLD = 0.01  # minimalna różnica między unikalnymi slope
@@ -85,7 +87,7 @@ CROSS_IMPULSE_STRENGTH = 0.0 # -0.1   # siła świeczek - przecięcie linii w ko
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
-DEBUG = 1
+DEBUG = 0
 
 # ===== KLASY DANYCH =====
 
@@ -843,9 +845,12 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
             print(f"  Top {k+1} slope {pair['slope']:.4f} combined score {score:.4f} "\
                 f"{'(bonus applied)' if pair['bonus_applied'] else ''}") 
             
+    # Pętla jeżeli chcemy wyświetlić więcej niż najlepszą parę linii (DUMP_IMAGES_NUM > 0)
     for k in range(range_limit):
         score, pair = slope_scores[k]
         pair_lines = []
+        asc_pair_lines = []
+        desc_pair_lines = []
 
         # print best_pair (k == 0) score + bonus info
         if k == 0 and DEBUG > 1:
@@ -886,45 +891,187 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                 return -1 if abs(x.intercept) > abs(y.intercept) else 1
             return -1 if x.score > y.score else 1 if x.score < y.score else 0
         
-        # Dodaj linie hierarchiczne
-        for lines in [pair['ascending'], pair['descending']]:
-            base_line : magic_line = lines[0]
+        # Dodaj "klasyczne" linie hierarchiczne
+        if MAX_HIERARCHICAL_LEVELS > 1:
+            for lines in [pair['ascending'], pair['descending']]:
+                base_line : magic_line = lines[0]
 
-            # Wszystkie linie powyżej 
-            level = base_line.level + 1
-            intercept = base_line.intercept
-            while level <= MAX_HIERARCHICAL_LEVELS:
-                lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]         
-                if not lines_above: break
-                # Posortuj po score i wybierz najlepszą (w przypadku "remisu" wybierz bliższą do bazowej)
-                best_line = sorted(lines_above, key=cmp_to_key(line_cmp_down))[0]
-                best_line.level = level
-                best_line.offset = best_line.intercept - intercept
-                pair_lines.append(best_line)
-                # DEBUG
-                if (DEBUG >= 2 or debug):
-                    print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
-                        f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
-                level += 1
-                intercept = best_line.intercept
-                
-            # Wszystkie linie poniżej
-            level = base_line.level + 1
-            intercept = base_line.intercept
-            while level <= MAX_HIERARCHICAL_LEVELS:
-                lines_below = [line for line in lines if line.intercept < intercept - MIN_HIERARCHICAL_OFFSET]
-                if not lines_below: break
-                best_line = sorted(lines_below, key=cmp_to_key(line_cmp_up))[0]
-                best_line.level = level
-                best_line.offset = best_line.intercept - intercept
-                pair_lines.append(best_line)
-                # DEBUG
-                if (DEBUG >= 2 or debug):
-                    print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
-                        f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
-                level += 1
-                intercept = best_line.intercept
+                # Wszystkie linie powyżej 
+                level = base_line.level + 1
+                intercept = base_line.intercept
+                while level <= MAX_HIERARCHICAL_LEVELS:
+                    lines_above = [line for line in lines if line.intercept > intercept + MIN_HIERARCHICAL_OFFSET]         
+                    if not lines_above: break
+                    # Posortuj po score i wybierz najlepszą (w przypadku "remisu" wybierz bliższą do bazowej)
+                    best_line = sorted(lines_above, key=cmp_to_key(line_cmp_down))[0]
+                    best_line.level = level
+                    best_line.offset = best_line.intercept - intercept
+                    pair_lines.append(best_line)
+                    # DEBUG
+                    if (DEBUG >= 2 or debug):
+                        print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
+                            f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
+                    level += 1
+                    intercept = best_line.intercept
+                    
+                # Wszystkie linie poniżej
+                level = base_line.level + 1
+                intercept = base_line.intercept
+                while level <= MAX_HIERARCHICAL_LEVELS:
+                    lines_below = [line for line in lines if line.intercept < intercept - MIN_HIERARCHICAL_OFFSET]
+                    if not lines_below: break
+                    best_line = sorted(lines_below, key=cmp_to_key(line_cmp_up))[0]
+                    best_line.level = level
+                    best_line.offset = best_line.intercept - intercept
+                    pair_lines.append(best_line)
+                    # DEBUG
+                    if (DEBUG >= 2 or debug):
+                        print(f"  Detected hierarchical line slope {best_line.slope:.4f} level {level} score {best_line.score:.4f} "\
+                            f"at intercept {best_line.intercept:.2f} offset {best_line.offset:.2f}")
+                    level += 1
+                    intercept = best_line.intercept
         
+        # Dodaj linie hierarchiczne oparte o najmocniejsze MIN/MAX
+        if MINMAX_HIERARCHICAL_LINES:
+
+            def find_resistance_lines(
+                    base_line: magic_line, 
+                    points: list[impulse_point], 
+                    candles: list[candle]):
+                
+                # Znajdź wszystkie MAXy powyżej linii bazowej (dla linii wznoszących) lub
+                # MINy poniżej linii bazowej (dla linii opadających) 
+                # i stwórz linie przechodzące przez nie z tym samym slope
+                ret_lines = []
+
+                # ostatnia cena na wykresie
+                last_price = candles[-1].close
+                last_index = candles[-1].index
+
+                def last_candle_line_at_point(p: impulse_point):
+                    return last_price - base_line.slope * (last_index - p.index)
+
+                check_type = impulse_point.TYPE_MAX if base_line.slope > 0 else impulse_point.TYPE_MIN
+                check_points = [p for p in points \
+                                if p.type == check_type and \
+                                p.subtype in [impulse_point.SUBTYPE_MINMAX_33, impulse_point.SUBTYPE_MINMAX_17] and \
+                                (p.price > last_candle_line_at_point(p) if base_line.slope > 0 else p.price < last_candle_line_at_point(p))]
+                
+                check_points.sort(key=lambda p: p.strength, reverse=True) 
+                level = base_line.level + 1 
+                intercept = base_line.intercept
+                for p in check_points:               
+                    new_intercept = p.price - base_line.slope * p.index
+                    _, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
+                        base_line.slope, p, points, candles)
+                    new_line = magic_line(
+                        slope=base_line.slope,
+                        intercept=new_intercept,
+                        offset=new_intercept - intercept,
+                        score=impulses_score + candles_score,
+                        used_points=used_impulses,
+                        level=level)
+                    ret_lines.append(new_line)
+                    # DEBUG
+                    if (DEBUG >= 2 or debug):
+                        print(f"  Detected MINMAX hierarchical line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
+                            f"at intercept {new_line.intercept:.2f} offset {new_line.offset:.2f}")
+                    level += 1                
+
+                return ret_lines
+            
+            # dla linii wznoszących znajdź wszystkie MAXy i stwórz linie przechodzące przez nie z tym samym slope
+            # ale bez linii które przechodzą POD aktualną ceną (nie będą impulsem do wzrostu)
+            asc_line : magic_line = pair['ascending'][0]
+            asc_resistance_lines = find_resistance_lines(asc_line, points, candles)
+            asc_pair_lines += asc_resistance_lines
+
+            # dla opadających
+            desc_line : magic_line = pair['descending'][0]
+            desc_resistance_lines = find_resistance_lines(desc_line, points, candles)   
+            desc_pair_lines += desc_resistance_lines
+
+            # TODO dla linii poniżej aktualnej ceny weź pod uwagę FA_MIN/FA_MAX jako potencjalne wsparcie
+            def find_support_lines(
+                    base_line: magic_line, 
+                    points: list[impulse_point], 
+                    candles: list[candle]):
+                
+                # Znajdź wszystkie FA_MINy poniżej linii bazowej (dla linii wznoszących) lub
+                # FA_MAXy powyżej linii bazowej (dla linii opadających) 
+                # i stwórz linie przechodzące przez nie z tym samym slope
+                ret_lines = []
+
+                # ostatnia cena na wykresie
+                last_price = candles[-1].close
+                last_index = candles[-1].index
+
+                def last_candle_line_at_point(p: impulse_point):
+                    return last_price - base_line.slope * (last_index - p.index)
+
+                check_type = impulse_point.TYPE_FA
+                check_subtype = impulse_point.SUBTYPE_FA_MIN if base_line.slope > 0 else impulse_point.SUBTYPE_FA_MAX
+                check_points = [p for p in points \
+                                if p.type == check_type and \
+                                p.subtype == check_subtype and \
+                                (p.price < last_candle_line_at_point(p) if base_line.slope > 0 else p.price > last_candle_line_at_point(p))]
+                check_points.sort(key=lambda p: p.strength, reverse=True)
+                level = base_line.level + 1
+                intercept = base_line.intercept
+                for p in check_points:
+                    new_intercept = p.price - base_line.slope * p.index
+                    _, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
+                        base_line.slope, p, points, candles)
+                    new_line = magic_line(
+                        slope=base_line.slope,
+                        intercept=new_intercept,
+                        offset=new_intercept - intercept,
+                        score=impulses_score + candles_score,
+                        used_points=used_impulses,
+                        level=level)
+                    ret_lines.append(new_line)
+                    # DEBUG
+                    if (DEBUG >= 2 or debug):
+                        print(f"  Detected MINMAX hierarchical line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
+                            f"at intercept {new_line.intercept:.2f} offset {new_line.offset:.2f}")
+                    level += 1
+                    
+                return ret_lines
+            
+            # dla linii wznoszących znajdź wszystkie MINy i stwórz linie przechodzące przez nie z tym samym slope
+            # ale bez linii które przechodzą POWYŻEJ aktualnej ceny (nie będą impulsem do spadku)
+            asc_line : magic_line = pair['ascending'][0]
+            asc_support_lines = find_support_lines(asc_line, points, candles)
+            asc_pair_lines += asc_support_lines 
+
+            # dla opadających
+            desc_line : magic_line = pair['descending'][0]
+            desc_support_lines = find_support_lines(desc_line, points, candles)
+            desc_pair_lines += desc_support_lines
+
+            # dla lini które są zbyt blisko siebie (offset < MIN_HIERARCHICAL_OFFSET) 
+            # zostaw tylko tę z największą ilością punktów użytych do score
+            # UWAGA: uwzględnij też base line
+            #"""
+            asc_pair_lines.sort(key=lambda l: l.score, reverse=True)
+            unique_lines = []
+            for line in asc_pair_lines:
+                if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines) \
+                    and abs(line.intercept - asc_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
+                    unique_lines.append(line)
+            asc_pair_lines = unique_lines
+
+            desc_pair_lines.sort(key=lambda l: l.score, reverse=True)
+            unique_lines = []
+            for line in desc_pair_lines:
+                if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines)  \
+                    and abs(line.intercept - desc_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
+                    unique_lines.append(line)
+            desc_pair_lines = unique_lines
+            #"""
+            
+            pair_lines += asc_pair_lines + desc_pair_lines
+
         detected_lines.append(pair_lines)
 
     return detected_lines, points, bonus_applied
