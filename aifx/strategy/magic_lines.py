@@ -1467,7 +1467,7 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     for line in line_offsets:
         line_id = line[0]
         if line_id in unique_ids:
-            print(f"ERROR: Duplicate line ID detected: {line_id}")
+            print(f"ERROR: Duplicate line ID detected: {line_id} when processing file {csv_filepath}")
             assert False, "Duplicate line ID detected"
         unique_ids.add(line_id)
         
