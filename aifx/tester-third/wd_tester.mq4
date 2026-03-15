@@ -17,9 +17,17 @@ input bool no_orders = false;
 
 string WD_LINE_PREFIX = "WD_LINE_";
 string WD_STATS_LABEL = "WD_STATS";
+string tester_filename = "";
+
+string GetTesterFilename()
+{
+    return tester_filename;
+}
 
 string ReadAllText(string filepath)
 {
+    tester_filename = filepath;
+
     int fileHandle = FileOpen(filepath, FILE_READ|FILE_TXT);
     if(fileHandle == INVALID_HANDLE)
     {
@@ -341,6 +349,7 @@ void UpdateTesterStatsOverlay()
     GetWdTesterOpenStatsForChartSymbol(cnt, lots, profit);
 
     string text = "WD Tester\n";
+    text += "File: " + GetTesterFilename() + " (-15m)\n";
     text += "Open positions: " + IntegerToString(cnt) + " (Lots: " + DoubleToStr(lots, 2) + ")\n";
     text += "Open profit: " + DoubleToStr(profit, 2);
 
