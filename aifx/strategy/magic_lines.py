@@ -227,7 +227,7 @@ class magic_line:
     def __init__(self, 
                  slope,  # nachylenie linii
                  intercept, # wartość y przy x = 0 (ze wzoru na linię: y = slope * x + intercept)
-                 offset,  # offset względem poprzedniej linii
+                 offset,  # offset względem poprzedniej linii (stare hier. ) albo ostatniej ceny na wykresie (hier minmax)
                  used_points, # lista punktów użytych do wyznaczenia linii
                  score,  # liczba punktów dopasowanych do linii
                  level  # poziom hierarchii linii
@@ -964,21 +964,35 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                     new_intercept = p.price - base_line.slope * p.index
                     _, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
                         base_line.slope, p, points, candles)
+                    # offset = różnica między ceną ostatniej świeczki a ceną linii na tej świeczce
+                    offset = last_price - (base_line.slope * last_index + new_intercept)
                     new_line = magic_line(
                         slope=base_line.slope,
                         intercept=new_intercept,
-                        offset=new_intercept - intercept,
+                        offset=offset,
                         score=impulses_score + candles_score,
                         used_points=used_impulses,
-                        level=level)
+                        level=0) # zawsze level 0, potem posortujemy i przypiszemy level
                     ret_lines.append(new_line)
                     # DEBUG
                     if (DEBUG >= 2 or debug):
                         print(f"  Detected MINMAX hierarchical line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
                             f"at intercept {new_line.intercept:.2f} offset {new_line.offset:.2f}")
-                    level += 1                
+                    level += 1
 
-                return ret_lines
+                unique_lines = []
+                for line in ret_lines:
+                    if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines) \
+                        and abs(line.intercept - base_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
+                        unique_lines.append(line)
+
+                unique_lines.sort(key=lambda l: abs(l.offset), reverse=False)
+                level = asc_line.level + 1
+                for line in unique_lines:
+                    line.level = level
+                    level += 1
+
+                return unique_lines
             
             # dla linii wznoszących znajdź wszystkie MAXy i stwórz linie przechodzące przez nie z tym samym slope
             # ale bez linii które przechodzą POD aktualną ceną (nie będą impulsem do wzrostu)
@@ -991,7 +1005,6 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
             desc_resistance_lines = find_resistance_lines(desc_line, points, candles)   
             desc_pair_lines += desc_resistance_lines
 
-            # TODO dla linii poniżej aktualnej ceny weź pod uwagę FA_MIN/FA_MAX jako potencjalne wsparcie
             def find_support_lines(
                     base_line: magic_line, 
                     points: list[impulse_point], 
@@ -1017,26 +1030,39 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                                 (p.price < last_candle_line_at_point(p) if base_line.slope > 0 else p.price > last_candle_line_at_point(p))]
                 check_points.sort(key=lambda p: p.strength, reverse=True)
                 level = base_line.level + 1
-                intercept = base_line.intercept
                 for p in check_points:
                     new_intercept = p.price - base_line.slope * p.index
                     _, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
                         base_line.slope, p, points, candles)
+                    # offset = różnica między ceną ostatniej świeczki a ceną linii na tej świeczce
+                    offset = last_price - (base_line.slope * last_index + new_intercept)
                     new_line = magic_line(
                         slope=base_line.slope,
                         intercept=new_intercept,
-                        offset=new_intercept - intercept,
+                        offset=offset,
                         score=impulses_score + candles_score,
                         used_points=used_impulses,
-                        level=level)
+                        level=0)
                     ret_lines.append(new_line)
                     # DEBUG
                     if (DEBUG >= 2 or debug):
                         print(f"  Detected MINMAX hierarchical line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
                             f"at intercept {new_line.intercept:.2f} offset {new_line.offset:.2f}")
                     level += 1
+
+                unique_lines = []
+                for line in ret_lines:
+                    if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines) \
+                        and abs(line.intercept - base_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
+                        unique_lines.append(line)
+
+                unique_lines.sort(key=lambda l: abs(l.offset), reverse=True)
+                level = asc_line.level + 1
+                for line in unique_lines:
+                    line.level = level
+                    level += 1
                     
-                return ret_lines
+                return unique_lines
             
             # dla linii wznoszących znajdź wszystkie MINy i stwórz linie przechodzące przez nie z tym samym slope
             # ale bez linii które przechodzą POWYŻEJ aktualnej ceny (nie będą impulsem do spadku)
@@ -1048,27 +1074,6 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
             desc_line : magic_line = pair['descending'][0]
             desc_support_lines = find_support_lines(desc_line, points, candles)
             desc_pair_lines += desc_support_lines
-
-            # dla lini które są zbyt blisko siebie (offset < MIN_HIERARCHICAL_OFFSET) 
-            # zostaw tylko tę z największą ilością punktów użytych do score
-            # UWAGA: uwzględnij też base line
-            #"""
-            asc_pair_lines.sort(key=lambda l: l.score, reverse=True)
-            unique_lines = []
-            for line in asc_pair_lines:
-                if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines) \
-                    and abs(line.intercept - asc_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
-                    unique_lines.append(line)
-            asc_pair_lines = unique_lines
-
-            desc_pair_lines.sort(key=lambda l: l.score, reverse=True)
-            unique_lines = []
-            for line in desc_pair_lines:
-                if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines)  \
-                    and abs(line.intercept - desc_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
-                    unique_lines.append(line)
-            desc_pair_lines = unique_lines
-            #"""
             
             pair_lines += asc_pair_lines + desc_pair_lines
 
@@ -1585,21 +1590,45 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
         line_offset = line_value - base_price
         level = line_info.level - 1
 
-        line_id = "A" if line_type == 'ascending' else "D"
-        if level == 0:
-            line_id += "0"  # Główna linia
-        else:
-            if line_type == 'ascending':
-                if line_info.offset > 0:
-                    line_id += f"S{level}"
+        if MINMAX_HIERARCHICAL_LINES == False:
+            # "stary" sposób nadawania ID linii
+            line_id = "A" if line_type == 'ascending' else "D"
+            if level == 0:
+                line_id += "0"  # Główna linia
+            else:
+                if line_type == 'ascending':
+                    if line_info.offset > 0:
+                        line_id += f"S{level}"
+                    else:
+                        line_id += f"R{level}"
                 else:
-                    line_id += f"R{level}"
+                    if line_info.offset < 0:
+                        line_id += f"R{level}"
+                    else:
+                        line_id += f"S{level}"
+        else:
+            # "nowy" sposób:
+            # * główne linie mają ID M (Main)
+            # * dla wznoszących linii support są powżej aktualnej ceny, resistance poniżej aktualnej ceny
+            # * dla opadających linii support są poniżej aktualnej ceny, resistance powyżej aktualnej ceny
+
+            if line_type == 'ascending':
+                line_id = "A"
+            else:
+                line_id = "D"
+            if level == 0:
+                line_id += "M"
+            elif line_type == 'ascending':
+                if line_info.offset > 0:
+                    line_id = f"R{line_id}{level}"
+                else:
+                    line_id = f"S{line_id}{level}"
             else:
                 if line_info.offset < 0:
-                    line_id += f"R{level}"
+                    line_id = f"R{line_id}{level}"
                 else:
-                    line_id += f"S{level}"
-
+                    line_id = f"S{line_id}{level}"
+            
         if last_candle_low <= line_value <= last_candle_high:
             crossed = True
             crossed_id = line_id if crossed_id == "" else (crossed_id + " " + line_id)
@@ -1615,6 +1644,7 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
         line_id = line[0]
         if line_id in unique_ids:
             print(f"ERROR: Duplicate line ID detected: {line_id} when processing file {csv_filepath}")
+            print(f"Line IDs: {[l[0] for l in line_offsets]}")
             assert False, "Duplicate line ID detected"
         unique_ids.add(line_id)
         
@@ -1666,8 +1696,8 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
     prefix = f"CROSSED {crossed_id} {last_candle_direction}" if crossed else "NONE"
     ret = prefix + " | "
     # offset z dokładnością do 2 miejsca po przecinku
-    # sortuj po offsetach (oddzielnie wszystkie A, potem D) malejąco
-    line_offsets_sorted = sorted(line_offsets, key=lambda x: (x[0][0], -x[1]))
+    # sortuj po offsetach malejąco
+    line_offsets_sorted = sorted(line_offsets, key=lambda x: -x[1])
     ret += " | ".join([f"{line_id}: {line_offset:.2f}" for (line_id, line_offset) in line_offsets_sorted])
     ret += " | SLOPE: {:.4f}".format(slope)
     ret += " | BASE: {:.2f}".format(base_price)
