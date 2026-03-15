@@ -174,6 +174,7 @@ void DrawLinesFromResult(string result)
     double basePrice = Close[0];
     double absSlope = 0.0;
 
+    // First pass: find base price
     for(int i = 0; i < n; i++)
     {
         parts[i] = StringTrimLeft(parts[i]);
@@ -188,6 +189,7 @@ void DrawLinesFromResult(string result)
         }
     }
 
+    // find slope
     for(int i = 0; i < n; i++)
     {
         parts[i] = StringTrimLeft(parts[i]);
@@ -202,6 +204,24 @@ void DrawLinesFromResult(string result)
         }
     }
 
+    // hide all lines first - we'll show only those present in the result
+    int total = ObjectsTotal(0, 0, -1);
+    for(int i = 0; i < total; i++)
+    {
+        string name = ObjectName(0, i);
+        if(StringFind(name, WD_LINE_PREFIX) == 0)
+        {
+            ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+            string beginLabelName = name + "_BEGIN";
+            string endLabelName = name + "_END";
+            if(ObjectFind(0, beginLabelName) >= 0)
+                ObjectSetInteger(0, beginLabelName, OBJPROP_HIDDEN, true);
+            if(ObjectFind(0, endLabelName) >= 0)
+                ObjectSetInteger(0, endLabelName, OBJPROP_HIDDEN, true);
+        }
+    }
+
+    // for each line part, extract id and offset, calculate price, and draw line
     for(int i = 0; i < n; i++)
     {
         string token = parts[i];
@@ -238,14 +258,19 @@ void DrawLinesFromResult(string result)
         // Print("id: " + id + " price: " + DoubleToStr(price));
 
         color c = clrSilver;
-        bool isA = (StringSubstr(id, 0, 1) == "A");
+
+        bool isA = (StringFind(id, "A") != -1);
+        bool isD = (StringFind(id, "D") != -1);
+
         if(isA)
             c = clrGreen;
-        else if(StringSubstr(id, 0, 1) == "D")
+        else if(isD)
             c = clrRed;
 
-        // A0/D0 are main lines: solid. The rest: dashed.
-        int lineStyle = (id == "A0" || id == "D0") ? STYLE_SOLID : STYLE_DASH;
+        bool isS = (StringFind(id, "S") != -1);
+
+        // MA/MD are main lines: solid. The rest: dashed.
+        int lineStyle = (id == "AM" || id == "DM") ? STYLE_SOLID : STYLE_DASH;
 
         if(absSlope > 0.0)
         {
@@ -266,7 +291,7 @@ void DrawLinesFromResult(string result)
             double pLeft = pAt0 - slopeSigned * spanBars;
 
             datetime tRight = t0 + (Period() * 60 * 1);
-            double pRight = pAt0 + slopeSigned * 1;
+            double pRight = pAt0 - slopeSigned * 1;
             UpsertTrendLine(WD_LINE_PREFIX + id, tRight, pRight, tLeft, pLeft, c, lineStyle);
         }
         else
