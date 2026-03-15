@@ -15,7 +15,7 @@ input bool no_orders = false;
 
 //-----------------------------------------------------------------------
 
-string WD_LINE_PREFIX = "WD_LINE_";
+string WD_LINE_PREFIX = "L_";
 string WD_STATS_LABEL = "WD_STATS";
 string tester_filename = "";
 
@@ -100,6 +100,65 @@ void UpsertTrendLine(string name, datetime time0, double price0, datetime time1,
     ObjectSetInteger(0, name, OBJPROP_STYLE, lineStyle);
     ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
     ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
+
+    // Add labels with the line name just before the begin point and just after the end point.
+    // (Begin/end are determined by time ordering so callers can pass points in either order.)
+    datetime tBegin = time0;
+    double pBegin = price0;
+    datetime tEnd = time1;
+    double pEnd = price1;
+    if(time1 < time0)
+    {
+        tBegin = time1;
+        pBegin = price1;
+        tEnd = time0;
+        pEnd = price0;
+    }
+
+    int secondsPerBar = (int)(Period() * 60);
+    if(secondsPerBar <= 0)
+        secondsPerBar = 60;
+    int padSeconds = secondsPerBar * 5;
+
+    datetime tLabelBegin = tBegin - padSeconds;
+    datetime tLabelEnd = tEnd + padSeconds;
+
+    string beginLabelName = name + "_BEGIN";
+    string endLabelName = name + "_END";
+
+    if(ObjectFind(0, beginLabelName) < 0)
+    {
+        ObjectCreate(0, beginLabelName, OBJ_TEXT, 0, tLabelBegin, pBegin);
+        ObjectSetInteger(0, beginLabelName, OBJPROP_BACK, false);
+        ObjectSetInteger(0, beginLabelName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, beginLabelName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(0, beginLabelName, OBJPROP_FONTSIZE, 8);
+        ObjectSetString(0, beginLabelName, OBJPROP_FONT, "Consolas");
+    }
+    else
+    {
+        ObjectMove(0, beginLabelName, 0, tLabelBegin, pBegin);
+    }
+
+    ObjectSetInteger(0, beginLabelName, OBJPROP_COLOR, lineColor);
+    ObjectSetString(0, beginLabelName, OBJPROP_TEXT, name);
+
+    if(ObjectFind(0, endLabelName) < 0)
+    {
+        ObjectCreate(0, endLabelName, OBJ_TEXT, 0, tLabelEnd, pEnd);
+        ObjectSetInteger(0, endLabelName, OBJPROP_BACK, false);
+        ObjectSetInteger(0, endLabelName, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, endLabelName, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(0, endLabelName, OBJPROP_FONTSIZE, 8);
+        ObjectSetString(0, endLabelName, OBJPROP_FONT, "Consolas");
+    }
+    else
+    {
+        ObjectMove(0, endLabelName, 0, tLabelEnd, pEnd);
+    }
+
+    ObjectSetInteger(0, endLabelName, OBJPROP_COLOR, lineColor);
+    ObjectSetString(0, endLabelName, OBJPROP_TEXT, name);
 }
 
 void DrawLinesFromResult(string result)
