@@ -43,6 +43,11 @@ def _parse_line_offsets(result: str) -> dict[str, float]:
 
     return offsets
 
+def _dir_letter(line_id: str) -> str:
+    if line_id[1] == 'M':
+        return line_id[0]
+    return line_id[1].upper() if line_id else ""
+
 def _find_extreme_line(crossed_ids: list[str], offsets: dict[str, float], prefix: str) -> float | None:
     """Find the extreme (highest or lowest) line with given prefix and return its offset + BASE.
     
@@ -57,7 +62,10 @@ def _find_extreme_line(crossed_ids: list[str], offsets: dict[str, float], prefix
     find_max = (prefix == "A")
     extreme_offset: float | None = None
     for line_id in crossed_ids:
-        if not line_id.startswith(prefix):
+        # print(f"Checking line_id: {line_id}")
+        prefix_letter = _dir_letter(line_id)
+        # print(f"Line prefix: {prefix_letter}")
+        if not prefix_letter.startswith(prefix):
             continue
         offset = offsets.get(line_id)
         if offset is None:
@@ -94,10 +102,12 @@ def decision(result: str | None) -> str:
     direction = parts[-1]
     if direction not in ("UP", "DOWN"):
         return f"log: invalid direction: {direction}\nNONE"
+    # print(f"direction: {direction}")
 
     offsets = _parse_line_offsets(result)
 
     crossed_ids = parts[1:-1]
+    # print(f"crossed_ids: {crossed_ids}")
     if not crossed_ids:
         return "log: no line ids\nNONE"
     
@@ -117,12 +127,16 @@ def decision(result: str | None) -> str:
     # Unified logic for both single- and multi-cross:
     # - If direction is UP and any crossed line is A*, then BUY.
     # - If direction is DOWN and any crossed line is D*, then SELL.
-    first_letters = [(line_id[:1].upper() if line_id else "") for line_id in crossed_ids]
+
+    first_letters = [_dir_letter(line_id) for line_id in crossed_ids]
+    # print(f"first_letters: {first_letters}")
     has_a = "A" in first_letters
     has_d = "D" in first_letters
 
     can_buy = (direction == "UP" and has_a)
     can_sell = (direction == "DOWN" and has_d)
+
+    # print(f"can_buy: {can_buy}, can_sell: {can_sell}")
 
     if can_buy:
         # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
@@ -145,7 +159,9 @@ def decision(result: str | None) -> str:
         return "log: no valid lines found\nNONE"
 
     line_id = crossed_ids[0]
-    line_letter = line_id[:1].upper() if line_id else ""
+    # print(f"line_id: {line_id}")
+    line_letter = _dir_letter(line_id)
+    # print(f"line_letter: {line_letter}")
     if line_letter in ("A", "D"):
         return "log: bad direction\nNONE"
 
@@ -153,5 +169,6 @@ def decision(result: str | None) -> str:
 
 if __name__ == '__main__':  
     # Example usage
-    example_result = "CROSSED DS1 DS2 DOWN | D0: -46.56 | DR1: -166.39 | DR2: -293.96 | DS1: -6.40 | DS2: 70.88 | A0: 935.41 | AR1: 400.80 | AS1: 1383.09 | SLOPE: -3.0436 | BASE: 21222.78"
+    example_result = "CROSSED SD1 DM DOWN | SA2: 575.81 | AM: 350.70 | SA1: 173.33 | SD1: -11.34 | DM: -265.63 | SD2: -547.47 | SD3: -805.45 | SLOPE: 1.7702 | BASE: 24680.63"
     print(decision(example_result))
+
