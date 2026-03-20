@@ -29,6 +29,7 @@ input int setupTP = 500 * 100;
 //--- BuyAboveOrBelow:
 input bool BuyAboveOrBelow_enabled = true;
 input int BuyAboveOrBelowTolerance = 3;
+input int BuyAboveOrBelowGap = 50;
 
 //-----------------------------------------------------------------------
 
@@ -304,6 +305,13 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
                         " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
                     return false;
                 }
+		if(currentPrice >= conditionPrice + BuyAboveOrBelowGap)
+		{
+                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
+                        " too high above " + DoubleToString(conditionPrice, 2) + 
+                        " with gap " + IntegerToString(BuyAboveOrBelowGap));
+                    return false;
+		}
             }
             else if(condition == "BELOW")
             {
@@ -314,7 +322,14 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
                         " not below " + DoubleToString(conditionPrice, 2) + 
                         " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
                     return false;
-                }
+                }		
+		if(currentPrice <= conditionPrice - BuyAboveOrBelowGap)
+		{
+                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
+                        " too low below " + DoubleToString(conditionPrice, 2) + 
+                        " with gap " + IntegerToString(BuyAboveOrBelowGap));
+                    return false;
+		}
             }
         }
     }
