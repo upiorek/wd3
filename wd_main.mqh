@@ -187,14 +187,14 @@ void CheckBE()
                 ResetLastError();
                 if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
                 {
-		    string type = OrderType() == OP_BUY ? "BUY" : "SELL";
+		            string type = OrderType() == OP_BUY ? "BUY" : "SELL";
                     Log("Break-even set: Ticket=" + IntegerToString(OrderTicket()) + " Type=" + type +
                           " New SL=" + DoubleToString(newSL) + " (BE+" + DoubleToString(BEBonus * Point) + ")");
                 }
                 else
                 {
                     Log("ERROR: Break-even failed: Ticket=" + IntegerToString(OrderTicket()) +
-		        " Error=" + IntegerToString(GetLastError()));
+		                " Error=" + IntegerToString(GetLastError()));
                 }
             }
         }

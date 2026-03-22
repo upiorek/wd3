@@ -322,9 +322,12 @@ void ApplyBlackOnWhiteTheme()
     ChartRedraw(chartId);
 }
 
-void GetWdTesterOpenStatsForChartSymbol(int &positionsCount, double &totalLots, double &totalProfit)
+void GetWdTesterOpenStatsForChartSymbol(int &positionsCount, int &buyCount, int &sellCount, 
+    double &totalLots, double &totalProfit)
 {
     positionsCount = 0;
+    buyCount = 0;
+    sellCount = 0;
     totalLots = 0.0;
     totalProfit = 0.0;
 
@@ -340,6 +343,11 @@ void GetWdTesterOpenStatsForChartSymbol(int &positionsCount, double &totalLots, 
         int type = OrderType();
         if(type != OP_BUY && type != OP_SELL)
             continue;
+
+        if(type == OP_BUY)
+            buyCount++;
+        else if(type == OP_SELL)
+            sellCount++;
 
         positionsCount++;
         totalLots += OrderLots();
@@ -428,13 +436,17 @@ void UpdateTesterStatsOverlay()
         return;
 
     int cnt = 0;
+    int buyCnt = 0;
+    int sellCnt = 0;
     double lots = 0.0;
     double profit = 0.0;
-    GetWdTesterOpenStatsForChartSymbol(cnt, lots, profit);
+    GetWdTesterOpenStatsForChartSymbol(cnt, buyCnt, sellCnt, lots, profit);
 
     string text = "WD Tester\n";
     text += "File: " + GetTesterFilename() + " (-15m)\n";
-    text += "Open positions: " + IntegerToString(cnt) + " (Lots: " + DoubleToStr(lots, 2) + ")\n";
+    text += "Open positions: " + IntegerToString(cnt) + 
+        " (BUY: " + IntegerToString(buyCnt) + ", SELL: " + IntegerToString(sellCnt) + 
+        ", Lots: " + DoubleToStr(lots, 2) + ")\n";
     text += "Open profit: " + DoubleToStr(profit, 2);
 
     UpsertTesterStatsLabel(text);
