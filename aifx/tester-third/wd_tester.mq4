@@ -18,6 +18,10 @@ input bool no_orders = false;
 string WD_LINE_PREFIX = "L_";
 string WD_STATS_LABEL = "WD_STATS";
 string tester_filename = "";
+string result = "";
+
+int numDscAbove = 0;
+int numAscBelow = 0;
 
 string GetTesterFilename()
 {
@@ -161,8 +165,12 @@ void UpsertTrendLine(string name, datetime time0, double price0, datetime time1,
     ObjectSetString(0, endLabelName, OBJPROP_TEXT, name);
 }
 
-void DrawLinesFromResult(string result)
+void DrawLinesFromResult()
 {
+    numDscAbove = 0;
+    numAscBelow = 0;
+
+    // result is global
     if(result == "")
         return;
 
@@ -257,6 +265,12 @@ void DrawLinesFromResult(string result)
         double price = basePrice + offset;
         // Print("id: " + id + " price: " + DoubleToStr(price));
 
+        // count numDscAbove and numAscBelow for stats
+        if(StringFind(id, "D") != -1 && offset > 0)
+            numDscAbove++;
+        else if(StringFind(id, "A") != -1 && offset < 0)
+            numAscBelow++;
+
         color c = clrSilver;
 
         bool isA = (StringFind(id, "A") != -1);
@@ -269,7 +283,7 @@ void DrawLinesFromResult(string result)
 
         bool isS = (StringFind(id, "S") != -1);
 
-        // MA/MD are main lines: solid. The rest: dashed.
+        // AM/DM are main lines: solid. The rest: dashed.
         int lineStyle = (id == "AM" || id == "DM") ? STYLE_SOLID : STYLE_DASH;
 
         if(absSlope > 0.0)
@@ -449,6 +463,8 @@ void UpdateTesterStatsOverlay()
         ", Lots: " + DoubleToStr(lots, 2) + ")\n";
     text += "Open profit: " + DoubleToStr(profit, 2);
 
+    text += "\nD above: " + IntegerToString(numDscAbove) + " | A below: " + IntegerToString(numAscBelow);
+
     UpsertTesterStatsLabel(text);
 }
 
@@ -544,7 +560,7 @@ void OnTick()
     StringReplace(timeStr, " ", "-");
 
     string result_filename = "wd_tester/" + timeStr + "_result.txt";
-    string result = ReadAllText(result_filename);
+    result = ReadAllText(result_filename);
     string decision = "";
     if (result != "")
     {
@@ -556,7 +572,7 @@ void OnTick()
         DeleteWdLines();
         if (show_lines == true)
         {
-            DrawLinesFromResult(result);
+            DrawLinesFromResult();
         }
     }
     else 
