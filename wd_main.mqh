@@ -266,7 +266,7 @@ bool CheckWeakClosedOnFlip(string decision)
             ResetLastError();
             if(OrderClose(worstTicket, lots, closePrice, slippage, clrNONE))
             {
-		string wb = wantBuy ? "SELL" : "BUY";
+		        string wb = wantBuy ? "SELL" : "BUY";
                 Log("Closed worst " + wb + " instead of opening " + decision + 
                       " Ticket=" + IntegerToString(worstTicket) + " Profit=" + DoubleToStr(worstProfit, 2));
                 
@@ -275,7 +275,7 @@ bool CheckWeakClosedOnFlip(string decision)
             }
             else
             {
-		string wb = wantBuy ? "SELL" : "BUY";
+		        string wb = wantBuy ? "SELL" : "BUY";
                 Log("ERROR: Failed to close worst " + wb + " Ticket=" + IntegerToString(worstTicket) +
                       " Error=" + IntegerToString(GetLastError()));
             }
@@ -305,13 +305,13 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
                         " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
                     return false;
                 }
-		if(currentPrice >= conditionPrice + BuyAboveOrBelowGap)
-		{
+                if(currentPrice >= conditionPrice + BuyAboveOrBelowGap)
+                {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " too high above " + DoubleToString(conditionPrice, 2) + 
                         " with gap " + IntegerToString(BuyAboveOrBelowGap));
                     return false;
-		}
+		        }
             }
             else if(condition == "BELOW")
             {
@@ -323,13 +323,13 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
                         " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
                     return false;
                 }		
-		if(currentPrice <= conditionPrice - BuyAboveOrBelowGap)
-		{
+                if(currentPrice <= conditionPrice - BuyAboveOrBelowGap)
+                {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " too low below " + DoubleToString(conditionPrice, 2) + 
                         " with gap " + IntegerToString(BuyAboveOrBelowGap));
                     return false;
-		}
+		        }
             }
         }
     }

@@ -620,9 +620,9 @@ void OnTick()
             double profit = OrderProfit();
             string type = OrderType() == OP_BUY ? "BUY" : "SELL";
 
-            string statsStr = "Order closed: " + IntegerToString(ticket) + " type: " + type + " profit: " + DoubleToString(profit);
+            string statsStr = "Order closed: " + IntegerToString(ticket) + " type: " + type + " profit: " + DoubleToString(profit, Digits);
             statsStr += " | numDscAbove: " + IntegerToString(g_numDscAbove) + " numAscBelow: " + IntegerToString(g_numAscBelow) + " | ";
-            statsStr += "cnt: " + IntegerToString(g_cnt) + " buyCnt: " + IntegerToString(g_buyCnt) + " sellCnt: " + IntegerToString(g_sellCnt) + " all lots: " + DoubleToString(g_lots) + " all profit: " + DoubleToString(g_profit);
+            statsStr += "cnt: " + IntegerToString(g_cnt) + " buyCnt: " + IntegerToString(g_buyCnt) + " sellCnt: " + IntegerToString(g_sellCnt) + " all lots: " + DoubleToString(g_lots, 2) + " all profit: " + DoubleToString(g_profit, Digits);
 
             Print(statsStr);
             Log(statsStr);
