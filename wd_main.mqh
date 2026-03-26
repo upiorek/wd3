@@ -31,11 +31,15 @@ input bool BuyAboveOrBelow_enabled = true;
 input int BuyAboveOrBelowTolerance = 3;
 input int BuyAboveOrBelowGap = 50;
 
+//--- ThirdOrderGap
+input bool ThirdOrderGap_enabled = true;
+input int thirdOrderGap = 100;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
 {
-    return "wd main version 1.3";
+    return "wd main version 1.41";
 }
 
 void Log(string message)
@@ -66,7 +70,7 @@ void Log(string message)
    }
 }
 
-int HasSimilarOpenOrderDropped = 0 ;
+int HasSimilarOpenOrderDropped = 0;
 bool HasSimilarOpenOrder(int orderType, double price)
 {
     for(int i = OrdersTotal() - 1; i >= 0; i--)
@@ -82,7 +86,54 @@ bool HasSimilarOpenOrder(int orderType, double price)
             HasSimilarOpenOrderDropped++;
             string order = orderType == OP_BUY ? "BUY" : "SELL";
             Log("Duplicate order skipped (" + IntegerToString(HasSimilarOpenOrderDropped) + "): " +
-                order + " at " + DoubleToString(price) + " diff " + DoubleToString(priceDiff));
+                order + " at " + DoubleToString(price) + " diff " + DoubleToString(priceDiff) +
+                " minDistance: " + IntegerToString(minDistance));
+            return true;
+        }
+    }
+    return false;
+}
+
+int HasSimilarOpenOrderThirdDropped = 0;
+bool HasSimilarOpenOrderThird(int orderType, double price)
+{
+    int orderTypesFound = 1;
+    double priceForSell = 0;
+    double priceForBuy = 0;
+
+    for(int i = OrdersTotal() - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol() || OrderType() != orderType)
+            continue;
+            
+            if(orderType == OP_SELL &&
+	     (priceForSell == 0 || priceForSell > OrderOpenPrice()))
+	      priceForSell = OrderOpenPrice();
+            if(orderType == OP_BUY && 
+	    (priceForBuy == 0 || priceForBuy < OrderOpenPrice()))
+	      priceForBuy = OrderOpenPrice();
+	      
+       orderTypesFound++;
+       //Log("orderTypesFound: " + IntegerToString(orderTypesFound));
+	if (orderTypesFound <= 2)
+	    continue;
+
+	if(priceForBuy != 0)
+	    Log("priceForBuy: " + DoubleToString(priceForBuy));
+	if(priceForSell != 0)
+	    Log("priceForSell: " + DoubleToString(priceForSell));
+        
+        int priceDiff = (int)MathAbs(OrderOpenPrice() - price);
+        //Log("priceDiff: " + IntegerToString(priceDiff));        
+        if(priceDiff <= thirdOrderGap)
+        {
+            HasSimilarOpenOrderThirdDropped++;
+            string order = orderType == OP_BUY ? "BUY" : "SELL";
+            Log("Third+ order skipped (" + IntegerToString(HasSimilarOpenOrderThirdDropped) + "): " +
+                order + " at " + DoubleToString(price) + " diff " + DoubleToString(priceDiff) +
+                " thirdOrderGap: " + IntegerToString(thirdOrderGap));
             return true;
         }
     }
@@ -363,6 +414,9 @@ int ExecuteWdDecision(string decision)
     }
     
     if(HasSimilarOpenOrder_enabled && HasSimilarOpenOrder(cmd, currentPrice))
+        return 0;
+
+    if(ThirdOrderGap_enabled && HasSimilarOpenOrderThird(cmd, currentPrice))
         return 0;
 
     if (weak_closed_on_flip_enabled && CheckWeakClosedOnFlip(orderTypeStr))
