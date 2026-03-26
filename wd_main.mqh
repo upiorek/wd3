@@ -39,7 +39,7 @@ input int thirdOrderGap = 100;
 
 string GetVersion()
 {
-    return "wd main version 1.41";
+    return "wd main version 1.42";
 }
 
 void Log(string message)
@@ -86,7 +86,7 @@ bool HasSimilarOpenOrder(int orderType, double price)
             HasSimilarOpenOrderDropped++;
             string order = orderType == OP_BUY ? "BUY" : "SELL";
             Log("Duplicate order skipped (" + IntegerToString(HasSimilarOpenOrderDropped) + "): " +
-                order + " at " + DoubleToString(price) + " diff " + DoubleToString(priceDiff) +
+                order + " at " + DoubleToStr(price, 2) + " diff " + DoubleToStr(priceDiff, 2) +
                 " minDistance: " + IntegerToString(minDistance));
             return true;
         }
@@ -120,13 +120,19 @@ bool HasSimilarOpenOrderThird(int orderType, double price)
 	if (orderTypesFound <= 2)
 	    continue;
 
+	int priceDiff = 0;
 	if(priceForBuy != 0)
-	    Log("priceForBuy: " + DoubleToString(priceForBuy));
+	{
+	    Log("priceForBuy: " + DoubleToStr(priceForBuy, 2));
+	    priceDiff = (int)MathAbs(priceForBuy - price);
+	}
 	if(priceForSell != 0)
-	    Log("priceForSell: " + DoubleToString(priceForSell));
+	{
+	    Log("priceForSell: " + DoubleToStr(priceForSell, 2));
+	    priceDiff = (int)MathAbs(priceForSell - price);
+	}
         
-        int priceDiff = (int)MathAbs(OrderOpenPrice() - price);
-        //Log("priceDiff: " + IntegerToString(priceDiff));        
+        //Log("priceDiff: " + IntegerToString(priceDiff));
         if(priceDiff <= thirdOrderGap)
         {
             HasSimilarOpenOrderThirdDropped++;
