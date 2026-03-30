@@ -35,11 +35,15 @@ input int BuyAboveOrBelowGap = 50;
 input bool ThirdOrderGap_enabled = true;
 input int thirdOrderGap = 100;
 
+//--- SetAllOrdersSlToMaxSl
+input bool SetAllOrdersSlToMaxSl_enabled = true;
+input int howManyOrdersSlToMaxSl = 3;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
 {
-    return "wd main version 1.42";
+    return "wd main version 1.43";
 }
 
 void Log(string message)
@@ -92,6 +96,94 @@ bool HasSimilarOpenOrder(int orderType, double price)
         }
     }
     return false;
+}
+
+void SetAllOrdersSlToMaxSl(int orderType)
+{
+    if(orderType != OP_SELL && orderType != OP_BUY)
+        return;
+
+    double targetSL = 0;
+    int sourceSLTicket = -1;
+    int sells = 0;
+    int buys = 0;
+
+    for(int j = OrdersTotal() - 1; j >= 0; j--)
+    {
+        if(!OrderSelect(j, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol() || OrderType() != orderType)
+            continue;
+
+        double sl = OrderStopLoss();
+        if(sl <= 0)
+            continue;
+
+	if(orderType == OP_SELL)
+	   sells++;
+	if(orderType == OP_BUY)
+	   buys++;
+
+        if(orderType == OP_SELL && (targetSL == 0 || sl > targetSL))
+        {
+            targetSL = sl;
+            sourceSLTicket = OrderTicket();
+        }
+
+        if(orderType == OP_BUY && (targetSL == 0 || sl < targetSL))
+        {
+            targetSL = sl;
+            sourceSLTicket = OrderTicket();
+        }
+    }
+
+    Log("Currently open sells: " + IntegerToString(sells) + " buys: " + IntegerToString(buys));
+    if(sells < howManyOrdersSlToMaxSl && buys < howManyOrdersSlToMaxSl)
+    {
+    	Log("Not enough!, min is: " + IntegerToString(howManyOrdersSlToMaxSl));
+        return;
+    }
+
+    if(targetSL > 0)
+    {
+        int syncedCount = 0;
+        for(int k = OrdersTotal() - 1; k >= 0; k--)
+        {
+            if(!OrderSelect(k, SELECT_BY_POS, MODE_TRADES))
+                continue;
+            if(OrderSymbol() != Symbol() || OrderType() != orderType)
+                continue;
+
+            double currentSL = OrderStopLoss();
+            if(MathAbs(currentSL - targetSL) <= (Point / 2.0))
+                continue;
+
+            int ticketToModify = OrderTicket();
+            double openPriceToKeep = OrderOpenPrice();
+            double tpToKeep = OrderTakeProfit();
+
+            ResetLastError();
+            if(OrderModify(ticketToModify, openPriceToKeep, targetSL, tpToKeep, 0, clrRed))
+            {
+                syncedCount++;
+            }
+            else
+            {
+                string orderName = orderType == OP_BUY ? "BUY" : "SELL";
+                Log("ERROR: " + orderName + " SL sync failed Ticket=" + IntegerToString(ticketToModify) +
+                    " Error=" + IntegerToString(GetLastError()));
+            }
+        }
+
+        if(syncedCount > 0)
+        {
+            string orderName = orderType == OP_BUY ? "BUY" : "SELL";
+            string targetName = orderType == OP_BUY ? "lowest" : "highest";
+            Log(orderName + " SL synced to " + targetName + " SL=" + DoubleToStr(targetSL, 2) +
+                " sourceTicket=" + IntegerToString(sourceSLTicket) +
+                " modified=" + IntegerToString(syncedCount));
+        }
+    }
 }
 
 int HasSimilarOpenOrderThirdDropped = 0;
@@ -444,6 +536,9 @@ int ExecuteWdDecision(string decision)
     if(ticket > 0)
     {
         Log("Order opened: " + decision + " Ticket=" + IntegerToString(ticket));
+
+        if(SetAllOrdersSlToMaxSl_enabled)
+                SetAllOrdersSlToMaxSl(cmd);
     }
     else
     {
