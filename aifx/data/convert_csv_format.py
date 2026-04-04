@@ -29,11 +29,17 @@ def convert_csv_format(input_file, output_file=None):
             
             try:
                 # Parse: YYYY.MM.DD;HH:MM;open;high;low;close;volume
-                parts = line.split(';')
+                parts = None
+                if ';' in line:
+                    parts = line.split(';')
+                elif ',' in line:
+                    parts = line.split(',')
                 
                 if len(parts) < 6:
                     print(f"Warning: Line {line_num} has insufficient columns, skipping")
-                    continue
+                    print(f"Line content: {line}")
+                    print(f"len(parts): {len(parts)} parts: {parts}")
+                    exit(1)
                 
                 date = parts[0]           # "YYYY.MM.DD"
                 time = parts[1]           # "HH:MM"
