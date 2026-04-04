@@ -230,6 +230,142 @@ def find_mt4_executable():
     
     return None
 
+
+def find_metaeditor_executable(terminal_exe: Path | None) -> Path | None:
+    """Find MetaEditor executable, ideally next to terminal.exe."""
+    possible_paths: list[Path] = []
+
+    if terminal_exe is not None:
+        possible_paths.append(terminal_exe.parent / "metaeditor.exe")
+
+    # MT4 installed by MetaQuotes WebInstall keeps the binaries under
+    # %AppData%\MetaQuotes\WebInstall\<channel>.
+    metaquotes_root = MT4_TERMINAL_PATH.parent.parent
+    webinstall_root = metaquotes_root / "WebInstall"
+    if webinstall_root.exists():
+        for candidate in sorted(webinstall_root.glob("*/metaeditor.exe")):
+            possible_paths.append(candidate)
+
+    # Common MT4 installation paths
+    possible_paths.extend(
+        [
+            Path(r"C:\Program Files (x86)\mForex Trader\metaeditor.exe"),
+            Path(r"C:\Program Files\MetaTrader 4\metaeditor.exe"),
+            Path(r"C:\Program Files (x86)\MetaTrader 4\metaeditor.exe"),
+            Path(r"C:\Program Files\OANDA - MetaTrader\metaeditor.exe"),
+            Path(r"C:\Program Files (x86)\OANDA - MetaTrader\metaeditor.exe"),
+        ]
+    )
+
+    seen: set[str] = set()
+    for path in possible_paths:
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if path.exists():
+            return path
+
+    return None
+
+
+def read_compile_log_text(log_path: Path) -> str:
+    """Read a MetaEditor compile log, which is often UTF-16."""
+    if not log_path.exists():
+        return ""
+
+    raw = log_path.read_bytes()
+    for encoding in ("utf-16", "utf-8", "cp1252"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    return raw.decode("utf-8", errors="replace")
+
+
+def compile_log_has_success(log_path: Path) -> bool:
+    """Return True when MetaEditor reports a clean compile in the log."""
+    log_text = read_compile_log_text(log_path)
+    return bool(re.search(r"Result:\s*0 errors,\s*0 warnings", log_text, re.IGNORECASE))
+
+
+def compile_expert_with_metaeditor(expert_mq4_path: Path) -> bool:
+    """Compile an EA source file using MetaEditor (/compile)."""
+    terminal_exe = find_mt4_executable()
+    preferred_metaeditor = find_metaeditor_executable(terminal_exe)
+    if preferred_metaeditor is None:
+        print("Error: metaeditor.exe not found; cannot force rebuild")
+        return False
+
+    logs_dir = MT4_TERMINAL_PATH / "tester" / "logs"
+    try:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    log_path = logs_dir / f"compile_{expert_mq4_path.stem}.log"
+
+    metaeditor_candidates: list[Path] = [preferred_metaeditor]
+    metaquotes_root = MT4_TERMINAL_PATH.parent.parent
+    webinstall_root = metaquotes_root / "WebInstall"
+    if webinstall_root.exists():
+        for candidate in sorted(webinstall_root.glob("*/metaeditor.exe")):
+            if str(candidate).lower() != str(preferred_metaeditor).lower():
+                metaeditor_candidates.append(candidate)
+
+    compile_error_details = []
+
+    for metaeditor_exe in metaeditor_candidates:
+        try:
+            if log_path.exists():
+                log_path.unlink()
+        except Exception:
+            pass
+
+        cmd = [
+            str(metaeditor_exe),
+            f"/compile:{expert_mq4_path}",
+            f"/log:{log_path}",
+        ]
+
+        print(f"Compiling via MetaEditor: {expert_mq4_path}")
+        print(f"Using MetaEditor: {metaeditor_exe}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except Exception as e:
+            compile_error_details.append(f"launch failed for {metaeditor_exe}: {e}")
+            continue
+
+        if result.returncode == 0:
+            return True
+
+        if compile_log_has_success(log_path):
+            print(
+                "Warning: MetaEditor returned a non-zero exit code despite a clean compile; "
+                "continuing based on compile log"
+            )
+            return True
+
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        details = [f"MetaEditor returned {result.returncode} for {metaeditor_exe}"]
+        if stdout:
+            details.append("stdout:\n" + stdout)
+        if stderr:
+            details.append("stderr:\n" + stderr)
+        log_text = read_compile_log_text(log_path).strip()
+        if log_text:
+            details.append("compile log:\n" + log_text)
+        compile_error_details.append("\n".join(details))
+
+    print("Error: MetaEditor compile failed")
+    for detail in compile_error_details:
+        print(detail)
+    if log_path.exists():
+        print(f"See compile log: {log_path}")
+    return False
+
 def prepare_expert():
     """Copy expert advisor to MT4 Experts folder"""
     config = read_config()
@@ -239,46 +375,51 @@ def prepare_expert():
     if config.get('expert') == 'wd_tester':
         config['model'] = '2'
     expert_name = config['expert']
-    
-    # Try both .ex4 (compiled) and .mq4 (source)
-    expert_files = [
-        (f"{expert_name}.ex4", "compiled"),
-        (f"{expert_name}.mq4", "source")
-    ]
+
+    experts_folder = MT4_TERMINAL_PATH / "MQL4" / "Experts"
+    if not experts_folder.exists():
+        print(f"Creating Experts folder: {experts_folder}")
+        experts_folder.mkdir(parents=True, exist_ok=True)
     
     copied = False
-    
-    for expert_file, file_type in expert_files:
-        source = CURRENT_DIR / expert_file
-        
-        if source.exists():
-            # Copy to MT4 Experts folder
-            experts_folder = MT4_TERMINAL_PATH / "MQL4" / "Experts"
-            if not experts_folder.exists():
-                print(f"Creating Experts folder: {experts_folder}")
-                experts_folder.mkdir(parents=True, exist_ok=True)
-            
-            dest = experts_folder / expert_file
-            shutil.copy2(source, dest)
-            print(f"Copied {expert_file} ({file_type}) to {experts_folder}")
-            copied = True
-            
-            # If source file, MT4 will compile it automatically
-            if file_type == "source":
-                print("Note: MT4 will compile the .mq4 file automatically")
-    
-    # Copy include files (.mqh) to Experts folder
+
+    source_mq4 = CURRENT_DIR / f"{expert_name}.mq4"
+    if not source_mq4.exists():
+        print(f"Error: source file not found for rebuild: {source_mq4}")
+        return False
+
+    dest_mq4 = experts_folder / source_mq4.name
+    dest_ex4 = experts_folder / f"{expert_name}.ex4"
+
+    # Remove stale compiled file first to prevent accidental use.
+    try:
+        if dest_ex4.exists():
+            dest_ex4.unlink()
+            print(f"Removed stale compiled EA: {dest_ex4}")
+    except Exception as e:
+        print(f"Warning: could not remove {dest_ex4}: {e}")
+
+    shutil.copy2(source_mq4, dest_mq4)
+    print(f"Copied {source_mq4.name} (source) to {experts_folder}")
+    copied = True
+
+    # Copy include files before compiling so MetaEditor sees the current sources
+    # on the very first run, not the previous staged .mqh contents.
     for mqh_file in CURRENT_DIR.glob("*.mqh"):
-        experts_folder = MT4_TERMINAL_PATH / "MQL4" / "Experts"
-        if not experts_folder.exists():
-            experts_folder.mkdir(parents=True, exist_ok=True)
-        
         dest = experts_folder / mqh_file.name
         shutil.copy2(mqh_file, dest)
         print(f"Copied include file: {mqh_file.name}")
+
+    if not compile_expert_with_metaeditor(dest_mq4):
+        return False
+
+    if dest_ex4.exists():
+        print(f"✓ Rebuild complete: {dest_ex4}")
+    else:
+        print(f"Warning: compile reported success but {dest_ex4} not found")
     
     if not copied:
-        print(f"Warning: No {expert_name}.ex4 or {expert_name}.mq4 found")
+        print(f"Warning: No {expert_name}.mq4 found")
         print("Make sure the EA is available in the current directory")
         return False
     
