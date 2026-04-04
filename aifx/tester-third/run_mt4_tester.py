@@ -80,6 +80,54 @@ if any(a == '--month' or a.startswith('--month=') for a in sys.argv):
         print("Error: --month must be in range 1..12")
         sys.exit(1)
 
+# Check for --year flag (wd_tester month mode only). Supports --year YYYY and --year=YYYY
+YEAR = 2025
+YEAR_EXPLICIT = False
+if any(a == '--year' or a.startswith('--year=') for a in sys.argv):
+    i = 1
+    while i < len(sys.argv):
+        a = sys.argv[i]
+        if a.startswith('--year='):
+            if YEAR_EXPLICIT:
+                print("Error: --year specified more than once")
+                sys.exit(1)
+            raw = a.split('=', 1)[1].strip()
+            if not raw:
+                print("Error: --year requires a value")
+                sys.exit(1)
+            try:
+                YEAR = int(raw)
+            except ValueError:
+                print("Error: --year must be an integer")
+                sys.exit(1)
+            YEAR_EXPLICIT = True
+            del sys.argv[i]
+            continue
+        if a == '--year':
+            if YEAR_EXPLICIT:
+                print("Error: --year specified more than once")
+                sys.exit(1)
+            if i + 1 >= len(sys.argv):
+                print("Error: --year requires a value")
+                sys.exit(1)
+            try:
+                YEAR = int(sys.argv[i + 1])
+            except ValueError:
+                print("Error: --year must be an integer")
+                sys.exit(1)
+            YEAR_EXPLICIT = True
+            del sys.argv[i:i + 2]
+            continue
+        i += 1
+
+    if not (1 <= YEAR <= 9999):
+        print("Error: --year must be in range 1..9999")
+        sys.exit(1)
+
+if YEAR_EXPLICIT and MONTH is None:
+    print("Error: --year requires --month")
+    sys.exit(1)
+
 # Check for --input-dir flag (wd_tester only). Supports --input-dir PATH and --input-dir=PATH
 INPUT_DIR = None
 if any(a == '--input-dir' or a.startswith('--input-dir=') for a in sys.argv):
@@ -125,12 +173,13 @@ if '--help' in sys.argv or '-h' in sys.argv:
     print("MT4 STRATEGY TESTER RUNNER - HELP")
     print("=" * 60)
     print("\nUsage:")
-    print("  python run_mt4_tester.py [EA_NAME] [--clean] [--month N] [--input-dir PATH] [--no-copy-data]")
+    print("  python run_mt4_tester.py [EA_NAME] [--clean] [--month N] [--year YYYY] [--input-dir PATH] [--no-copy-data]")
     print("\nOptions:")
     print("  EA_NAME            Expert advisor to test (order-maker, candle-maker)")
     print("                     Or a custom .ini config file name")
     print("  --clean            Clean local mt4_test_results folder before running")
     print("  --month N          (wd_tester only) Set test range to month (1-12)")
+    print("  --year YYYY        (wd_tester only) Year for --month mode; default is 2025")
     print("  --input-dir PATH   (wd_tester only) Copy *_decision.txt and *_result.txt from PATH")
     print("  --no-copy-data     (wd_tester only) Skip copying/cleaning wd_tester input data")
     print("  --help, -h         Show this help message")
@@ -147,7 +196,10 @@ if '--help' in sys.argv or '-h' in sys.argv:
     print("    → Run with custom config file")
 
     print("\n  python run_mt4_tester.py wd_tester --month 1")
-    print("    → Run wd_tester using January date range (config year)")
+    print("    → Run wd_tester using January 2025 date range")
+
+    print("\n  python run_mt4_tester.py wd_tester --month 1 --year 2026")
+    print("    → Run wd_tester using January 2026 date range")
 
     print("\n  python run_mt4_tester.py wd_tester --input-dir aifx/data/2025.01/charts")
     print("    → Clean MT4 wd_tester input folder, copy decisions/results from PATH, then run")
@@ -1308,7 +1360,7 @@ def main():
     print(f"Config file: {CONFIG_FILE.name}")
     
     # If only --clean flag was provided, just clean and exit
-    if CLEAN_LOCAL_RESULTS and len(sys.argv) == 1 and MONTH is None and INPUT_DIR is None:
+    if CLEAN_LOCAL_RESULTS and len(sys.argv) == 1 and MONTH is None and INPUT_DIR is None and not YEAR_EXPLICIT:
         cleanup_local_results()
         print("\n" + "=" * 60)
         print("LOCAL CLEANUP COMPLETE!")
@@ -1368,20 +1420,18 @@ def main():
         print("Error: --input-dir is only supported for the wd_tester expert")
         return 1
 
+    if YEAR_EXPLICIT and config.get('expert') != 'wd_tester':
+        print("Error: --year is only supported for the wd_tester expert")
+        return 1
+
     if MONTH is not None:
         if config.get('expert') != 'wd_tester':
             print("Error: --month is only supported for the wd_tester expert")
             return 1
 
-        # Use the year from the existing config date range (YYYY.MM.DD)
-        try:
-            year = int(str(config.get('from_date', '')).split('.', 1)[0])
-        except Exception:
-            year = time.localtime().tm_year
-
-        last_day = calendar.monthrange(year, MONTH)[1]
-        config['from_date'] = f"{year}.{MONTH:02d}.01"
-        config['to_date'] = f"{year}.{MONTH:02d}.{last_day:02d}"
+        last_day = calendar.monthrange(YEAR, MONTH)[1]
+        config['from_date'] = f"{YEAR}.{MONTH:02d}.01"
+        config['to_date'] = f"{YEAR}.{MONTH:02d}.{last_day:02d}"
         print(f"WD tester month mode: {config['from_date']} to {config['to_date']} (preparing {CONFIG_FILE.name})")
     
     # Clean local results if flag is set
