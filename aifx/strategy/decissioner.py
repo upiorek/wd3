@@ -8,6 +8,8 @@ Conventions:
 
 from __future__ import annotations
 
+DEBUG = 0
+
 def version() -> str:
     """Return module version info."""
     return "decissioner 1.2"
@@ -48,8 +50,8 @@ def _dir_letter(line_id: str) -> str:
         return line_id[0]
     return line_id[1].upper() if line_id else ""
 
-def _find_extreme_line(crossed_ids: list[str], offsets: dict[str, float], prefix: str) -> float | None:
-    """Find the extreme (highest or lowest) line with given prefix and return its offset + BASE.
+def _find_extreme_line(crossed_ids: list[str], offsets: dict[str, float], prefix: str) -> tuple[str | None, float | None]:
+    """Find the extreme (highest or lowest) line with given prefix.
     
     Args:
         crossed_ids: List of crossed line IDs.
@@ -57,28 +59,35 @@ def _find_extreme_line(crossed_ids: list[str], offsets: dict[str, float], prefix
         prefix: Line prefix to filter by ("A" finds highest, "D" finds lowest).
     
     Returns:
-        The extreme offset + BASE, or None if no valid line is found.
+        Tuple of the chosen line ID and its offset + BASE, or (None, None).
     """
     find_max = (prefix == "A")
+    extreme_line_id: str | None = None
     extreme_offset: float | None = None
     for line_id in crossed_ids:
-        # print(f"Checking line_id: {line_id}")
+        if DEBUG > 0:
+            print(f"Checking line_id: {line_id}")
         prefix_letter = _dir_letter(line_id)
-        # print(f"Line prefix: {prefix_letter}")
+        if DEBUG > 0:
+            print(f"Line prefix: {prefix_letter}")
         if not prefix_letter.startswith(prefix):
             continue
         offset = offsets.get(line_id)
         if offset is None:
             continue
         if extreme_offset is None or (offset > extreme_offset if find_max else offset < extreme_offset):
+            extreme_line_id = line_id
             extreme_offset = offset
+
+            if DEBUG > 0:
+                print(f"New extreme line: {extreme_line_id} with offset {extreme_offset:.2f}")
     
     # add offset to base
     base_offset = offsets.get("BASE")
     if extreme_offset is not None and base_offset is not None:
         extreme_offset += base_offset
     
-    return extreme_offset
+    return extreme_line_id, extreme_offset
 
 def decision(result: str | None) -> str:
     """Map magic_lines.process_single_file() result string to an order type.
@@ -102,12 +111,14 @@ def decision(result: str | None) -> str:
     direction = parts[-1]
     if direction not in ("UP", "DOWN"):
         return f"log: invalid direction: {direction}\nNONE"
-    # print(f"direction: {direction}")
+    if DEBUG > 0:
+        print(f"direction: {direction}")
 
     offsets = _parse_line_offsets(result)
 
     crossed_ids = parts[1:-1]
-    # print(f"crossed_ids: {crossed_ids}")
+    if DEBUG > 0:
+        print(f"crossed_ids: {crossed_ids}")
     if not crossed_ids:
         return "log: no line ids\nNONE"
     
@@ -129,7 +140,8 @@ def decision(result: str | None) -> str:
     # - If direction is DOWN and any crossed line is D*, then SELL.
 
     first_letters = [_dir_letter(line_id) for line_id in crossed_ids]
-    # print(f"first_letters: {first_letters}")
+    if DEBUG > 0:
+        print(f"first_letters: {first_letters}")
     has_a = "A" in first_letters
     has_d = "D" in first_letters
 
@@ -143,25 +155,37 @@ def decision(result: str | None) -> str:
         if d0_offset is not None and d0_offset > 0:
             return "log: do not buy below D0\nNONE"
         
-        highest_a_offset = _find_extreme_line(crossed_ids, offsets, "A")
-        return "BUY" + (f" ABOVE {highest_a_offset:.2f}" if highest_a_offset is not None else "")
+        highest_a_line_id, highest_a_offset = _find_extreme_line(crossed_ids, offsets, "A")
+        decision = "BUY"
+        if highest_a_line_id is not None:
+            decision += f" {highest_a_line_id}"
+        if highest_a_offset is not None:
+            decision += f" ABOVE {highest_a_offset:.2f}"
+        return decision
 
     if can_sell:
         # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
         if a0_offset is not None and a0_offset < 0:
             return "log: do not sell above A0\nNONE"
 
-        lowest_d_offset = _find_extreme_line(crossed_ids, offsets, "D")
-        return "SELL" + (f" BELOW {lowest_d_offset:.2f}" if lowest_d_offset is not None else "")
+        lowest_d_line_id, lowest_d_offset = _find_extreme_line(crossed_ids, offsets, "D")
+        decision = "SELL"
+        if lowest_d_line_id is not None:
+            decision += f" {lowest_d_line_id}"
+        if lowest_d_offset is not None:
+            decision += f" BELOW {lowest_d_offset:.2f}"
+        return decision
 
     # No valid lines matched the direction.
     if len(crossed_ids) > 1:
         return "log: no valid lines found\nNONE"
 
     line_id = crossed_ids[0]
-    # print(f"line_id: {line_id}")
+    if DEBUG > 0:
+        print(f"line_id: {line_id}")
     line_letter = _dir_letter(line_id)
-    # print(f"line_letter: {line_letter}")
+    if DEBUG > 0:
+        print(f"line_letter: {line_letter}")
     if line_letter in ("A", "D"):
         return "log: bad direction\nNONE"
 
@@ -169,6 +193,7 @@ def decision(result: str | None) -> str:
 
 if __name__ == '__main__':  
     # Example usage
-    example_result = "CROSSED SD1 DM DOWN | SA2: 575.81 | AM: 350.70 | SA1: 173.33 | SD1: -11.34 | DM: -265.63 | SD2: -547.47 | SD3: -805.45 | SLOPE: 1.7702 | BASE: 24680.63"
+    DEBUG = 1
+    example_result = "CROSSED SD1(3) DM(5) DOWN | SA2(2): 575.81 | AM(1): 350.70 | SA1(0): 173.33 | SD1(3): -11.34 | DM(5): -265.63 | SD2(5): -547.47 | SD3(5): -805.45 | SLOPE: 1.7702 | BASE: 24680.63"
     print(decision(example_result))
 

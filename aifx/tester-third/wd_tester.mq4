@@ -279,6 +279,8 @@ void DrawLinesFromResult()
             g_numAscBelow++;
 
         color c = clrSilver;
+        int lineAge = -1;
+        bool hasLineAge = TryExtractLineAge(id, lineAge);
 
         bool isA = (StringFind(id, "A") != -1);
         bool isD = (StringFind(id, "D") != -1);
@@ -287,6 +289,9 @@ void DrawLinesFromResult()
             c = clrGreen;
         else if(isD)
             c = clrRed;
+
+        if(MinLineAge_enabled && hasLineAge && lineAge < MinLineAge)
+            c = clrGray;
 
         bool isS = (StringFind(id, "S") != -1);
 
@@ -563,6 +568,7 @@ void OnTick()
         PrintErrorIfBothBuyAndSellOpen();
         CheckBE();
         CheckSetupTP();
+        CheckCloseIfNoProfitAfterNCandles();
 
         return;
     }
@@ -651,6 +657,7 @@ void OnTick()
 
     CheckBE();
     CheckSetupTP();
+    CheckCloseIfNoProfitAfterNCandles();
 
 //-----------------------------------------------------------------------
 

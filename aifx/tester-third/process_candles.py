@@ -215,7 +215,7 @@ def magic_lines_decision(file_path, lines, i, keep_results):
             return None
         
         # Load previous slope for bonus detection
-        prev_slope = magic_lines.load_previous_slope(
+        prev_slope, prev_lines = magic_lines.load_previous_slope_and_lines(
             Path(file_path), 
             file_path.parent / "charts"
         )
@@ -223,7 +223,8 @@ def magic_lines_decision(file_path, lines, i, keep_results):
         result = magic_lines.process_single_file(
             str(temp_path), 
             output_dir=str(file_path.parent / "charts"),
-            prev_slope=prev_slope)
+            prev_slope=prev_slope,
+            prev_lines=prev_lines)
 
         # save result data to txt file next to charts
         with open(result_txt_path, 'w') as result_f:

@@ -1,5 +1,5 @@
 // Order execution module for WD trading system
-#property copyright "Copyright 2025"
+#property copyright "Copyright 2025-2026"
 #property link      ""
 #property strict
 
@@ -43,11 +43,16 @@ input int howManyOrdersSlToMaxSl = 3;
 input bool CloseIfNoProfitAfterNCandles_enabled = false;
 input int CloseIfNoProfitAfterNCandles = 10;
 
+//--- MinLineAge
+// lines with age < MinLineAge will have grey color 
+input bool MinLineAge_enabled = false;
+input int MinLineAge = 1;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
 {
-    return "wd main version 1.43";
+    return "wd main version 1.44";
 }
 
 void Log(string message)
@@ -125,10 +130,10 @@ void SetAllOrdersSlToMaxSl(int orderType)
         if(sl <= 0)
             continue;
 
-	if(orderType == OP_SELL)
-	   sells++;
-	if(orderType == OP_BUY)
-	   buys++;
+        if(orderType == OP_SELL)
+            sells++;
+        if(orderType == OP_BUY)
+            buys++;
 
         if(orderType == OP_SELL && (targetSL == 0 || sl > targetSL))
         {
@@ -144,7 +149,8 @@ void SetAllOrdersSlToMaxSl(int orderType)
     }
 
     Log("Currently open sells: " + IntegerToString(sells) + " buys: " + IntegerToString(buys));
-    if(sells < howManyOrdersSlToMaxSl && buys < howManyOrdersSlToMaxSl)
+    int activeOrders = (orderType == OP_SELL) ? sells : buys;
+    if(activeOrders < howManyOrdersSlToMaxSl)
     {
     	Log("Not enough!, min is: " + IntegerToString(howManyOrdersSlToMaxSl));
         return;
@@ -529,8 +535,21 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
     // Check for condition (ABOVE/BELOW) and price
     if(partsCount >= 3)
     {
-        string condition = parts[1];
-        double conditionPrice = StringToDouble(parts[2]);
+        int conditionIndex = 1;
+        int priceIndex = 2;
+        int ignoredAge = -1;
+
+        if(partsCount >= 4 && TryExtractLineAge(parts[1], ignoredAge))
+        {
+            conditionIndex = 2;
+            priceIndex = 3;
+        }
+
+        if(priceIndex >= partsCount)
+            return true;
+
+        string condition = parts[conditionIndex];
+        double conditionPrice = StringToDouble(parts[priceIndex]);
         
         if(condition == "ABOVE" || condition == "BELOW")
         {
@@ -576,7 +595,24 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
     return true;
 }
 
-// Decision format can be like "BUY ABOVE 21917.27" or "BUY" or "SELL BELOW 21739.28"
+bool TryExtractLineAge(string token, int &age)
+{
+    age = -1;
+
+    int openPos = StringFind(token, "(", 0);
+    int closePos = StringFind(token, ")", openPos + 1);
+    if(openPos < 0 || closePos <= openPos + 1)
+        return false;
+
+    string ageText = StringSubstr(token, openPos + 1, closePos - openPos - 1);
+    if(StringLen(ageText) <= 0)
+        return false;
+
+    age = StrToInteger(ageText);
+    return true;
+}
+
+// Decision format can be like "BUY SA2(3) ABOVE 21917.27", "BUY ABOVE 21917.27", or "SELL"
 int ExecuteWdDecision(string decision)
 {
     // Parse decision string
@@ -588,7 +624,19 @@ int ExecuteWdDecision(string decision)
     
     string orderTypeStr = parts[0];
     if(orderTypeStr != "BUY" && orderTypeStr != "SELL")
+        return 0; 
+
+    int lineAge = -1;
+    bool hasLineAge = false;
+    if(partsCount >= 2)
+        hasLineAge = TryExtractLineAge(parts[1], lineAge); 
+
+    if(MinLineAge_enabled && hasLineAge && lineAge < MinLineAge)
+    {
+        Log("Skipping " + decision + " - line age " + IntegerToString(lineAge) +
+            " is below MinLineAge " + IntegerToString(MinLineAge));
         return 0;
+    }
     
     bool isBuy = (orderTypeStr == "BUY");
     int cmd = isBuy ? OP_BUY : OP_SELL;

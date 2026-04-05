@@ -1339,65 +1339,7 @@ def plot_chart(df_plot,
         fig.savefig(output_filepath, bbox_inches='tight', pad_inches=0.1, dpi=IMAGE_DPI)
     plt.close(fig)
 
-
-def check_crossings(last_candle, detected_lines : list[magic_line], lookback_df_for_lines):
-    """
-    Sprawdza czy ostatnia świeczka przecina któreś linie.
-    Zwraca listę przeciętych linii według konwencji:
-    - Ascending: A0 (main), AS1-AS5 (supports below), AR1-AR5 (resistances above)
-    - Descending: D0 (main), DS1-DS5 (supports above), DR1-DR5 (resistances below)
-    """
-    last_candle_low = last_candle['Low']
-    last_candle_high = last_candle['High']
-    last_candle_direction = 'UP' if last_candle['Close'] > last_candle['Open'] else 'DOWN'
-    last_candle_idx = len(lookback_df_for_lines)  # Index ostatniej świeczki (299 dla 300 świeczek)
-    
-    crossed_lines = []
-    
-    crossed = False
-    crossed_id = ""
-    for line_info in detected_lines:
-        slope = line_info.slope
-        intercept = line_info.intercept
-        line_type = 'ascending' if slope > 0 else 'descending'        
-        line_value = slope * last_candle_idx + intercept
-        # offset do obecnie analizowanej linii
-        line_offset = line_value - last_candle['Close']        
-        level = line_info.level - 1
-
-        line_id = "A" if line_type == 'ascending' else "D"
-        if level == 0:
-            line_id += "0"  # Główna linia
-        else:
-            if line_type == 'ascending':
-                if line_info.offset > 0:
-                    line_id += f"S{level}"
-                else:
-                    line_id += f"R{level}"
-            else:
-                if line_info.offset < 0:
-                    line_id += f"R{level}"
-                else:
-                    line_id += f"S{level}"
-        
-        # Sprawdź linię - dla ascending AS1, dla descending DR1
-        if last_candle_low <= line_value <= last_candle_high:
-            crossed = True
-            if crossed_id == "":
-                crossed_id = line_id
-            else: 
-                crossed_id += " " + line_id
-
-        crossed_lines.append([line_id, line_offset])
-
-    # jeżeli były jakieś przecięcia...
-    if crossed:
-        crossed_lines = ["CROSSED " + crossed_id + " " + last_candle_direction] + crossed_lines
-
-    result = crossed_lines if crossed else []    
-    return result
-
-def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
+def load_previous_slope_and_lines(csv_path: Path, output_dir: Path) -> tuple[float, list[tuple[str, float]]]:
     """
     Wczytuje poprzedni slope z pliku wynikowego dla poprzedniej świeczki (15 minut wcześniej).
     
@@ -1425,29 +1367,60 @@ def load_previous_slope(csv_path: Path, output_dir: Path) -> float:
             prev_filename = prev_dt.strftime('%y-%m-%d-%H-%M') + '_result.txt'
             prev_result_file = output_dir / prev_filename
         else:
-            return -100
+            return -100, []
     except Exception as e:
         log(f"  Błąd parsowania nazwy pliku: {e}")
-        return -100
+        return -100, []
     
     if prev_result_file.exists():
-        if DEBUG > 1: 
+        if DEBUG > 0: 
             log(f"Sprawdzam poprzedni plik wynikowy: {prev_result_file}")
         try:
             with open(prev_result_file, 'r', encoding='utf-8') as f:
+                prev_slope = None
+                magic_lines = []    
                 for line in f:
-                    if 'SLOPE:' in line:
+                    if prev_slope is None and 'SLOPE:' in line:
                         parts = line.split('SLOPE:')
                         if len(parts) == 2:
                             slope_str = parts[1].split('|')[0].strip()
                             prev_slope = float(slope_str)
-                            if DEBUG > 1: 
+                            if DEBUG > 0: 
                                 log(f"  Poprzedni slope: {prev_slope:.4f}")
-                            return prev_slope
+                    # get ID + offset for each line
+                    parts = line.split('|')
+                    for part in parts:
+                        part = part.strip()
+                        if DEBUG > 1: 
+                            log(f"  Sprawdzam część linii wynikowej: '{part}'")
+                        if any(id in part for id in ['NONE', 'SLOPE', 'BASE', 'CROSSED']) == False:
+                            line_id = part.split(':')[0].strip()  # ID linii (np. A0, AS1, DR2)
+                            offset_str = part.split(':')[1].strip()  # reszta to offset
+                            try:
+                                offset = float(offset_str)
+                                if offset == 0:
+                                    log(f"ERROR: Offset dla linii {line_id} jest równy 0")
+                                    exit(1)
+                                magic_lines.append((line_id, offset))
+                                if DEBUG > 1: 
+                                    log(f"  Poprzednia linia: {line_id} z offsetem {offset:.2f}")
+                            except ValueError:
+                                continue
+                if prev_slope is not None and magic_lines:
+                    # todo debug - remove
+                    if DEBUG > 0:
+                        log(f"  Wczytano poprzedni slope {prev_slope:.4f} z pliku wynikowego")
+                        log(f"  Poprzednie linie: {', '.join([f'{line_id} (offset {offset:.2f})' for line_id, offset in magic_lines])}")
+                    return prev_slope, magic_lines
+                else:
+                    log(f"ERROR: Nie znaleziono poprzedniego slope lub linii w pliku wynikowym")
+                    exit(1)
+
         except Exception as e:
-            log(f"  Błąd wczytania poprzedniego pliku wynikowego: {e}")
+            log(f"ERROR: Błąd wczytania poprzedniego pliku wynikowego: {e}")
+            exit(1)
     
-    return -100
+    return -100, []
 
 def get_next_filepath(csv_filepath: str) -> str:
     """
@@ -1536,7 +1509,7 @@ def load_next_candles(csv_filepath: str, base_idx: int, count: int = NEXT_CANDLE
     next_df_full = pd.DataFrame(next_rows_list) if next_rows_list else pd.DataFrame()
     return next_candles, next_df_full
 
-def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next=False):
+def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, prev_lines=None, next=False):
     """
     Przetwarza pojedynczy plik CSV:
     1. Wczytuje dane
@@ -1628,7 +1601,29 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, next
                     line_id = f"R{line_id}{level}"
                 else:
                     line_id = f"S{line_id}{level}"
-            
+
+        #log(f"  Line {line_id}: slope {slope:.4f} intercept {intercept:.2f} offset {line_offset:.2f}")
+
+        # jeżeli w prev_lines była już linia o takim ID, podbij jej age
+        #log(f"-----------prev_lines: {prev_lines}, line_id: {line_id}, slope: {slope:.4f}, prev_slope: {prev_slope:.4f}")
+        if prev_lines is not None and str(f"{abs(prev_slope):.4f}") == str(f"{abs(slope):.4f}"):  # porównuj slope z dokładnością do 4 miejsc po przecinku
+            #log(f"-----------Sprawdzam podbijanie age dla linii {line_id} z prev_lines")
+            for pline in prev_lines:
+                #log(f"-----------cmp line_id: {line_id} with prev line {pline[0]}")
+                if '(' not in pline[0] and pline[0] == line_id:
+                    line_id = line_id + "(1)"
+                    break
+                elif pline[0].split('(')[0] == line_id.split('(')[0]:  # porównuj ID bez age
+                    #log(f"-----------aaa")
+                    age = pline[0].split('(')[1].rstrip(')')  # wyciągnij age z prev line
+                    age = int(age) + 1  # podbij age
+                    line_id = f"{line_id.split('(')[0]}({age})"
+                    break
+
+        # if there is no age in line_id, set to 0
+        if '(' not in line_id:
+            line_id = line_id + "(0)"
+
         if last_candle_low <= line_value <= last_candle_high:
             crossed = True
             crossed_id = line_id if crossed_id == "" else (crossed_id + " " + line_id)
@@ -1726,8 +1721,8 @@ def process_all_files(input_dir, output_file='support_lines_results.txt', output
         log(f"[{idx}/{len(csv_files)}] Przetwarzam: {csv_file.name}")
         
         try:
-            prev_slope = load_previous_slope(csv_file, output_charts_dir)
-            result = process_single_file(str(csv_file), output_charts_dir, prev_slope)            
+            prev_slope, prev_lines = load_previous_slope_and_lines(csv_file, output_charts_dir)
+            result = process_single_file(str(csv_file), output_charts_dir, prev_slope, prev_lines)            
             results.append(f"{csv_file.name}: {result}")
         except Exception as e:
             log(f"  BŁĄD: {e}")
