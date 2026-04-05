@@ -90,7 +90,9 @@ bool HasSimilarOpenOrder(int orderType, double price)
     {
         if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
             continue;
-        if(OrderSymbol() != Symbol() || OrderType() != orderType)
+        
+        // NOTE: do not check orderType
+        if(OrderSymbol() != Symbol())
             continue;
         
         int priceDiff = (int)MathAbs(OrderOpenPrice() - price);
