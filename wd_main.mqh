@@ -48,11 +48,15 @@ input int CloseIfNoProfitAfterNCandles = 10;
 input bool MinLineAge_enabled = false;
 input int MinLineAge = 1;
 
+//--- TrailingTP
+// jeżeli protif dotrze do TP dajemy trailing stop na pioziomie BEBonus
+input bool TrailingTP_enabled = false;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
 {
-    return "wd main version 1.44";
+    return "wd main version 1.45";
 }
 
 void Log(string message)
@@ -364,6 +368,69 @@ void CheckBE()
     }
 }
 
+void CheckTrailingTP()
+{
+    if(!TrailingTP_enabled)
+        return;
+    if(takeProfit <= 0)
+        return;
+    if(BEBonus < 0)
+        return;
+
+    for(int i = OrdersTotal() - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+            continue;
+
+        int type = OrderType();
+        double currentPrice = type == OP_BUY ? Bid : Ask;
+        bool isProfitable = (type == OP_BUY && currentPrice > OrderOpenPrice()) ||
+                           (type == OP_SELL && currentPrice < OrderOpenPrice());
+        if(!isProfitable)
+            continue;
+
+        double profitPoints = MathAbs(currentPrice - OrderOpenPrice()) / Point;
+        if(profitPoints < takeProfit)
+            continue;
+
+        double newSL = NormalizeDouble(
+            type == OP_BUY ? currentPrice - BEBonus * Point : currentPrice + BEBonus * Point,
+            Digits
+        );
+
+        double currentSL = OrderStopLoss();
+        double currentTP = OrderTakeProfit();
+        bool shouldModify = false;
+
+        if(type == OP_BUY)
+            shouldModify = (currentTP > 0 || currentSL == 0 || newSL > currentSL + (Point / 2.0));
+        else
+            shouldModify = (currentTP > 0 || currentSL == 0 || newSL < currentSL - (Point / 2.0));
+
+        if(!shouldModify)
+            continue;
+
+        ResetLastError();
+        if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, 0, 0, clrBlue))
+        {
+            string typeStr = type == OP_BUY ? "BUY" : "SELL";
+            Log("TrailingTP updated: Ticket=" + IntegerToString(OrderTicket()) +
+                " Type=" + typeStr +
+                " ProfitPoints=" + DoubleToString(profitPoints, 0) +
+                " New SL=" + DoubleToString(newSL));
+        }
+        else
+        {
+            Log("ERROR: TrailingTP failed: Ticket=" + IntegerToString(OrderTicket()) +
+                " Error=" + IntegerToString(GetLastError()));
+        }
+    }
+}
+
 bool IsWdOrder()
 {
     // Only manage orders opened by this system.
@@ -668,9 +735,10 @@ int ExecuteWdDecision(string decision)
     
     double tp = NormalizeDouble(isBuy ? currentPrice + tpDist : currentPrice - tpDist, Digits);
     double sl = NormalizeDouble(isBuy ? currentPrice - slDist : currentPrice + slDist, Digits);
+    double orderTP = TrailingTP_enabled ? 0 : tp;
     
     ResetLastError();
-    int ticket = OrderSend(Symbol(), cmd, lotSize, currentPrice, slippage, sl, tp, 
+    int ticket = OrderSend(Symbol(), cmd, lotSize, currentPrice, slippage, sl, orderTP, 
                            "WD " + orderTypeStr, 0, 0, isBuy ? clrGreen : clrRed);
     
     if(ticket > 0)
@@ -683,7 +751,7 @@ int ExecuteWdDecision(string decision)
     else
     {
         Log("ERROR: Order failed: " + decision + " Error=" + IntegerToString(GetLastError()) + 
-              " Price=" + DoubleToString(currentPrice) + " SL=" + DoubleToString(sl) + " TP=" + DoubleToString(tp));
+              " Price=" + DoubleToString(currentPrice) + " SL=" + DoubleToString(sl) + " TP=" + DoubleToString(orderTP));
     }
     
     return ticket;

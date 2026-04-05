@@ -567,6 +567,7 @@ void OnTick()
         DeleteWdLines();
         PrintErrorIfBothBuyAndSellOpen();
         CheckBE();
+        CheckTrailingTP();
         CheckSetupTP();
         CheckCloseIfNoProfitAfterNCandles();
 
@@ -656,6 +657,7 @@ void OnTick()
     }
 
     CheckBE();
+    CheckTrailingTP();
     CheckSetupTP();
     CheckCloseIfNoProfitAfterNCandles();
 

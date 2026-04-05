@@ -833,14 +833,15 @@ void OnTick()
 
 // Main logic for every tick
 //----------------------------------------------------------------------- 
-    // Format is like "BUY ABOVE 21917.27"
-    int ticket = ExecuteWdDecision(decision);
-    if (ticket > 0)
-        Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
-    //else
-    //    Log("no order for time: " + TimeToString(TimeCurrent()));
+   // Format is like "BUY ABOVE 21917.27"
+   int ticket = ExecuteWdDecision(decision);
+   if (ticket > 0)
+      Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
+   //else
+   //    Log("no order for time: " + TimeToString(TimeCurrent()));
 
-    CheckBE();
+   CheckBE();
+   CheckTrailingTP();
 //-----------------------------------------------------------------------
 
    hearbeat++;
