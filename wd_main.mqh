@@ -39,6 +39,10 @@ input int thirdOrderGap = 100;
 input bool SetAllOrdersSlToMaxSl_enabled = true;
 input int howManyOrdersSlToMaxSl = 3;
 
+//--- CloseIfNoProfitAfterNCandles
+input bool CloseIfNoProfitAfterNCandles_enabled = false;
+input int CloseIfNoProfitAfterNCandles = 10;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
@@ -89,9 +93,11 @@ bool HasSimilarOpenOrder(int orderType, double price)
         {
             HasSimilarOpenOrderDropped++;
             string order = orderType == OP_BUY ? "BUY" : "SELL";
-            Log("Duplicate order skipped (" + IntegerToString(HasSimilarOpenOrderDropped) + "): " +
+            string str = "Duplicate order skipped (" + IntegerToString(HasSimilarOpenOrderDropped) + "): " +
                 order + " at " + DoubleToStr(price, 2) + " diff " + DoubleToStr(priceDiff, 2) +
-                " minDistance: " + IntegerToString(minDistance));
+                " minDistance: " + IntegerToString(minDistance);
+            // Print(str);
+            Log(str);
             return true;
         }
     }
@@ -347,6 +353,90 @@ void CheckBE()
                 }
             }
         }
+    }
+}
+
+bool IsWdOrder()
+{
+    // Only manage orders opened by this system.
+    // ExecuteWdDecision uses comment format: "WD BUY" / "WD SELL".
+    string c = OrderComment();
+    if(StringLen(c) < 2)
+        return false;
+    return (StringFind(c, "WD ", 0) == 0);
+}
+
+void CheckCloseIfNoProfitAfterNCandles()
+{
+    if(!CloseIfNoProfitAfterNCandles_enabled)
+        return;
+    if(CloseIfNoProfitAfterNCandles <= 0)
+        return;
+
+    // Evaluate once per completed candle to avoid repeated close attempts per tick.
+    static datetime lastCheckedBarTime = 0;
+    if(Time[0] == lastCheckedBarTime)
+        return;
+    lastCheckedBarTime = Time[0];
+
+    int closedCount = 0;
+    int failedCount = 0;
+
+    for(int i = OrdersTotal() - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int type = OrderType();
+        if(type != OP_BUY && type != OP_SELL)
+            continue;
+        if(!IsWdOrder())
+            continue;
+
+        // "No profit" means not positive including swap/commission.
+        double netProfit = (OrderProfit() + OrderSwap() + OrderCommission());
+        if(netProfit > 0.0)
+            continue;
+
+        int shift = iBarShift(Symbol(), Period(), OrderOpenTime(), false);
+        if(shift < 0)
+            continue;
+
+        // Number of completed candles since open (approx): shift==0 means opened in current candle.
+        if(shift < CloseIfNoProfitAfterNCandles)
+            continue;
+
+        RefreshRates();
+        double closePrice = (type == OP_BUY) ? Bid : Ask;
+        int ticket = OrderTicket();
+        double lots = OrderLots();
+
+        ResetLastError();
+        if(OrderClose(ticket, lots, closePrice, slippage, clrNONE))
+        {
+            closedCount++;
+            string dir = (type == OP_BUY) ? "BUY" : "SELL";
+            Log("Closed (no profit after " + IntegerToString(CloseIfNoProfitAfterNCandles) +
+                " candles) Ticket=" + IntegerToString(ticket) +
+                " Type=" + dir +
+                " BarsSinceOpen=" + IntegerToString(shift) +
+                " Profit=" + DoubleToStr(netProfit, 2));
+        }
+        else
+        {
+            failedCount++;
+            Log("ERROR: CloseIfNoProfitAfterNCandles failed Ticket=" + IntegerToString(ticket) +
+                " Error=" + IntegerToString(GetLastError()));
+        }
+    }
+
+    if(closedCount > 0 || failedCount > 0)
+    {
+        Log("CloseIfNoProfitAfterNCandles: closed=" + IntegerToString(closedCount) +
+            " failed=" + IntegerToString(failedCount) +
+            " N=" + IntegerToString(CloseIfNoProfitAfterNCandles));
     }
 }
 
