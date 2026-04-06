@@ -479,7 +479,7 @@ def prepare_expert():
 
 def cleanup_mt4_data():
     """Clean up MT4 data folders from previous tests"""
-    print("\nCleaning up previous test data...")
+    print("Cleaning up previous test data...")
     
     config = read_config()
     expert_name = config['expert']
@@ -560,7 +560,7 @@ def cleanup_wd_tester_ini() -> int:
             if p.exists() and p.is_file():
                 p.unlink()
                 deleted += 1
-                print(f"Removed: {p}")
+                print(f"✓ Removed: {p}")
         except Exception as e:
             print(f"Warning: could not remove {p}: {e}")
 
@@ -895,7 +895,7 @@ def run_strategy_tester(config):
         """
         
         if config['shutdown'].lower() == 'true':
-            print("\nWaiting for MT4 to complete testing and shutdown...")
+            print("Waiting for MT4 to complete testing and shutdown...")
             print("(You can watch the progress in MT4's Strategy Tester window)")
             
             # Wait for process to complete
@@ -1042,7 +1042,7 @@ def copy_results():
                     files_copied += len(csv_files)
     
     if files_copied > 0:
-        print(f"\nTotal files copied: {files_copied}")
+        print(f"✓ Total files copied: {files_copied}")
         print(f"Results saved to: {results_folder}")
     else:
         print("No result files found to copy")
@@ -1398,7 +1398,7 @@ def main():
         print("\nUpdating wd_tester_hash.mqh with latest git commit...")
         update_wd_tester_hash_mqh()
 
-        print("\nCleaning local mt4_test_results/logs before wd_tester run...")
+        print("Cleaning local mt4_test_results/logs before wd_tester run...")
         removed = cleanup_local_logs_folder()
         if removed:
             print(f"✓ Removed {removed} item(s) from local logs folder")
@@ -1443,14 +1443,14 @@ def main():
 
     # For wd_tester, remove any cached tester input overrides
     if config.get('expert') == 'wd_tester':
-        print("\nRemoving cached wd_tester.ini (if any)...")
+        print("Removing cached wd_tester.ini (if any)...")
         removed = cleanup_wd_tester_ini()
         if removed == 0:
             print("✓ No wd_tester.ini found")
 
     # for wd_tester, copy additional files
     if config['expert'] == 'wd_tester' and not NO_COPY_DATA:
-        print("\nCopying additional WD tester files...")
+        print("Copying additional WD tester files...")
 
         if INPUT_DIR is not None:
             source_folder = Path(INPUT_DIR).expanduser()
@@ -1483,14 +1483,14 @@ def main():
             except Exception as e:
                 print(f"Warning: could not remove {p}: {e}")
         if removed:
-            print(f"Cleaned MT4 wd_tester input folder: removed {removed} item(s)")
+            print(f"✓ Cleaned MT4 wd_tester input folder: removed {removed} item(s)")
 
         copied = 0
         for file in source_files:
             dest = dest_folder / file.name
             shutil.copy2(file, dest)
             copied += 1
-        print(f"Copied {copied} WD tester input file(s) from: {source_folder}")
+        print(f"✓ Copied {copied} WD tester input file(s) from: {source_folder}")
     elif config['expert'] == 'wd_tester' and NO_COPY_DATA:
         print("\nWD tester: --no-copy-data enabled (skipping input data copy)")
         
@@ -1499,13 +1499,13 @@ def main():
     if old_mqh.exists():
         try:
             old_mqh.unlink()
-            print("\nRemoved old wd_main.mqh from current folder")
+            print("✓ Removed old wd_main.mqh from current folder")
         except Exception as e:
             print(f"Warning: could not remove old wd_main.mqh: {e}")
 
     # Copy wd_main.mqh from repo folder to current folder
     if config.get('expert') == 'wd_tester':
-        print("\nCopying wd_main.mqh to current folder...")
+        print("Copying wd_main.mqh to current folder...")
         source_mqh = REPO_ROOT / "wd_main.mqh"
         dest_mqh = CURRENT_DIR / "wd_main.mqh"
         try:

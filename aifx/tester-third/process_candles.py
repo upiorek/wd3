@@ -342,7 +342,7 @@ def process_file(file_path, percentage=.0, keep_results=False, start_time=None):
     
     with PRINT_LOCK:
         str = f"{action} {percentage:.2f}% {elapsed_str} / {left_str}: "\
-            f"{file_path.name} -> {new_path.name}"
+            f"{new_path.name}"
         if ALGO == "magic_lines":
             print(str + f" {order_type}")
         else:
