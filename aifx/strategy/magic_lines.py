@@ -1545,6 +1545,7 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, prev
     # Sprawdź przecięcia ostatniej świeczki + policz offsety dla wszystkich linii
     last_candle = lookback_df_full.iloc[-1]
     base_price = float(last_candle['Close'])
+    prev_base_price = float(lookback_df_full.iloc[-2]['Close'])
     last_candle_low = float(last_candle['Low'])
     last_candle_high = float(last_candle['High'])
     last_candle_direction = 'UP' if last_candle['Close'] > last_candle['Open'] else 'DOWN'
@@ -1613,8 +1614,10 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, prev
                 if '(' not in pline[0] and pline[0] == line_id:
                     line_id = line_id + "(1)"
                     break
-                elif pline[0].split('(')[0] == line_id.split('(')[0]:  # porównuj ID bez age
-                    #log(f"-----------aaa")
+                
+                base_diff = base_price - prev_base_price
+                calc_offset = line_offset + base_diff - slope
+                if pline[0].split('(')[0] == line_id.split('(')[0] and abs(calc_offset - pline[1]) < 0.5:  # porównuj ID bez age
                     age = pline[0].split('(')[1].rstrip(')')  # wyciągnij age z prev line
                     age = int(age) + 1  # podbij age
                     line_id = f"{line_id.split('(')[0]}({age})"
