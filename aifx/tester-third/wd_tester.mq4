@@ -17,8 +17,9 @@ input bool no_orders = false;
 
 string WD_LINE_PREFIX = "L_";
 string WD_STATS_LABEL = "WD_STATS";
-string tester_filename = "";
-string result = "";
+string g_tester_filename = "";
+string g_result = "";
+string g_decision = "";
 
 // stats
 int g_numDscAbove = 0;
@@ -30,21 +31,16 @@ int g_sellCnt = 0;
 double g_lots = 0.0;
 double g_profit = 0.0;
 
-string GetTesterFilename()
-{
-    return tester_filename;
-}
-
 string ReadAllText(string filepath)
 {
-    tester_filename = filepath;
+    g_tester_filename = filepath;
 
     int fileHandle = FileOpen(filepath, FILE_READ|FILE_TXT);
     if(fileHandle == INVALID_HANDLE)
     {
         int err = GetLastError();
         Print("WARNING: Failed to open file: ", filepath, " Result: ", err);
-        return "";
+        return "EMPTY";
     }
 
     string content = "";
@@ -174,15 +170,17 @@ void UpsertTrendLine(string name, datetime time0, double price0, datetime time1,
 
 void DrawLinesFromResult()
 {
+    if (show_lines == false)
+        return;
+
+    if(g_result == "EMPTY")
+        return;
+
     g_numDscAbove = 0;
     g_numAscBelow = 0;
 
-    // result is global
-    if(result == "")
-        return;
-
     string parts[];
-    int n = StringSplit(result, '|', parts);
+    int n = StringSplit(g_result, '|', parts);
     if(n <= 0)
         return;
 
@@ -219,7 +217,7 @@ void DrawLinesFromResult()
         }
     }
 
-    // hide all lines first - we'll show only those present in the result
+    // hide all lines first - we'll show only those present in the g_result
     int total = ObjectsTotal(0, 0, -1);
     for(int i = 0; i < total; i++)
     {
@@ -477,7 +475,7 @@ void UpdateTesterStatsOverlay()
     GetWdTesterOpenStatsForChartSymbol(g_cnt, g_buyCnt, g_sellCnt, g_lots, g_profit);
 
     string text = "WD Tester\n";
-    text += "File: " + GetTesterFilename() + " (-15m)\n";
+    text += "File: " + g_tester_filename + " (-15m)\n";
     text += "Open positions: " + IntegerToString(g_cnt) + 
         " (BUY: " + IntegerToString(g_buyCnt) + ", SELL: " + IntegerToString(g_sellCnt) + 
         ", Lots: " + DoubleToStr(g_lots, 2) + ")\n";
@@ -546,6 +544,69 @@ void OnDeinit(const int reason)
     DeleteTesterStatsLabel();
 }
 
+void OnOrderClosed(int ticket)
+{
+    // called form UpdateOrdersArrayPre
+    // NOTE: order is already selected here 
+
+    // get order profit
+    double profit = OrderProfit();
+    string type = OrderType() == OP_BUY ? "BUY" : "SELL";
+
+    string statsStr = "Order closed: " + IntegerToString(ticket) + " type: " + type + " profit: " + DoubleToString(profit, Digits);
+    statsStr += " | numDscAbove: " + IntegerToString(g_numDscAbove) + " numAscBelow: " + IntegerToString(g_numAscBelow) + " | ";
+    statsStr += "cnt: " + IntegerToString(g_cnt) + " buyCnt: " + IntegerToString(g_buyCnt) + " sellCnt: " + IntegerToString(g_sellCnt) + " all lots: " + DoubleToString(g_lots, 2) + " all profit: " + DoubleToString(g_profit, Digits);
+
+    Print(statsStr);
+    Log(statsStr);
+}
+
+void UpdateOrdersArrayPre()
+{
+    // check g_ordersArr for any orders that are now closed and remove them from the array
+    for(int i = ArraySize(g_ordersArr) - 1; i >= 0; i--)
+    {
+        int ticket = g_ordersArr[i];
+        if(!OrderSelect(ticket, SELECT_BY_TICKET))
+        {
+            Log("error");
+        }
+
+        // check order close time
+        datetime closeTime = OrderCloseTime();
+        if(closeTime > 0)
+        {
+            // order is closed
+            IntArrayRemoveAt(g_ordersArr, i);
+
+            OnOrderClosed(ticket);
+        }
+    }
+}
+
+void UpdateOrdersArrayPost()
+{
+    // add all open orders to g_ordersArr
+
+    ArrayResize(g_ordersArr, 0);
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int type = OrderType();
+        if(type != OP_BUY && type != OP_SELL)
+            continue;
+
+        int ticket = OrderTicket();
+        ArrayResize(g_ordersArr, ArraySize(g_ordersArr) + 1);
+        g_ordersArr[ArraySize(g_ordersArr) - 1] = ticket;
+    }
+}
+
 void OnTick()
 {
     RefreshRates();
@@ -582,65 +643,28 @@ void OnTick()
     StringReplace(timeStr, " ", "-");
 
     string result_filename = "wd_tester/" + timeStr + "_result.txt";
-    result = ReadAllText(result_filename);
-    string decision = "";
-    if (result != "")
+    g_result = ReadAllText(result_filename);
+    string decision = "EMPTY";
+    if (g_result != "EMPTY")
     {
         string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
-        decision = ReadAllText(decision_filename);
+        g_decision = ReadAllText(decision_filename);
 
-        Print("Decision: " + decision + " Result: " + result);
-
-        DeleteWdLines();
-        if (show_lines == true)
-        {
-            DrawLinesFromResult();
-        }
-    }
-    else 
-    {
-        result = "EMPTY";
-        decision = "EMPTY";
+        Print("Decision: " + g_decision + " Result: " + g_result);
     }
 
+    DeleteWdLines();
+    DrawLinesFromResult();
     PrintErrorIfBothBuyAndSellOpen();
 
 //-----------------------------------------------------------------------
 
-    // check g_ordersArr for any orders that are now closed and remove them from the array
-    for(int i = ArraySize(g_ordersArr) - 1; i >= 0; i--)
-    {
-        int ticket = g_ordersArr[i];
-        if(!OrderSelect(ticket, SELECT_BY_TICKET))
-        {
-            Log("error");
-        }
+    UpdateOrdersArrayPre();
 
-        // check order close time
-        datetime closeTime = OrderCloseTime();
-        if(closeTime > 0)
-        {
-            // order is closed
-            IntArrayRemoveAt(g_ordersArr, i);
-
-            // get order profit
-            double profit = OrderProfit();
-            string type = OrderType() == OP_BUY ? "BUY" : "SELL";
-
-            string statsStr = "Order closed: " + IntegerToString(ticket) + " type: " + type + " profit: " + DoubleToString(profit, Digits);
-            statsStr += " | numDscAbove: " + IntegerToString(g_numDscAbove) + " numAscBelow: " + IntegerToString(g_numAscBelow) + " | ";
-            statsStr += "cnt: " + IntegerToString(g_cnt) + " buyCnt: " + IntegerToString(g_buyCnt) + " sellCnt: " + IntegerToString(g_sellCnt) + " all lots: " + DoubleToString(g_lots, 2) + " all profit: " + DoubleToString(g_profit, Digits);
-
-            Print(statsStr);
-            Log(statsStr);
-        }
-    }
-
-//-----------------------------------------------------------------------
     if(!no_orders)
     {
         // Format is like "BUY ABOVE 21917.27"
-        int ticket = ExecuteWdDecision(decision);
+        int ticket = ExecuteWdDecision(g_decision);
         if (ticket > 0)
             Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
         else
@@ -661,24 +685,5 @@ void OnTick()
     CheckSetupTP();
     CheckCloseIfNoProfitAfterNCandles();
 
-//-----------------------------------------------------------------------
-
-    // add all open orders to g_ordersArr
-    ArrayResize(g_ordersArr, 0);
-    int total = OrdersTotal();
-    for(int i = 0; i < total; i++)
-    {
-        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-            continue;
-        if(OrderSymbol() != Symbol())
-            continue;
-
-        int type = OrderType();
-        if(type != OP_BUY && type != OP_SELL)
-            continue;
-
-        int ticket = OrderTicket();
-        ArrayResize(g_ordersArr, ArraySize(g_ordersArr) + 1);
-        g_ordersArr[ArraySize(g_ordersArr) - 1] = ticket;
-    }
+    UpdateOrdersArrayPost();
 }
