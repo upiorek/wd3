@@ -455,9 +455,33 @@ def prepare_expert():
     print(f"Copied {source_mq4.name} (source) to {experts_folder}")
     copied = True
 
+    required_include_names: list[str] = []
+    if expert_name == 'wd_tester':
+        required_include_names = [
+            'wd_tester_hash.mqh',
+            'wd_tester_ui.mqh',
+            'wd_main.mqh',
+        ]
+
+    staged_include_names: set[str] = set()
+
+    for include_name in required_include_names:
+        source_include = CURRENT_DIR / include_name
+        if not source_include.exists():
+            print(f"Error: required wd_tester include not found: {source_include}")
+            return False
+
+        dest = experts_folder / source_include.name
+        shutil.copy2(source_include, dest)
+        staged_include_names.add(source_include.name.lower())
+        print(f"Copied required include file: {source_include.name}")
+
     # Copy include files before compiling so MetaEditor sees the current sources
     # on the very first run, not the previous staged .mqh contents.
     for mqh_file in CURRENT_DIR.glob("*.mqh"):
+        if mqh_file.name.lower() in staged_include_names:
+            continue
+
         dest = experts_folder / mqh_file.name
         shutil.copy2(mqh_file, dest)
         print(f"Copied include file: {mqh_file.name}")
