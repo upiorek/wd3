@@ -130,6 +130,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
     DeleteTesterStatsLabel();
+
+    if(IsTesting() && IsVisualMode())
+        return;
+
     DeleteCustomArrows();
 }
 

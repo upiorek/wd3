@@ -435,7 +435,7 @@ color GetArrowColor(int markerType, double result)
         case WD_ARROW_BUY:
             return clrBlue;
         case WD_ARROW_SELL:
-            return clrRed;
+            return clrOrange;
         case WD_ARROW_TP:
             return clrGreen;
         case WD_ARROW_SL:
