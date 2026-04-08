@@ -1173,10 +1173,17 @@ def _extract_report_sl_tp_summary(report_html: str) -> dict[str, float | int] | 
         except Exception:
             return None
 
-    sl_count = 0
-    tp_count = 0
-    sl_profit = 0.0
-    tp_profit = 0.0
+    win_profits: list[float] = []
+    sl_loss_count = 0
+    sl_loss_abs_sum = 0.0
+
+    non_trade_types = {
+        "balance",
+        "credit",
+        "modify",
+        "mod",
+        "deleted",
+    }
 
     for row_html in row_pat.findall(table_html):
         raw_cells = cell_pat.findall(row_html)
@@ -1195,25 +1202,46 @@ def _extract_report_sl_tp_summary(report_html: str) -> dict[str, float | int] | 
             continue
 
         row_type = cells[2].strip().lower()
-        if row_type not in {"s/l", "t/p"}:
-            continue
-
         profit_val = _parse_float_maybe(cells[8]) if len(cells) > 8 else None
 
-        if row_type == "s/l":
-            sl_count += 1
-            if profit_val is not None:
-                sl_profit += profit_val
-        else:
-            tp_count += 1
-            if profit_val is not None:
-                tp_profit += profit_val
+        # Win stats: any trade-like row with positive realized profit.
+        if row_type not in non_trade_types and profit_val is not None and profit_val > 0:
+            win_profits.append(profit_val)
+
+        if row_type == "s/l" and profit_val is not None and profit_val < 0:
+            sl_loss_count += 1
+            sl_loss_abs_sum += abs(profit_val)
+
+    sl_unit = (sl_loss_abs_sum / sl_loss_count) if sl_loss_count > 0 else 0.0
+    minus_sl_count = sl_loss_count
+    be_bucket_count = 0          # (0SL, 1SL]
+    sl_bucket_count = 0          # (1SL, 2SL]
+    two_sl_bucket_count = 0      # (2SL, 3SL]
+    three_sl_bucket_count = 0    # (3SL, 4SL)
+    four_sl_plus_count = 0       # [4SL, +inf)
+
+    if sl_unit > 0:
+        # Bucket profitable trades into contiguous SL ranges with no gaps.
+        for profit in win_profits:
+            r = profit / sl_unit
+            if r >= 4.0:
+                four_sl_plus_count += 1
+            elif r > 3.0:
+                three_sl_bucket_count += 1
+            elif r > 2.0:
+                two_sl_bucket_count += 1
+            elif r > 1.0:
+                sl_bucket_count += 1
+            elif r > 0.0:
+                be_bucket_count += 1
 
     return {
-        "sl_count": sl_count,
-        "tp_count": tp_count,
-        "sl_profit": sl_profit,
-        "tp_profit": tp_profit,
+        "minus_sl_count": minus_sl_count,
+        "be_bucket_count": be_bucket_count,
+        "sl_bucket_count": sl_bucket_count,
+        "two_sl_bucket_count": two_sl_bucket_count,
+        "three_sl_bucket_count": three_sl_bucket_count,
+        "four_sl_plus_count": four_sl_plus_count,
     }
 
 
@@ -1240,12 +1268,10 @@ def write_wd_summary(config: dict) -> None:
         try:
             # Try multiple encodings for Polish reports
             report_html = None
-            used_encoding = None
             for enc in ['utf-8', 'windows-1250', 'latin-1', 'iso-8859-2']:
                 try:
                     report_html = report_path.read_text(encoding=enc, errors='ignore')
                     if report_html:
-                        used_encoding = enc
                         break
                 except Exception:
                     continue
@@ -1276,29 +1302,44 @@ def write_wd_summary(config: dict) -> None:
     else:
         closed_str = str(closed_orders)
 
-    tp_count = 0
-    sl_count = 0
+    minus_sl_count = 0
+    be_bucket_count = 0
+    sl_bucket_count = 0
+    two_sl_bucket_count = 0
+    three_sl_bucket_count = 0
+    four_sl_plus_count = 0
 
     if not report_path:
-        sl_str = "NO_REPORT"
-        tp_str = "NO_REPORT"
+        sl_chain_str = "NO_REPORT"
+        win_gt_2sl_pct_str = "NO_REPORT"
     elif not sl_tp:
-        sl_str = "UNKNOWN"
-        tp_str = "UNKNOWN"
+        sl_chain_str = "UNKNOWN"
+        win_gt_2sl_pct_str = "UNKNOWN"
     else:
-        sl_count = int(sl_tp.get("sl_count", 0))
-        tp_count = int(sl_tp.get("tp_count", 0))
-        sl_profit = float(sl_tp.get("sl_profit", 0.0))
-        tp_profit = float(sl_tp.get("tp_profit", 0.0))
+        minus_sl_count = int(sl_tp.get("minus_sl_count", 0))
+        be_bucket_count = int(sl_tp.get("be_bucket_count", 0))
+        sl_bucket_count = int(sl_tp.get("sl_bucket_count", 0))
+        two_sl_bucket_count = int(sl_tp.get("two_sl_bucket_count", 0))
+        three_sl_bucket_count = int(sl_tp.get("three_sl_bucket_count", 0))
+        four_sl_plus_count = int(sl_tp.get("four_sl_plus_count", 0))
 
-        # Keep numeric formatting consistent with the existing result formatting (comma decimal separator).
-        sl_str = f"{sl_count} ({sl_profit:+.2f})".replace(".", ",")
-        tp_str = f"{tp_count} ({tp_profit:+.2f})".replace(".", ",")
+        sl_chain_str = (
+            f"-SL: {minus_sl_count} < BE: {be_bucket_count} < SL: {sl_bucket_count}"
+            f" < 2SL: {two_sl_bucket_count} < 3SL: {three_sl_bucket_count}"
+            f" < 4SL+: {four_sl_plus_count}"
+        )
+
+        # Share of strong winners (2SL and above) versus losing SL count.
+        gt_2sl_count = two_sl_bucket_count + three_sl_bucket_count + four_sl_plus_count
+        if minus_sl_count > 0:
+            win_gt_2sl_pct = (gt_2sl_count / minus_sl_count) * 100.0
+        else:
+            win_gt_2sl_pct = 0.0
+        win_gt_2sl_pct_str = f"{win_gt_2sl_pct:.2f}%".replace(".", ",")
 
     summary_line = (
         f"{month_num}: {result_str} | closed: {closed_str}"
-        f" | sl: {sl_str} | tp: {tp_str} | win: "
-        f"{(tp_count / (sl_count + tp_count) * 100 if (sl_count + tp_count) > 0 else 0):.2f}%"
+        f" | {sl_chain_str} | win>2SL%: {win_gt_2sl_pct_str}"
     )
     
     # Try to read additional stats from processing_stats.txt
@@ -1311,32 +1352,30 @@ def write_wd_summary(config: dict) -> None:
             stats_path = CURRENT_DIR.parent / "data" / year_month / "processing_stats.txt"
             
             if stats_path.exists():
+                # print the path
+                print(f"Reading additional stats from: {stats_path}")
                 stats_content = stats_path.read_text(encoding='utf-8')
                 
-                # Extract BUY and SELL counts
-                buy_count = 0
-                sell_count = 0
-                avg_slope = 0.0
-                lines_count = 0
+                # Extract extended slope/line stats
+                unique_slopes = 0
+                avg_periods_per_slope = 0.0
+                line_events = 0
                 
                 for line in stats_content.splitlines():
-                    if line.startswith("Decisions: BUY="):
-                        parts = line.replace("Decisions: BUY=", "").split(", SELL=")
-                        if len(parts) == 2:
-                            buy_count = int(parts[0])
-                            sell_count = int(parts[1])
-                    elif "Avg slope live (x m15):" in line:
-                        avg_slope = float(line.split(":")[-1].strip())
-                    elif "Number of add/remove lines in month:" in line:
-                        lines_count = int(line.split(":")[-1].strip())
-                
-                total_decisions = buy_count + sell_count
-                if total_decisions > 0:
-                    summary_line += f" | BUY: {buy_count} | SELL: {sell_count}"
-                if avg_slope > 0:
-                    summary_line += f" | slope live: {avg_slope:.2f}"
-                if lines_count > 0:
-                    summary_line += f" | lines: {lines_count}"
+                    line_clean = line.strip()
+                    if line_clean.startswith("Unique slopes detected:"):
+                        unique_slopes = int(line_clean.split(":", 1)[1].strip())
+                    elif line_clean.startswith("Avg periods per slope:"):
+                        avg_periods_per_slope = float(line_clean.split(":", 1)[1].strip())
+                    elif line_clean.startswith("Line add/remove events:"):
+                        line_events = int(line_clean.split(":", 1)[1].strip())
+
+                if unique_slopes > 0:
+                    summary_line += f" || Slopes: unique: {unique_slopes}"
+                if avg_periods_per_slope > 0:
+                    summary_line += f" life: {avg_periods_per_slope:.2f}"
+                if line_events > 0:
+                    summary_line += f" events: {line_events}"
     except Exception as e:
         # If we can't read the stats, just continue without them
         pass
