@@ -50,7 +50,7 @@ input int MinLineAge = 1;
 
 //--- TrailingTP
 // jeżeli protif dotrze do TP dajemy trailing stop na pioziomie BEBonus
-input bool TrailingTP_enabled = false;
+input bool TrailingTP_enabled = true;
 
 //-----------------------------------------------------------------------
 
@@ -158,7 +158,7 @@ void SetAllOrdersSlToMaxSl(int orderType)
     int activeOrders = (orderType == OP_SELL) ? sells : buys;
     if(activeOrders < howManyOrdersSlToMaxSl)
     {
-    	Log("Not enough!, min is: " + IntegerToString(howManyOrdersSlToMaxSl));
+    	//Log("Not enough!, min is: " + IntegerToString(howManyOrdersSlToMaxSl));
         return;
     }
 
