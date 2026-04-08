@@ -6,7 +6,7 @@
 #include "wd_tester_hash.mqh"
 #include "wd_main.mqh"
 
-string version = "1.4";
+string version = "3.9";
 
 //----------------------------------------------------------------------- INPUTS
 

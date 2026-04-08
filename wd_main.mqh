@@ -26,10 +26,10 @@ int weak_closed_on_flip_min_opp = 4;
 input bool CheckSetupTP_enabled = true;
 input int setupTP = 500 * 100;
 
-//--- BuyAboveOrBelow:
-input bool BuyAboveOrBelow_enabled = true;
-input int BuyAboveOrBelowTolerance = 3;
-input int BuyAboveOrBelowGap = 50;
+//--- OrderAboveOrBelow:
+input bool OrderAboveOrBelow_enabled = true;
+input int OrderAboveOrBelowTolerance = 3;
+input int OrderAboveOrBelowGap = 50;
 
 //--- ThirdOrderGap
 input bool ThirdOrderGap_enabled = true;
@@ -624,37 +624,37 @@ bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, s
         {
             if(condition == "ABOVE")
             {
-                double priceWithTolerance = conditionPrice - BuyAboveOrBelowTolerance;
+                double priceWithTolerance = conditionPrice - OrderAboveOrBelowTolerance;
                 if(currentPrice <= priceWithTolerance)
                 {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " not above " + DoubleToString(conditionPrice, 2) + 
-                        " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
+                        " tolerance " + IntegerToString(OrderAboveOrBelowTolerance));
                     return false;
                 }
-                if(currentPrice >= conditionPrice + BuyAboveOrBelowGap)
+                if(currentPrice >= conditionPrice + OrderAboveOrBelowGap)
                 {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " too high above " + DoubleToString(conditionPrice, 2) + 
-                        " with gap " + IntegerToString(BuyAboveOrBelowGap));
+                        " with gap " + IntegerToString(OrderAboveOrBelowGap));
                     return false;
 		        }
             }
             else if(condition == "BELOW")
             {
-                double priceWithTolerance = conditionPrice + BuyAboveOrBelowTolerance;
+                double priceWithTolerance = conditionPrice + OrderAboveOrBelowTolerance;
                 if(currentPrice >= priceWithTolerance)
                 {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " not below " + DoubleToString(conditionPrice, 2) + 
-                        " tolerance " + IntegerToString(BuyAboveOrBelowTolerance));
+                        " tolerance " + IntegerToString(OrderAboveOrBelowTolerance));
                     return false;
                 }		
-                if(currentPrice <= conditionPrice - BuyAboveOrBelowGap)
+                if(currentPrice <= conditionPrice - OrderAboveOrBelowGap)
                 {
                     Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
                         " too low below " + DoubleToString(conditionPrice, 2) + 
-                        " with gap " + IntegerToString(BuyAboveOrBelowGap));
+                        " with gap " + IntegerToString(OrderAboveOrBelowGap));
                     return false;
 		        }
             }
@@ -711,7 +711,7 @@ int ExecuteWdDecision(string decision)
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double currentPrice = NormalizeDouble(isBuy ? Ask : Bid, Digits);
 
-    if (BuyAboveOrBelow_enabled)
+    if (OrderAboveOrBelow_enabled)
     {
         // Check price condition (ABOVE/BELOW)
         if(!CheckPriceCondition(parts, partsCount, currentPrice, decision))
