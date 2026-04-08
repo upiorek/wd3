@@ -6,7 +6,7 @@
 #include "wd_tester_hash.mqh"
 #include "wd_main.mqh"
 
-string version = "1.3";
+string version = "1.4";
 
 //----------------------------------------------------------------------- INPUTS
 
@@ -607,6 +607,18 @@ void UpdateOrdersArrayPost()
     }
 }
 
+void OnTickMustBeTheSameForProduction()
+{
+    //
+    // Shoudl be the same for production!
+    CheckBE();
+    CheckTrailingTP();
+    CheckSetupTP();
+    CheckCloseIfNoProfitAfterNCandles();
+    // Shoudl be the same for production!
+    //
+}
+
 void OnTick()
 {
     RefreshRates();
@@ -627,10 +639,12 @@ void OnTick()
         
         DeleteWdLines();
         PrintErrorIfBothBuyAndSellOpen();
-        CheckBE();
-        CheckTrailingTP();
-        CheckSetupTP();
-        CheckCloseIfNoProfitAfterNCandles();
+
+        //
+        // Shoudl be the same for production!
+        OnTickMustBeTheSameForProduction();
+        // Shoudl be the same for production!
+        //
 
         return;
     }
@@ -680,10 +694,11 @@ void OnTick()
         }
     }
 
-    CheckBE();
-    CheckTrailingTP();
-    CheckSetupTP();
-    CheckCloseIfNoProfitAfterNCandles();
+    //
+    // Shoudl be the same for production!
+    OnTickMustBeTheSameForProduction();
+    // Shoudl be the same for production!
+    //
 
     UpdateOrdersArrayPost();
 }

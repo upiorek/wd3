@@ -23,7 +23,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.8";
+string version = "3.9";
 
 //-----------------------------------------------------------------------
 
@@ -840,8 +840,12 @@ void OnTick()
    //else
    //    Log("no order for time: " + TimeToString(TimeCurrent()));
 
+
+   // the same as OnTickMustBeTheSameForProduction() for tester
    CheckBE();
    CheckTrailingTP();
+   CheckSetupTP();
+   CheckCloseIfNoProfitAfterNCandles();
 //-----------------------------------------------------------------------
 
    hearbeat++;
