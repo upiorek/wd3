@@ -12,14 +12,22 @@ string version = "3.9";
 
 input bool show_lines = true;
 input bool no_orders = false;
+input bool custom_arrows = true;
 
 //-----------------------------------------------------------------------
 
 string WD_LINE_PREFIX = "L_";
 string WD_STATS_LABEL = "WD_STATS";
+string WD_CUSTOM_ARROW_PREFIX = "WD_ARROW_";
 string g_tester_filename = "";
 string g_result = "";
 string g_decision = "";
+
+int WD_ARROW_BUY = 1;
+int WD_ARROW_SELL = 2;
+int WD_ARROW_TP = 3;
+int WD_ARROW_SL = 4;
+int WD_ARROW_CLOSE = 5;
 
 // stats
 int g_numDscAbove = 0;
@@ -64,6 +72,21 @@ void DeleteWdLines()
         if(StringFind(name, WD_LINE_PREFIX) == 0)
         {
             ObjectDelete(0, name);
+        }
+    }
+}
+
+void DeleteCustomArrows()
+{
+    int deleted = 0;
+    int total = ObjectsTotal(0, 0, -1);
+    for(int i = total - 1; i >= 0; i--)
+    {
+        string name = ObjectName(0, i);
+        if(StringFind(name, WD_CUSTOM_ARROW_PREFIX) == 0)
+        {
+            ObjectDelete(0, name);
+            deleted++;
         }
     }
 }
@@ -542,6 +565,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
     DeleteTesterStatsLabel();
+    DeleteCustomArrows();
 }
 
 void OnOrderClosed(int ticket)
@@ -617,6 +641,219 @@ void OnTickMustBeTheSameForProduction()
     CheckCloseIfNoProfitAfterNCandles();
     // Shoudl be the same for production!
     //
+}
+
+bool IsArrowObjectType(int objectType)
+{
+    return objectType == OBJ_ARROW ||
+        objectType == OBJ_TRIANGLE ||
+        objectType == OBJ_ARROW_BUY ||
+        objectType == OBJ_ARROW_SELL ||
+        objectType == OBJ_ARROW_STOP;
+}
+
+color GetArrowColor(int markerType, double result)
+{
+    if(markerType == WD_ARROW_BUY)
+        return clrBlue;
+
+    if(markerType == WD_ARROW_SELL)
+        return clrRed;
+
+    if(markerType == WD_ARROW_TP)
+        return clrGreen;
+
+    if(markerType == WD_ARROW_SL)
+        return clrRed;
+
+    return result >= 0.0 ? clrGreen : clrRed;
+}
+
+string GetArrowTooltip(int markerType, double lots, double result)
+{
+    if(markerType == WD_ARROW_BUY || markerType == WD_ARROW_SELL)
+        return "";
+
+    string tooltip = "Lots: " + DoubleToString(lots, 2);
+    tooltip += "\nProfit: " + DoubleToString(result, 2);
+    return tooltip;
+}
+
+void DrawArrow(string name, datetime arrowTime, double arrowPrice, int markerType, int orderType, double result)
+{
+    if(arrowTime <= 0 || arrowPrice <= 0.0)
+        return;
+
+    int secondsPerBar = (int)(Period() * 60);
+    if(secondsPerBar <= 0)
+        secondsPerBar = 60;
+
+    int halfWidthSeconds = secondsPerBar / 2;
+    if(halfWidthSeconds < 60)
+        halfWidthSeconds = 60;
+
+    double visiblePriceMin = WindowPriceMin();
+    double visiblePriceMax = WindowPriceMax();
+    double visiblePriceRange = visiblePriceMax - visiblePriceMin;
+    if(visiblePriceRange <= 0.0)
+        visiblePriceRange = High[0] - Low[0];
+    if(visiblePriceRange <= 0.0)
+        visiblePriceRange = Point * 200.0;
+
+    long chartHeightPixels = ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+    if(chartHeightPixels <= 0)
+        chartHeightPixels = 400;
+
+    double pricePerPixel = visiblePriceRange / chartHeightPixels;
+    double height = MathMax(pricePerPixel * 18.0, Point * 40.0);
+
+    bool isOpenMarker = (markerType == WD_ARROW_BUY || markerType == WD_ARROW_SELL);
+    datetime anchorTime = isOpenMarker ? arrowTime - secondsPerBar : arrowTime + secondsPerBar;
+    datetime tipTime = isOpenMarker ? anchorTime + halfWidthSeconds : anchorTime - halfWidthSeconds;
+    datetime baseTime = isOpenMarker ? anchorTime - halfWidthSeconds : anchorTime + halfWidthSeconds;
+
+    double tipPrice = arrowPrice;
+    double upperBasePrice = arrowPrice + (height * 0.5);
+    double lowerBasePrice = arrowPrice - (height * 0.5);
+    color markerColor = GetArrowColor(markerType, result);
+
+    if(ObjectFind(0, name) < 0)
+    {
+        if(!ObjectCreate(0, name, OBJ_TRIANGLE, 0, tipTime, tipPrice, baseTime, upperBasePrice, baseTime, lowerBasePrice))
+        {
+            Print("WARNING: failed to create triangle ", name, " err=", GetLastError());
+            return;
+        }
+
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, 3);
+    }
+    else
+    {
+        if(!ObjectMove(0, name, 0, tipTime, tipPrice))
+            Print("WARNING: failed to move triangle point 0 ", name, " err=", GetLastError());
+        if(!ObjectMove(0, name, 1, baseTime, upperBasePrice))
+            Print("WARNING: failed to move triangle point 1 ", name, " err=", GetLastError());
+        if(!ObjectMove(0, name, 2, baseTime, lowerBasePrice))
+            Print("WARNING: failed to move triangle point 2 ", name, " err=", GetLastError());
+    }
+
+    ObjectSetInteger(0, name, OBJPROP_COLOR, markerColor);
+    ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+    ObjectSetInteger(0, name, OBJPROP_BACK, true);
+    ObjectSetInteger(0, name, OBJPROP_FILL, true);
+    ObjectSetString(0, name, OBJPROP_TOOLTIP, GetArrowTooltip(markerType, OrderLots(), result));
+}
+
+int GetCloseArrowType()
+{
+    double tolerance = MathMax(Point * 2.0, 0.0000001);
+    double closePrice = OrderClosePrice();
+    double tp = OrderTakeProfit();
+    double sl = OrderStopLoss();
+
+    if(tp > 0.0 && MathAbs(closePrice - tp) <= tolerance)
+        return WD_ARROW_TP;
+
+    if(sl > 0.0 && MathAbs(closePrice - sl) <= tolerance)
+        return WD_ARROW_SL;
+
+    return WD_ARROW_CLOSE;
+}
+
+void DrawOpenOrderArrows()
+{
+    int scanned = 0;
+    int drawn = 0;
+    int total = OrdersTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int orderType = OrderType();
+        if(orderType != OP_BUY && orderType != OP_SELL)
+            continue;
+
+        scanned++;
+
+        string name = WD_CUSTOM_ARROW_PREFIX + "OPEN_" + IntegerToString(OrderTicket());
+        int markerType = orderType == OP_BUY ? WD_ARROW_BUY : WD_ARROW_SELL;
+        DrawArrow(name, OrderOpenTime(), OrderOpenPrice(), markerType, orderType, 0.0);
+        drawn++;
+    }
+}
+
+void DrawClosedOrderArrows()
+{
+    int scanned = 0;
+    int drawn = 0;
+    int total = OrdersHistoryTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int orderType = OrderType();
+        if(orderType != OP_BUY && orderType != OP_SELL)
+            continue;
+
+        scanned++;
+
+        string openName = WD_CUSTOM_ARROW_PREFIX + "OPEN_" + IntegerToString(OrderTicket());
+        int openMarkerType = orderType == OP_BUY ? WD_ARROW_BUY : WD_ARROW_SELL;
+        DrawArrow(openName, OrderOpenTime(), OrderOpenPrice(), openMarkerType, orderType, 0.0);
+
+        double result = OrderProfit() + OrderSwap() + OrderCommission();
+        string name = WD_CUSTOM_ARROW_PREFIX + "CLOSE_" + IntegerToString(OrderTicket());
+        DrawArrow(name, OrderCloseTime(), OrderClosePrice(), GetCloseArrowType(), orderType, result);
+        drawn++;
+    }
+}
+
+void UpdateVisibleObjects()
+{
+    if(!custom_arrows)
+    {
+        DeleteCustomArrows();
+        return;
+    }
+
+    int deletedNative = 0;
+    int deletedCustomLabels = 0;
+    int total = ObjectsTotal(0, 0, -1);
+    for(int i = total - 1; i >= 0; i--)
+    {
+        string name = ObjectName(0, i);
+        if(name == "")
+            continue;
+
+        if(StringFind(name, WD_CUSTOM_ARROW_PREFIX) == 0 && StringFind(name, "_LABEL") != -1)
+        {
+            ObjectDelete(0, name);
+            deletedCustomLabels++;
+            continue;
+        }
+
+        if(StringFind(name, WD_CUSTOM_ARROW_PREFIX) == 0)
+            continue;
+
+        int objectType = ObjectType(name);
+        if(IsArrowObjectType(objectType))
+        {
+            ObjectDelete(0, name);
+            deletedNative++;
+        }
+    }
+
+    DrawOpenOrderArrows();
+    DrawClosedOrderArrows();
+    ChartRedraw(0);
 }
 
 void OnTick()
@@ -701,4 +938,5 @@ void OnTick()
     //
 
     UpdateOrdersArrayPost();
+    UpdateVisibleObjects();
 }
