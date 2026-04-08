@@ -1399,8 +1399,10 @@ def load_previous_slope_and_lines(csv_path: Path, output_dir: Path) -> tuple[flo
                             try:
                                 offset = float(offset_str)
                                 if offset == 0:
-                                    log(f"ERROR: Offset dla linii {line_id} jest równy 0")
-                                    exit(1)
+                                    # Skip lines with 0 offset - they are at current price level
+                                    if DEBUG > 1:
+                                        log(f"  Pomijam linię {line_id} z offsetem 0")
+                                    continue
                                 magic_lines.append((line_id, offset))
                                 if DEBUG > 1: 
                                     log(f"  Poprzednia linia: {line_id} z offsetem {offset:.2f}")
