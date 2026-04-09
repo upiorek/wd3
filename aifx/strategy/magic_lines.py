@@ -1785,10 +1785,10 @@ def main():
             output_dir.mkdir(exist_ok=True)
 
             # Wczytaj poprzedni slope
-            prev_slope = load_previous_slope(csv_path, output_dir)
+            prev_slope, prev_lines = load_previous_slope_and_lines(csv_path, output_dir)
 
             log(f"Przetwarzam: {csv_path.name}")
-            result = process_single_file(csv_file, str(output_dir), prev_slope, next=show_next)
+            result = process_single_file(csv_file, str(output_dir), prev_slope, prev_lines, next=show_next)
 
             log(f"Wynik: {result}")
             full_output_path = output_dir.resolve()
