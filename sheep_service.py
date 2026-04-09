@@ -14,6 +14,7 @@ import signal
 import os
 import shutil
 import subprocess
+import sys
 
 from aifx.strategy import decissioner
 
@@ -244,11 +245,15 @@ def generate_chart_if_missing(m15_filename):
         
         # Run magic_lines.py script (60 second timeout)
         result = subprocess.run(
-            ['python3', MAGIC_LINES_SCRIPT, m15_full_path],
+            [sys.executable, MAGIC_LINES_SCRIPT, m15_full_path],
             capture_output=True,
             text=True,
+            cwd=REPO_DIR,
             timeout=60
         )
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        error_details = stderr or stdout or "no output from subprocess"
         
         if result.returncode == 0:
             # Check if PNG was created
@@ -256,15 +261,24 @@ def generate_chart_if_missing(m15_filename):
                 print(f"Successfully generated chart: {png_filename}\n{png_path}")
                 return f"GENERATED: {png_filename}"
             else:
-                print(f"Chart generation completed but PNG not found: {png_filename}\n{png_path}")
-                return f"ERROR: PNG not created: {png_filename}"
+                print(
+                    f"Chart generation completed but PNG not found: {png_filename}\n"
+                    f"{png_path}\nSubprocess output: {error_details}"
+                )
+                return f"ERROR: PNG not created: {png_filename} ({error_details})"
         else:
-            print(f"Chart generation failed: {result.stderr}")
-            return f"ERROR: generation failed"
+            print(f"Chart generation failed (exit {result.returncode}): {error_details}")
+            return f"ERROR: generation failed (exit {result.returncode}): {error_details}"
             
-    except subprocess.TimeoutExpired:
-        print(f"Chart generation timed out for {m15_filename}")
-        return f"ERROR: timeout (60s)"
+    except subprocess.TimeoutExpired as exc:
+        timeout_output = (exc.stderr or exc.stdout or "no output before timeout")
+        if isinstance(timeout_output, bytes):
+            timeout_output = timeout_output.decode(errors='replace')
+        elif not isinstance(timeout_output, str):
+            timeout_output = str(timeout_output)
+        timeout_output = timeout_output.strip()
+        print(f"Chart generation timed out for {m15_filename}: {timeout_output}")
+        return f"ERROR: timeout (60s): {timeout_output}"
     except Exception as e:
         print(f"Error generating chart: {e}")
         return f"ERROR: {str(e)}"
