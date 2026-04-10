@@ -257,7 +257,11 @@ void OnTick()
         string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
         g_decision = ReadAllText(decision_filename);
 
-        Print("Decision: " + g_decision + " Result: " + g_result);
+        bool isNoCrossedDecision = (StringFind(g_decision, "log: no crossed", 0) == 0);
+        bool isNoneResult = (StringFind(g_result, "NONE", 0) == 0);
+        bool skipNoCrossedLog = (isNoCrossedDecision && isNoneResult);
+        if(!skipNoCrossedLog)
+            Print("Decision: " + g_decision + " Result: " + g_result);
     }
 
     DeleteWdLines();
@@ -274,8 +278,8 @@ void OnTick()
         int ticket = ExecuteWdDecision(g_decision);
         if (ticket > 0)
             Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
-        else
-            Log("no order for time: " + TimeToString(TimeCurrent()));
+        //else
+            //Log("no order for time: " + TimeToString(TimeCurrent()));
     }
     else
     {
