@@ -52,6 +52,9 @@ input int MinLineAge = 1;
 // jeżeli protif dotrze do TP dajemy trailing stop na pioziomie BEBonus
 input bool TrailingTP_enabled = true;
 
+//--- FullCandleBeforeLine
+input bool FullCandleBeforeLine_enabled = false;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
@@ -601,66 +604,109 @@ bool CheckWeakClosedOnFlip(string decision)
 
 bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, string decision)
 {
-    // Check for condition (ABOVE/BELOW) and price
-    if(partsCount >= 3)
+    if(partsCount < 3)
+        return true;
+
+    int conditionIndex = 1;
+    int priceIndex = 2;
+    int ignoredAge = -1;
+
+    if(partsCount >= 4 && TryExtractLineAge(parts[1], ignoredAge))
     {
-        int conditionIndex = 1;
-        int priceIndex = 2;
-        int ignoredAge = -1;
+        conditionIndex = 2;
+        priceIndex = 3;
+    }
 
-        if(partsCount >= 4 && TryExtractLineAge(parts[1], ignoredAge))
+    if(priceIndex >= partsCount)
+        return true;
+
+    string condition = parts[conditionIndex];
+    if(condition != "ABOVE" && condition != "BELOW")
+        return true;
+
+    double conditionPrice = StringToDouble(parts[priceIndex]);
+    bool isAbove = (condition == "ABOVE");
+
+    double toleranceLimit = isAbove
+        ? (conditionPrice - OrderAboveOrBelowTolerance)
+        : (conditionPrice + OrderAboveOrBelowTolerance);
+    bool failsTolerance = isAbove ? (currentPrice <= toleranceLimit) : (currentPrice >= toleranceLimit);
+    if(failsTolerance)
+    {
+        Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) +
+            (isAbove ? " not above " : " not below ") + DoubleToString(conditionPrice, 2) +
+            " tolerance " + IntegerToString(OrderAboveOrBelowTolerance));
+        return false;
+    }
+
+    double gapLimit = isAbove
+        ? (conditionPrice + OrderAboveOrBelowGap)
+        : (conditionPrice - OrderAboveOrBelowGap);
+    bool failsGap = isAbove ? (currentPrice >= gapLimit) : (currentPrice <= gapLimit);
+    if(failsGap)
+    {
+        Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) +
+            (isAbove ? " too high above " : " too low below ") + DoubleToString(conditionPrice, 2) +
+            " with gap " + IntegerToString(OrderAboveOrBelowGap));
+        return false;
+    }
+    
+    return true;
+}
+
+bool FullCandleBeforeLine(string &parts[], int partsCount, double currentPrice, string decision)
+{
+    if(partsCount < 3)
+        return true;
+
+    int conditionIndex = 1;
+    int priceIndex = 2;
+    int ignoredAge = -1;
+
+    if(partsCount >= 4 && TryExtractLineAge(parts[1], ignoredAge))
+    {
+        conditionIndex = 2;
+        priceIndex = 3;
+    }
+
+    if(priceIndex >= partsCount)
+        return true;
+
+    string condition = parts[conditionIndex];
+    if(condition != "ABOVE" && condition != "BELOW")
+        return true;
+
+    double conditionPrice = StringToDouble(parts[priceIndex]);
+    bool isAbove = (condition == "ABOVE");
+
+    int candles = 2;
+    for(int i = 2; i <= candles + 1; i++)
+    {
+        double bodyTop = MathMax(Open[i], Close[i]);
+        double bodyBottom = MathMin(Open[i], Close[i]);
+
+        if(isAbove)
         {
-            conditionIndex = 2;
-            priceIndex = 3;
-        }
-
-        if(priceIndex >= partsCount)
-            return true;
-
-        string condition = parts[conditionIndex];
-        double conditionPrice = StringToDouble(parts[priceIndex]);
-        
-        if(condition == "ABOVE" || condition == "BELOW")
-        {
-            if(condition == "ABOVE")
+            if(bodyTop >= conditionPrice + 50)
             {
-                double priceWithTolerance = conditionPrice - OrderAboveOrBelowTolerance;
-                if(currentPrice <= priceWithTolerance)
-                {
-                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
-                        " not above " + DoubleToString(conditionPrice, 2) + 
-                        " tolerance " + IntegerToString(OrderAboveOrBelowTolerance));
-                    return false;
-                }
-                if(currentPrice >= conditionPrice + OrderAboveOrBelowGap)
-                {
-                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
-                        " too high above " + DoubleToString(conditionPrice, 2) + 
-                        " with gap " + IntegerToString(OrderAboveOrBelowGap));
-                    return false;
-		        }
+                Log("Skipping " + decision + " - FullCandleBeforeLine: candle #" + IntegerToString(i) +
+                    " body not fully below " + DoubleToString(conditionPrice, 2) +
+                    " bodyTop=" + DoubleToString(bodyTop, 2));
+                return false;
             }
-            else if(condition == "BELOW")
+        }
+        else
+        {
+            if(bodyBottom <= conditionPrice - 50)
             {
-                double priceWithTolerance = conditionPrice + OrderAboveOrBelowTolerance;
-                if(currentPrice >= priceWithTolerance)
-                {
-                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
-                        " not below " + DoubleToString(conditionPrice, 2) + 
-                        " tolerance " + IntegerToString(OrderAboveOrBelowTolerance));
-                    return false;
-                }		
-                if(currentPrice <= conditionPrice - OrderAboveOrBelowGap)
-                {
-                    Log("Skipping " + decision + " - Price " + DoubleToString(currentPrice, 2) + 
-                        " too low below " + DoubleToString(conditionPrice, 2) + 
-                        " with gap " + IntegerToString(OrderAboveOrBelowGap));
-                    return false;
-		        }
+                Log("Skipping " + decision + " - FullCandleBeforeLine: candle #" + IntegerToString(i) +
+                    " body not fully above " + DoubleToString(conditionPrice, 2) +
+                    " bodyBottom=" + DoubleToString(bodyBottom, 2));
+                return false;
             }
         }
     }
-    
+
     return true;
 }
 
@@ -715,6 +761,12 @@ int ExecuteWdDecision(string decision)
     {
         // Check price condition (ABOVE/BELOW)
         if(!CheckPriceCondition(parts, partsCount, currentPrice, decision))
+            return 0;
+    }
+
+    if (FullCandleBeforeLine_enabled)
+    {
+    	if(!FullCandleBeforeLine(parts, partsCount, currentPrice, decision))
             return 0;
     }
     
