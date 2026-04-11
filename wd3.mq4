@@ -153,10 +153,10 @@ OrderDecision ParseOrder(string orderData)
             ClearApprovedFile();
             return result;
          }
-	 else 
-	 {
-            Log("ERROR: ParseOrder" + " orderType: " + IntegerToString(orderType) + " parts: " + parts[0]);
-	 }
+         else 
+         {
+                  Log("ERROR: ParseOrder" + " orderType: " + IntegerToString(orderType) + " parts: " + parts[0]);
+         }
       }
    }
 
@@ -223,9 +223,9 @@ void LogAllOrders()
                }
                
                logData += IntegerToString(OrderTicket()) + " | " + orderType + " | " + OrderSymbol() + " | " +
-                         DoubleToString(OrderLots(), 2) + " | " + DoubleToString(OrderOpenPrice(), 5) + " | " +
-                         DoubleToString(OrderStopLoss(), 5) + " | " + DoubleToString(OrderTakeProfit(), 5) + " | " +
-                         DoubleToString(OrderProfit(), 2) + " | " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n";
+                  DoubleToString(OrderLots(), 2) + " | " + DoubleToString(OrderOpenPrice(), 5) + " | " +
+                  DoubleToString(OrderStopLoss(), 5) + " | " + DoubleToString(OrderTakeProfit(), 5) + " | " +
+                  DoubleToString(OrderProfit(), 2) + " | " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n";
             }
          }
       }

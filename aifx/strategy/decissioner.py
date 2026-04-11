@@ -96,21 +96,23 @@ def decision(result: str | None) -> str:
     CROSSED AR1 DOWN | D0: -95.57 | DR1: -273.62 | DS1: 420.07 | A0: 147.94 | AR1: 18.28 | AS1: 683.76
     """
 
+    ret = ("log: result \"" + result + "\"" if result else "log: result \"no result\"") + "\n"
+
     if not result:
-        return "log: no result\nNONE"
+        return ret + "log: no result\nNONE"
 
     header = result.split('|', 1)[0].strip()
 
     if not header.startswith("CROSSED"):
-        return "log: no crossed\nNONE"
+        return ret + "log: no crossed\nNONE"
 
     parts = header.split()
     if not parts:
-        return "log: invalid input string\nNONE"
+        return ret + "log: invalid input string\nNONE"
 
     direction = parts[-1]
     if direction not in ("UP", "DOWN"):
-        return f"log: invalid direction: {direction}\nNONE"
+        return ret + f"log: invalid direction: {direction}\nNONE"
     if DEBUG > 0:
         print(f"direction: {direction}")
 
@@ -120,7 +122,7 @@ def decision(result: str | None) -> str:
     if DEBUG > 0:
         print(f"crossed_ids: {crossed_ids}")
     if not crossed_ids:
-        return "log: no line ids\nNONE"
+        return ret + "log: no line ids\nNONE"
     
     near_offsets = {k: v for k, v in offsets.items() if abs(v) < 5.0}
     near_letters = {
@@ -153,7 +155,7 @@ def decision(result: str | None) -> str:
     if can_buy:
         # Do not buy below D0 (i.e. last_close < D0 => D0 offset > 0).
         if d0_offset is not None and d0_offset > 0:
-            return "log: do not buy below D0\nNONE"
+            return  ret + "log: do not buy below D0\nNONE"
         
         highest_a_line_id, highest_a_offset = _find_extreme_line(crossed_ids, offsets, "A")
         decision = "BUY"
@@ -161,12 +163,12 @@ def decision(result: str | None) -> str:
             decision += f" {highest_a_line_id}"
         if highest_a_offset is not None:
             decision += f" ABOVE {highest_a_offset:.2f}"
-        return decision
+        return ret + decision
 
     if can_sell:
         # Do not sell above A0 (i.e. last_close > A0 => A0 offset < 0).
         if a0_offset is not None and a0_offset < 0:
-            return "log: do not sell above A0\nNONE"
+            return ret + "log: do not sell above A0\nNONE"
 
         lowest_d_line_id, lowest_d_offset = _find_extreme_line(crossed_ids, offsets, "D")
         decision = "SELL"
@@ -174,11 +176,11 @@ def decision(result: str | None) -> str:
             decision += f" {lowest_d_line_id}"
         if lowest_d_offset is not None:
             decision += f" BELOW {lowest_d_offset:.2f}"
-        return decision
+        return ret + decision
 
     # No valid lines matched the direction.
     if len(crossed_ids) > 1:
-        return "log: no valid lines found\nNONE"
+        return ret + "log: no valid lines found\nNONE"
 
     line_id = crossed_ids[0]
     if DEBUG > 0:
@@ -187,9 +189,9 @@ def decision(result: str | None) -> str:
     if DEBUG > 0:
         print(f"line_letter: {line_letter}")
     if line_letter in ("A", "D"):
-        return "log: bad direction\nNONE"
+        return ret + "log: bad direction\nNONE"
 
-    return f"log: bad line id: {line_id}\nNONE"
+    return ret + f"log: bad line id: {line_id}\nNONE"
 
 if __name__ == '__main__':  
     # Example usage

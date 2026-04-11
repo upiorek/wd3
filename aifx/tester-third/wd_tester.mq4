@@ -249,21 +249,20 @@ void OnTick()
     StringReplace(timeStr, ":", "-");
     StringReplace(timeStr, " ", "-");
 
-    string result_filename = "wd_tester/" + timeStr + "_result.txt";
-    g_result = ReadAllText(result_filename);
-    string decision = "EMPTY";
-    if (g_result != "EMPTY")
-    {
-        string decision_filename = "wd_tester/" + timeStr + "_decision.txt";
-        g_decision = ReadAllText(decision_filename);
+    string result_filename = "wd_tester/" + timeStr + "_decision.txt";
+    g_decision = ReadAllText(result_filename);
 
-        bool isNoCrossedDecision = (StringFind(g_decision, "log: no crossed", 0) == 0);
-        bool isNoneResult = (StringFind(g_result, "NONE", 0) == 0);
-        bool skipNoCrossedLog = (isNoCrossedDecision && isNoneResult);
-        if(!skipNoCrossedLog)
-            Print("Decision: " + g_decision + " Result: " + g_result);
-    }
+    int firstQuote = StringFind(g_decision, "\"");
+    int secondQuote = StringFind(g_decision, "\"", firstQuote + 1);
+    g_result = StringSubstr(g_decision, firstQuote + 1, secondQuote - firstQuote - 1);
+    g_decision = StringSubstr(g_decision, secondQuote + 2, StringLen(g_decision) - secondQuote - 2);
 
+    bool isNoCrossedDecision = (StringFind(g_decision, "log: no crossed", 0) == 0);
+    bool isNoneResult = (StringFind(g_result, "NONE", 0) == 0);
+    bool skipNoCrossedLog = (isNoCrossedDecision && isNoneResult);
+    if(!skipNoCrossedLog)
+        Print("Decision: " + g_decision + " Result: " + g_result);
+    
     DeleteWdLines();
     DrawLinesFromResult();
     PrintErrorIfBothBuyAndSellOpen();

@@ -344,6 +344,7 @@ def process_file(file_path, percentage=.0, keep_results=False, start_time=None):
         str = f"{action} {percentage:.2f}% {elapsed_str} / {left_str}: "\
             f"{new_path.name}"
         if ALGO == "magic_lines":
+            order_type = order_type.replace("\n", " | ")
             print(str + f" {order_type}")
         else:
             print(str)
