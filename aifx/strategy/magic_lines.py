@@ -87,6 +87,7 @@ CROSS_IMPULSE_STRENGTH = 0.0 # -0.1   # siła świeczek - przecięcie linii w ko
 # # 0 = brak
 # 1 = podstawowy
 # 2 = szczegółowy (pętle)
+# 3 = bardzo szczegółowy
 DEBUG = 0
 
 # ===== KLASY DANYCH =====
@@ -532,7 +533,7 @@ def detect_impulses(candles :list[candle]) -> list[impulse_point]:
     impulses_laga = [impulse for impulse, size in laga_candidates[:LAGA_IMPULSE_MAX]]
 
     # DEBUG print impulses
-    if DEBUG == 2:        
+    if DEBUG > 1:        
         print(f"  Detected gap impulses: {len(impulses_gap)}")
         #for p in impulses_gap:
         #    print(f"  Detected GAP at index {p.index}, price: {p.price:.2f}")
@@ -803,7 +804,7 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
         # Jeżeli slope linii jest identyczny jak prev_chart_slope dodaj bonus za powtarzalność
         bonus_applied = False
         if prev_chart_slope is not None:
-            if DEBUG > 1:
+            if DEBUG > 2:
                 print(f"  Comparing abs_slope {abs_slope:.4f} with prev_chart_slope {abs(prev_chart_slope):.4f}")
             if abs(abs_slope - abs(prev_chart_slope)) / abs(prev_chart_slope) < 0.001:
                 bonus_applied = True
@@ -958,6 +959,14 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                                 (p.price > last_candle_line_at_point(p) if base_line.slope > 0 else p.price < last_candle_line_at_point(p))]
                 
                 check_points.sort(key=lambda p: p.strength, reverse=True) 
+
+                # print check_points for debug
+                if DEBUG >= 3:
+                    print(f"  Checking MIN/MAX points for resistance lines, count: {len(check_points)}")
+                    for p in check_points:
+                        print(f"    MIN/MAX point type {p.type_str()}/{p.subtype_str()} at index {p.index} price {p.price:.2f} strength {p.strength:.2f} "\
+                            f"last_candle_line_at_point {last_candle_line_at_point(p):.2f}")
+
                 level = base_line.level + 1 
                 intercept = base_line.intercept
                 for p in check_points:               
@@ -965,7 +974,7 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                     _, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
                         base_line.slope, p, points, candles)
                     # offset = różnica między ceną ostatniej świeczki a ceną linii na tej świeczce
-                    offset = last_price - (base_line.slope * last_index + new_intercept)
+                    offset = (base_line.slope * last_index + new_intercept) - last_price
                     new_line = magic_line(
                         slope=base_line.slope,
                         intercept=new_intercept,
@@ -974,17 +983,40 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                         used_points=used_impulses,
                         level=0) # zawsze level 0, potem posortujemy i przypiszemy level
                     ret_lines.append(new_line)
+
                     # DEBUG
                     if (DEBUG >= 2 or debug):
-                        print(f"  Detected MINMAX hierarchical line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
+                        print(f"  Detected MINMAX hier R line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
                             f"at intercept {new_line.intercept:.2f} offset {new_line.offset:.2f}")
                     level += 1
 
+                    # DEBUG dump used points
+                    if (DEBUG >= 3):
+                        print(f"    Used impulses for this line:")
+                        for p in used_impulses:
+                            print(f"      Impulse at index {p.index} type {p.type_str()} price {p.price:.2f} strength {p.strength:.2f}")
+
+                if DEBUG > 2:
+                    print(f"  Found {len(ret_lines)} lines")
+
+                # sort ret_lines by offset
+                ret_lines.sort(key=lambda l: abs(l.offset), reverse=True)
+                
                 unique_lines = []
                 for line in ret_lines:
-                    if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines) \
-                        and abs(line.intercept - base_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
+                    all_cond = all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines)
+                    abs_cond = abs(line.intercept - base_line.intercept) >= MIN_HIERARCHICAL_OFFSET
+                    if all_cond and abs_cond:
+                        if DEBUG > 2:
+                            print(f"    Adding unique line with intercept {line.intercept:.2f} offset {line.offset:.2f}")
                         unique_lines.append(line)
+                    else:
+                        if DEBUG > 2:
+                            print(f"    Skipping line with intercept {line.intercept:.2f} offset {line.offset:.2f}")
+                            print(f"        all condition: {all_cond}, abs condition: {abs_cond}")
+
+                if DEBUG > 1:
+                    print(f"  Unique lines after filtering: {len(unique_lines)}")
 
                 unique_lines.sort(key=lambda l: abs(l.offset), reverse=False)
                 level = asc_line.level + 1
@@ -1029,32 +1061,63 @@ def find_support_lines(candles :list[candle], prev_chart_slope: float = -100,
                                 p.subtype == check_subtype and \
                                 (p.price < last_candle_line_at_point(p) if base_line.slope > 0 else p.price > last_candle_line_at_point(p))]
                 check_points.sort(key=lambda p: p.strength, reverse=True)
+
+                # print check_points for debug
+                if DEBUG >= 3:
+                    print(f"  Checking FA points for support lines, count: {len(check_points)}")
+                    for p in check_points:
+                        print(f"    FA point type {p.type_str()}/{p.subtype_str()} at index {p.index} price {p.price:.2f} strength {p.strength:.2f} "\
+                            f"last_candle_line_at_point {last_candle_line_at_point(p):.2f}")
+
                 level = base_line.level + 1
                 for p in check_points:
                     new_intercept = p.price - base_line.slope * p.index
                     _, impulses_score, candles_score, used_impulses, debug_string = calculate_line_score(
                         base_line.slope, p, points, candles)
                     # offset = różnica między ceną ostatniej świeczki a ceną linii na tej świeczce
-                    offset = last_price - (base_line.slope * last_index + new_intercept)
+                    offset = (base_line.slope * last_index + new_intercept) - last_price
                     new_line = magic_line(
                         slope=base_line.slope,
                         intercept=new_intercept,
                         offset=offset,
                         score=impulses_score + candles_score,
                         used_points=used_impulses,
-                        level=0)
+                        level=0) # zawsze level 0, potem posortujemy i przypiszemy level
                     ret_lines.append(new_line)
+
                     # DEBUG
                     if (DEBUG >= 2 or debug):
-                        print(f"  Detected MINMAX hierarchical line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
+                        print(f"  Detected MINMAX hier S line slope {new_line.slope:.4f} level {level} score {new_line.score:.4f} "\
                             f"at intercept {new_line.intercept:.2f} offset {new_line.offset:.2f}")
                     level += 1
 
+                    # DEBUG dump used points
+                    if (DEBUG >= 3):
+                        print(f"    Used impulses for this line:")
+                        for p in used_impulses:
+                            print(f"      Impulse at index {p.index} type {p.type_str()} price {p.price:.2f} strength {p.strength:.2f}")
+
+                if DEBUG > 2:
+                    print(f"  Found {len(ret_lines)} lines")
+
+                # sort ret_lines by offset
+                ret_lines.sort(key=lambda l: abs(l.offset), reverse=True)
+
                 unique_lines = []
                 for line in ret_lines:
-                    if all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines) \
-                        and abs(line.intercept - base_line.intercept) >= MIN_HIERARCHICAL_OFFSET:
+                    all_cond = all(abs(line.intercept - l.intercept) >= MIN_HIERARCHICAL_OFFSET for l in unique_lines)
+                    abs_cond = abs(line.intercept - base_line.intercept) >= MIN_HIERARCHICAL_OFFSET
+                    if all_cond and abs_cond:
+                        if DEBUG > 2:
+                            print(f"    Adding unique line with intercept {line.intercept:.2f} offset {line.offset:.2f}")
                         unique_lines.append(line)
+                    else:
+                        if DEBUG > 2:
+                            print(f"    Skipping line with intercept {line.intercept:.2f} offset {line.offset:.2f}")
+                            print(f"        all condition: {all_cond}, abs condition: {abs_cond}")
+
+                if DEBUG > 1:
+                    print(f"  Unique lines after filtering: {len(unique_lines)}")
 
                 unique_lines.sort(key=lambda l: abs(l.offset), reverse=True)
                 level = asc_line.level + 1
@@ -1306,7 +1369,7 @@ def plot_chart(df_plot,
     ax.set_xticklabels(midnight_labels, rotation=0, ha='center')
     
     # Dodaj numery świeczek dla min/max
-    if DEBUG == 2 and SHOW_IMPULSES:
+    if DEBUG >= 2 and SHOW_IMPULSES:
         for impulse in impulses:
             if impulse.type == impulse_point.TYPE_MIN or impulse.type == impulse_point.TYPE_MAX:
                 idx = impulse.index
@@ -1551,13 +1614,17 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, prev
     last_candle_low = float(last_candle['Low'])
     last_candle_high = float(last_candle['High'])
     last_candle_direction = 'UP' if last_candle['Close'] > last_candle['Open'] else 'DOWN'
-    last_candle_idx = len(lookback_df_for_lines)
+    last_candle_idx = len(lookback_df_for_lines) - 1
 
     crossed = False
     crossed_id = ""
     line_offsets = []
     # Dla DUMP_IMAGES_NUM > 0 może być więcej niż jeden zestaw linii -
     # sprawdź przecięcia tylko najlepszego zestawu
+
+    if DEBUG > 2:
+        print(f"Sprawdzam przecięcia dla ostatniej świeczki: low {last_candle_low:.2f} high {last_candle_high:.2f} close {base_price:.2f} direction {last_candle_direction}")
+
     for line_info in detected_lines[0]: 
         slope = line_info.slope
         intercept = line_info.intercept
@@ -1605,7 +1672,8 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, prev
                 else:
                     line_id = f"S{line_id}{level}"
 
-        #log(f"  Line {line_id}: slope {slope:.4f} intercept {intercept:.2f} offset {line_offset:.2f}")
+        if DEBUG > 2:
+            print(f"  Line {line_id}: slope {slope:.4f} intercept {intercept:.2f} line_value {line_value:.2f} offset {line_offset:.2f}")
 
         # jeżeli w prev_lines była już linia o takim ID, podbij jej age
         #log(f"-----------prev_lines: {prev_lines}, line_id: {line_id}, slope: {slope:.4f}, prev_slope: {prev_slope:.4f}")
