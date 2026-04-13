@@ -12,6 +12,8 @@ struct OrderDecision
    double price;         // Price value if condition exists, 0.0 otherwise
 };
 
+OrderDecision currentDecision;
+
 // Global variables
 datetime lastLogTime = 0;
 datetime lastFileCheck = 0;
@@ -43,6 +45,8 @@ void LogAccountInfo()
                       "\n" + 
                       "sl: " + IntegerToString(stopLoss/100) + " / be: " + IntegerToString(takeProfit/2/100) +
 		      " / tp: " + IntegerToString(takeProfit/100) + " / bonus: " + IntegerToString(BEBonus/100) + "\n";
+
+      logData += "\nCurrent decision: " + GetCurrentDecisionString() + "\n";
 
       FileSeek(fileHandle, 0, SEEK_END);
       FileWriteString(fileHandle, logData);
@@ -103,8 +107,12 @@ OrderDecision ReadOrderFromFile()
       }
       FileClose(fileHandle);
 
+
       if(fileContent != "")
+      {
+         Log("Read from approved.txt: " + fileContent);
           return ParseOrder(fileContent);
+      }
    }
 
    return emptyDecision;
@@ -778,7 +786,6 @@ void Logs()
    }
 }
 
-OrderDecision currentDecision;
 void OrderFiles()
 {
    datetime currentTime = TimeCurrent();  
@@ -809,16 +816,8 @@ void OrderFiles()
    }
 }
 
-void OnTick()
+string GetCurrentDecisionString()
 {
-// Log to file test
-   if(hearbeat < 3)
-      Log("hello");
-   
-//-----------------------------------------------------------------------
-   Logs();
-   OrderFiles();
-
    string decision = "NONE";
    if (currentDecision.orderType == OP_BUY)
        decision = "BUY";
@@ -830,6 +829,21 @@ void OnTick()
    {
        decision = decision + " " + currentDecision.condition + " " + DoubleToString(currentDecision.price, 2);
    }
+
+   return decision;
+}
+
+void OnTick()
+{
+// Log to file test
+   if(hearbeat < 3)
+      Log("hello");
+   
+   string decision = GetCurrentDecisionString();
+
+//-----------------------------------------------------------------------
+   Logs();
+   OrderFiles();
 
 // Main logic for every tick
 //----------------------------------------------------------------------- 
