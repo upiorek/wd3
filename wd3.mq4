@@ -10,6 +10,7 @@ struct OrderDecision
    int orderType;        // OP_BUY, OP_SELL, or -1 for none
    string condition;     // "ABOVE", "BELOW", or empty string
    double price;         // Price value if condition exists, 0.0 otherwise
+   string decision;      // Original decision string for logging (e.g., "BUY ABOVE 21917.27")
 };
 
 OrderDecision currentDecision;
@@ -93,6 +94,7 @@ OrderDecision ReadOrderFromFile()
    emptyDecision.orderType = -1;
    emptyDecision.condition = "";
    emptyDecision.price = 0.0;
+   emptyDecision.decision = "";
    
    int fileHandle = FileOpen("approved.txt", FILE_READ|FILE_TXT);
    
@@ -107,11 +109,10 @@ OrderDecision ReadOrderFromFile()
       }
       FileClose(fileHandle);
 
-
       if(fileContent != "")
       {
          Log("Read from approved.txt: " + fileContent);
-          return ParseOrder(fileContent);
+         return ParseOrder(fileContent);
       }
    }
 
@@ -125,46 +126,55 @@ OrderDecision ParseOrder(string orderData)
    OrderDecision result;
    result.orderType = -1;
    result.condition = "";
+   result.decision = "";
    result.price = 0.0;
    
    string lines[];
    int linesCount = StringSplit(orderData, '\n', lines);
-   
-   for(int i = 0; i < linesCount; i++)
-   {
-      string line = StringTrimLeft(StringTrimRight(lines[i]));
-      if(line == "" || StringFind(line, "#") == 0) continue;
-      
-      string parts[];
-      int partsCount = StringSplit(line, ' ', parts);
-      if(partsCount >= 1)
-      {
-         if (parts[0] != "US100.f")	 
-            Log("ERROR: ParseOrder" + " parts: " + parts[0]);
 
-         int orderType = GetOrderType(parts[1]); 
-         if(orderType != -1)
+   // order data must have 2 lines:
+   // first line is the order, second line is the decision for logging
+   if(linesCount > 2)
+   {
+      Log("ERROR: ParseOrder expected 2 lines in approved.txt but got: " + IntegerToString(linesCount) + " content: " + orderData);
+   }
+
+   // decision is always the second line
+   result.decision = StringTrimLeft(StringTrimRight(lines[1]));
+
+   // order is always the first line
+   string line = StringTrimLeft(StringTrimRight(lines[0]));
+   if(line == "" || StringFind(line, "#") == 0) continue;
+   
+   string parts[];
+   int partsCount = StringSplit(line, ' ', parts);
+   if(partsCount >= 1)
+   {
+      if (parts[0] != "US100.f")	 
+         Log("ERROR: ParseOrder" + " parts: " + parts[0]);
+
+      int orderType = GetOrderType(parts[1]); 
+      if(orderType != -1)
+      {
+         result.orderType = orderType;
+         
+         // Check for condition and price (e.g., "BUY ABOVE 21917.27")
+         if(partsCount >= 3)
          {
-            result.orderType = orderType;
-            
-            // Check for condition and price (e.g., "BUY ABOVE 21917.27")
-            if(partsCount >= 3)
+            string condition = parts[1];
+            if(condition == "ABOVE" || condition == "BELOW")
             {
-               string condition = parts[1];
-               if(condition == "ABOVE" || condition == "BELOW")
-               {
-                  result.condition = condition;
-                  result.price = StringToDouble(parts[2]);
-               }
+               result.condition = condition;
+               result.price = StringToDouble(parts[2]);
             }
-            
-            ClearApprovedFile();
-            return result;
          }
-         else 
-         {
-                  Log("ERROR: ParseOrder" + " orderType: " + IntegerToString(orderType) + " parts: " + parts[0]);
-         }
+         
+         ClearApprovedFile();
+         return result;
+      }
+      else 
+      {
+         Log("ERROR: ParseOrder orderType: " + IntegerToString(orderType) + " parts: " + parts[0]);
       }
    }
 
@@ -808,6 +818,7 @@ void OrderFiles()
    // Check for new orders
    currentDecision.orderType = -1;
    currentDecision.condition = "";
+   currentDecision.decision = "";
    currentDecision.price = 0.0;
    if(currentTime - lastFileCheck >= 5)
    {
@@ -828,6 +839,7 @@ string GetCurrentDecisionString()
    if (currentDecision.condition != "" && currentDecision.price > 0.0)
    {
        decision = decision + " " + currentDecision.condition + " " + DoubleToString(currentDecision.price, 2);
+       decision += " " +currentDecision.decision;
    }
 
    return decision;

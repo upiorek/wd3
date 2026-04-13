@@ -283,13 +283,15 @@ def generate_chart_if_missing(m15_filename):
         print(f"Error generating chart: {e}")
         return f"ERROR: {str(e)}"
 
-def write_order_to_approved(order_type, candle_time):
+def write_order_to_approved(order_type, decision, candle_time):
     """Write order to approved.txt file."""
     approved_file = os.path.join(MQL4_FILES_DIR, "approved.txt")
  
     try:
         with open(approved_file, 'a') as f:
-            f.write(f"US100.f {order_type} 0.01 0 0 0\n")
+            # convert all newlines in decision to |
+            decision = decision.replace("\n", " | ")
+            f.write(f"US100.f {order_type} 0.01 0 0 0\ndecision: {decision}")
         print(f"Signal detected: for {candle_time} added {order_type} to approved.txt")
         return order_type
     except Exception as e:
@@ -302,10 +304,10 @@ def check_for_signals(candle_time, decision):
     for line in decision.splitlines():
         # Check for BUY signal
         if line.find("BUY") != -1:
-            return write_order_to_approved("BUY", candle_time)
+            return write_order_to_approved("BUY", decision, candle_time)
         # Check for SELL signal
         if line.find("SELL") != -1:
-            return write_order_to_approved("SELL", candle_time)
+            return write_order_to_approved("SELL", decision, candle_time)
         
     return None
 
