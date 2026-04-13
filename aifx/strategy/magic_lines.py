@@ -563,6 +563,9 @@ def calculate_line_score(slope: float,
     # oblicz intercept z równania linii y = slope * x + intercept
     # gdzie x = index świeczki, y = cena
     intercept = i_start.price - slope * i_start.index
+
+    if DEBUG >= 3:
+        print(f"    Calculating line score for slope={slope:.4f} intercept={intercept:.2f} ")
         
     # Sprawdź ile impulsów pasuje do tej linii
     impulses_score = 0
@@ -571,26 +574,32 @@ def calculate_line_score(slope: float,
 
     for p in impulses:
         # optymalizacja: pomiń punkty przed i_start (uwzględnij i_start)
-        if p.index < i_start.index:
+        #if p.index < i_start.index:
+        if DEBUG >= 4:
+            print(f" x skip1 p.index {p.index} < i_start.index {i_start.index}")
             continue
 
         # pomiń jeżeli punkt jest przeznaczony dla innego slope (np. dla linii wznoszącej vs opadającej)
         if p.for_type != -1 \
            and p.for_type != impulse_point.TYPE_SKIP \
            and p.for_type != (impulse_point.TYPE_MAX if slope > 0 else impulse_point.TYPE_MIN):
-            # DEBUG
-            # print(f"    Skipping impulse at index {p.index} type {p.type_str()} ")
+            if DEBUG >= 3:
+                print(f"    Skipping impulse at index {p.index} type {p.type_str()} ")
             continue
         
         expected_price = slope * p.index + intercept
         dist = abs(p.price - expected_price)
+
+        if DEBUG >= 4:
+            print(f"    dist {dist:.2f} tolerance {tolerance:.2f}")
+
         if tolerance > 0 and dist <= tolerance: 
             # ważone przez odległość z kwadratem odległości
             impulses_score += p.strength * (1.0 - (dist / tolerance) ** 2)
             used_impulses.append(p)
 
             # DEBUG
-            if (debug):
+            if (debug) or DEBUG >= 3:
                 debug_string += f"    Impulse at index {p.index} type {p.type_str()} "\
                     f"price {p.price:.2f} matches line " \
                     f"expected {expected_price:.2f} "\
@@ -614,6 +623,10 @@ def calculate_line_score(slope: float,
     if BODY_IMPULSE_STRENGTH == 0.0 and \
         SHADOW_IMPULSE_STRENGTH == 0.0 and \
         CROSS_IMPULSE_STRENGTH == 0.0:
+
+        if DEBUG >= 4:
+            print(f"    Skipping candle score calculation since all candle impulse strengths are 0.0")
+
         return intercept, impulses_score, candles_score, used_impulses, debug_string
     else:
         for candle in candles:
@@ -628,7 +641,7 @@ def calculate_line_score(slope: float,
                 candles_score += BODY_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
 
                 # DEBUG
-                if (debug):
+                if (debug) or DEBUG >= 4:
                     debug_string += f"    Candle at index {candle.index} body matches line "
 
             # sprawd cień
@@ -638,7 +651,7 @@ def calculate_line_score(slope: float,
                 candles_score += SHADOW_IMPULSE_STRENGTH * (1.0 - dist / LINE_CANDLE_TOLERANCE)
 
                 # DEBUG
-                if (debug):
+                if (debug) or DEBUG >= 4:
                     debug_string += f"    Candle at index {candle.index} shadow matches line "
 
             # sprawdź przecięcie linii z korpusem - ujemne punkty
@@ -648,7 +661,7 @@ def calculate_line_score(slope: float,
                 candles_score += CROSS_IMPULSE_STRENGTH
 
                 # DEBUG
-                if (debug):
+                if (debug) or DEBUG >= 4:
                     debug_string += f"    Candle at index {candle.index} crosses line in body "
 
     return intercept, impulses_score, candles_score, used_impulses, debug_string
@@ -1623,7 +1636,7 @@ def process_single_file(csv_filepath, output_dir='charts', prev_slope=None, prev
     # sprawdź przecięcia tylko najlepszego zestawu
 
     if DEBUG > 2:
-        print(f"Sprawdzam przecięcia dla ostatniej świeczki: low {last_candle_low:.2f} high {last_candle_high:.2f} close {base_price:.2f} direction {last_candle_direction}")
+        print(f"Sprawdzam przeciecia dla ostatniej swieczki: low {last_candle_low:.2f} high {last_candle_high:.2f} close {base_price:.2f} direction {last_candle_direction}")
 
     for line_info in detected_lines[0]: 
         slope = line_info.slope
