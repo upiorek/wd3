@@ -144,7 +144,6 @@ OrderDecision ParseOrder(string orderData)
 
    // order is always the first line
    string line = StringTrimLeft(StringTrimRight(lines[0]));
-   if(line == "" || StringFind(line, "#") == 0) continue;
    
    string parts[];
    int partsCount = StringSplit(line, ' ', parts);
