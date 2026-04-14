@@ -574,9 +574,9 @@ def calculate_line_score(slope: float,
 
     for p in impulses:
         # optymalizacja: pomiń punkty przed i_start (uwzględnij i_start)
-        #if p.index < i_start.index:
-        if DEBUG >= 4:
-            print(f" x skip1 p.index {p.index} < i_start.index {i_start.index}")
+        if p.index < i_start.index:
+            if DEBUG >= 4:
+                print(f" x skip1 p.index {p.index} < i_start.index {i_start.index}")
             continue
 
         # pomiń jeżeli punkt jest przeznaczony dla innego slope (np. dla linii wznoszącej vs opadającej)
