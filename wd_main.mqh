@@ -359,7 +359,7 @@ void CheckBE()
                 {
 		            string type = OrderType() == OP_BUY ? "BUY" : "SELL";
                     Log("Break-even set: Ticket=" + IntegerToString(OrderTicket()) + " Type=" + type +
-                          " New SL=" + DoubleToString(newSL) + " (BE+" + DoubleToString(BEBonus * Point) + ")");
+                          " New SL=" + DoubleToStr(newSL, 2) + " (BE+" + DoubleToStr(BEBonus * Point, 2) + ")");
                 }
                 else
                 {
@@ -424,7 +424,7 @@ void CheckTrailingTP()
             Log("TrailingTP updated: Ticket=" + IntegerToString(OrderTicket()) +
                 " Type=" + typeStr +
                 " ProfitPoints=" + DoubleToString(profitPoints, 0) +
-                " New SL=" + DoubleToString(newSL));
+                " New SL=" + DoubleToString(newSL, 2));
         }
         else
         {
@@ -803,7 +803,7 @@ int ExecuteWdDecision(string decision)
     else
     {
         Log("ERROR: Order failed: " + decision + " Error=" + IntegerToString(GetLastError()) + 
-              " Price=" + DoubleToString(currentPrice) + " SL=" + DoubleToString(sl) + " TP=" + DoubleToString(orderTP));
+              " Price=" + DoubleToString(currentPrice, 2) + " SL=" + DoubleToString(sl, 2) + " TP=" + DoubleToString(orderTP, 2));
     }
     
     return ticket;
