@@ -53,7 +53,7 @@ input int MinLineAge = 1;
 input bool TrailingTP_enabled = true;
 
 //--- FullCandleBeforeLine
-input bool FullCandleBeforeLine_enabled = false;
+input bool FullCandleBeforeLine_enabled = true;
 
 //-----------------------------------------------------------------------
 
@@ -679,7 +679,9 @@ bool FullCandleBeforeLine(string &parts[], int partsCount, double currentPrice, 
     double conditionPrice = StringToDouble(parts[priceIndex]);
     bool isAbove = (condition == "ABOVE");
 
-    int candles = 2;
+    int candles = 3;
+    int maxGap = 50;
+    
     for(int i = 2; i <= candles + 1; i++)
     {
         double bodyTop = MathMax(Open[i], Close[i]);
@@ -687,7 +689,7 @@ bool FullCandleBeforeLine(string &parts[], int partsCount, double currentPrice, 
 
         if(isAbove)
         {
-            if(bodyTop >= conditionPrice + 50)
+            if(bodyTop >= conditionPrice + maxGap)
             {
                 Log("Skipping " + decision + " - FullCandleBeforeLine: candle #" + IntegerToString(i) +
                     " body not fully below " + DoubleToString(conditionPrice, 2) +
@@ -697,7 +699,7 @@ bool FullCandleBeforeLine(string &parts[], int partsCount, double currentPrice, 
         }
         else
         {
-            if(bodyBottom <= conditionPrice - 50)
+            if(bodyBottom <= conditionPrice - maxGap)
             {
                 Log("Skipping " + decision + " - FullCandleBeforeLine: candle #" + IntegerToString(i) +
                     " body not fully above " + DoubleToString(conditionPrice, 2) +
