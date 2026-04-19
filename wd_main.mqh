@@ -55,6 +55,11 @@ input bool TrailingTP_enabled = true;
 //--- FullCandleBeforeLine
 input bool FullCandleBeforeLine_enabled = true;
 
+//--- BothTooClose (both buy and sell within distance)
+// NOTE: WD MAIN on PRODUCTION must support decition line to enable this on production!!
+input bool BothTooClose_enabled = true;
+input int BothTooCloseDistance = 50;
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
@@ -602,6 +607,106 @@ bool CheckWeakClosedOnFlip(string decision)
     return false;
 }
 
+bool CheckBothTooClose(double currentPrice, string decision)
+{
+    if(!BothTooClose_enabled)
+        return false;
+    if(BothTooCloseDistance <= 0)
+        return false;
+    if(StringLen(g_result) <= 0 || g_result == "EMPTY" || g_result == "NONE")
+        return false;
+
+    string parts[];
+    int partsCount = StringSplit(g_result, '|', parts);
+    if(partsCount <= 0)
+        return false;
+
+    double basePrice = currentPrice;
+    for(int i = 0; i < partsCount; i++)
+    {
+        string token = StringTrimLeft(StringTrimRight(parts[i]));
+        if(StringFind(token, "BASE:", 0) != 0)
+            continue;
+
+        string baseStr = StringTrimLeft(StringTrimRight(StringSubstr(token, 5)));
+        if(StringLen(baseStr) > 0)
+            basePrice = StrToDouble(baseStr);
+        break;
+    }
+
+    double currentOffset = currentPrice - basePrice;
+    bool hasDescendingAbove = false;
+    bool hasAscendingBelow = false;
+    string descendingId = "";
+    string ascendingId = "";
+    double descendingDistance = 0.0;
+    double ascendingDistance = 0.0;
+
+    for(int i = 0; i < partsCount; i++)
+    {
+        string token = StringTrimLeft(StringTrimRight(parts[i]));
+        if(token == "" || token == "NONE")
+            continue;
+        if(StringFind(token, "CROSSED ", 0) == 0)
+            continue;
+        if(StringFind(token, "SLOPE:", 0) == 0)
+            continue;
+        if(StringFind(token, "BASE:", 0) == 0)
+            continue;
+
+        int colonPos = StringFind(token, ":", 0);
+        if(colonPos <= 0)
+            continue;
+
+        string id = StringTrimLeft(StringTrimRight(StringSubstr(token, 0, colonPos)));
+        string offsetStr = StringTrimLeft(StringTrimRight(StringSubstr(token, colonPos + 1)));
+        if(StringLen(id) <= 0 || StringLen(offsetStr) <= 0)
+            continue;
+
+        bool isDescending = (StringFind(id, "D", 0) != -1);
+        bool isAscending = (StringFind(id, "A", 0) != -1);
+        if(!isDescending && !isAscending)
+            continue;
+
+        double lineOffset = StrToDouble(offsetStr);
+        double relativeOffset = lineOffset - currentOffset;
+
+        if(isDescending && relativeOffset >= 0.0 && relativeOffset <= BothTooCloseDistance)
+        {
+            double distance = relativeOffset;
+            if(!hasDescendingAbove || distance < descendingDistance)
+            {
+                hasDescendingAbove = true;
+                descendingDistance = distance;
+                descendingId = id;
+            }
+        }
+
+        if(isAscending && relativeOffset <= 0.0 && MathAbs(relativeOffset) <= BothTooCloseDistance)
+        {
+            double distance = MathAbs(relativeOffset);
+            if(!hasAscendingBelow || distance < ascendingDistance)
+            {
+                hasAscendingBelow = true;
+                ascendingDistance = distance;
+                ascendingId = id;
+            }
+        }
+    }
+
+    if(hasDescendingAbove && hasAscendingBelow)
+    {
+        Log("Skipping " + decision + " - BothTooClose: desc above " + descendingId +
+            " dist=" + DoubleToString(descendingDistance, 2) +
+            " asc below " + ascendingId +
+            " dist=" + DoubleToString(ascendingDistance, 2) +
+            " limit=" + IntegerToString(BothTooCloseDistance));
+        return true;
+    }
+
+    return false;
+}
+
 bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, string decision)
 {
     if(partsCount < 3)
@@ -758,6 +863,9 @@ int ExecuteWdDecision(string decision)
     bool isBuy = (orderTypeStr == "BUY");
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double currentPrice = NormalizeDouble(isBuy ? Ask : Bid, Digits);
+
+    if(CheckBothTooClose(currentPrice, decision))
+        return 0;
 
     if (OrderAboveOrBelow_enabled)
     {
