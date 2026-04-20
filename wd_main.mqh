@@ -57,7 +57,7 @@ input bool FullCandleBeforeLine_enabled = true;
 
 //--- BothTooClose (both buy and sell within distance)
 // NOTE: WD MAIN on PRODUCTION must support decition line to enable this on production!!
-input bool BothTooClose_enabled = true;
+input bool BothTooClose_enabled = false;
 input int BothTooCloseDistance = 50;
 
 //-----------------------------------------------------------------------
