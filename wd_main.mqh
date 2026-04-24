@@ -123,6 +123,23 @@ bool HasSimilarOpenOrder(int orderType, double price)
     return false;
 }
 
+bool IsStrictlyBetterSL(int orderType, double currentSL, double newSL)
+{
+    if(newSL <= 0)
+        return false;
+
+    if(currentSL <= 0)
+        return true;
+
+    if(orderType == OP_BUY)
+        return (newSL > currentSL + (Point / 2.0));
+
+    if(orderType == OP_SELL)
+        return (newSL < currentSL - (Point / 2.0));
+
+    return false;
+}
+
 void SetAllOrdersSlToMaxSl(int orderType)
 {
     if(orderType != OP_SELL && orderType != OP_BUY)
@@ -149,13 +166,13 @@ void SetAllOrdersSlToMaxSl(int orderType)
         if(orderType == OP_BUY)
             buys++;
 
-        if(orderType == OP_SELL && (targetSL == 0 || sl > targetSL))
+        if(orderType == OP_SELL && (targetSL == 0 || sl < targetSL))
         {
             targetSL = sl;
             sourceSLTicket = OrderTicket();
         }
 
-        if(orderType == OP_BUY && (targetSL == 0 || sl < targetSL))
+        if(orderType == OP_BUY && (targetSL == 0 || sl > targetSL))
         {
             targetSL = sl;
             sourceSLTicket = OrderTicket();
@@ -184,6 +201,10 @@ void SetAllOrdersSlToMaxSl(int orderType)
             if(MathAbs(currentSL - targetSL) <= (Point / 2.0))
                 continue;
 
+            // Never worsen SL: modify only when target SL is strictly better.
+            if(!IsStrictlyBetterSL(orderType, currentSL, targetSL))
+                continue;
+
             int ticketToModify = OrderTicket();
             double openPriceToKeep = OrderOpenPrice();
             double tpToKeep = OrderTakeProfit();
@@ -204,7 +225,7 @@ void SetAllOrdersSlToMaxSl(int orderType)
         if(syncedCount > 0)
         {
             string orderName = orderType == OP_BUY ? "BUY" : "SELL";
-            string targetName = orderType == OP_BUY ? "lowest" : "highest";
+            string targetName = orderType == OP_BUY ? "highest" : "lowest";
             Log(orderName + " SL synced to " + targetName + " SL=" + DoubleToStr(targetSL, 2) +
                 " sourceTicket=" + IntegerToString(sourceSLTicket) +
                 " modified=" + IntegerToString(syncedCount));
@@ -359,6 +380,10 @@ void CheckBE()
             
             if(shouldModify)
             {
+                double currentSL = OrderStopLoss();
+                if(!IsStrictlyBetterSL(OrderType(), currentSL, newSL))
+                    continue;
+
                 ResetLastError();
                 if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
                 {
@@ -420,6 +445,9 @@ void CheckTrailingTP()
             shouldModify = (currentTP > 0 || currentSL == 0 || newSL < currentSL - (Point / 2.0));
 
         if(!shouldModify)
+            continue;
+
+        if(!IsStrictlyBetterSL(type, currentSL, newSL))
             continue;
 
         ResetLastError();
