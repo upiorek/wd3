@@ -147,6 +147,13 @@ button:hover {
     border-radius: 4px;
 }
 
+/* Hide the empty Sheep Files content box when no file is selected */
+#sheep-file-content:empty {
+    min-height: 0;
+    border: none;
+    background-color: transparent;
+}
+
 /* CSV Candles Table Styling */
 .csv-table {
     width: 100%;

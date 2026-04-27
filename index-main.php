@@ -2298,8 +2298,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 <button onclick="refreshSheepFilesList()" class="refresh-logs-btn">Refresh Files List</button>
             </div>
 
-            <div id="sheep-file-content" class="log-content-area">
-            </div>
+            <div id="sheep-file-content" class="log-content-area"></div>
         </div>
 
         <hr style="margin: 30px 0;">
