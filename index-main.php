@@ -2299,7 +2299,6 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             </div>
 
             <div id="sheep-file-content" class="log-content-area">
-                <p class="info-message">Select a file to view its contents.</p>
             </div>
         </div>
 
@@ -3233,47 +3232,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             const contentDiv = document.getElementById('sheep-file-content');
             
             if (!fileSelect.value) {
-                contentDiv.innerHTML = '<p class="info-message">Select a file to view its contents.</p>';
-                return;
-            }
-            
-            contentDiv.innerHTML = '<p style="color: #856404;">Loading...</p>';
-            
-            utils.request(`index.php?ajax=read_sheep_file&file=${encodeURIComponent(fileSelect.value)}`)
-                .then(data => {
-                    contentDiv.innerHTML = data.success ? data.content : `<p class="error-message">Error: ${data.message}</p>`;
-                })
-                .catch(error => utils.showError('sheep-file-content', error.message));
-        }
-        
-        // Sheep files functions
-        function refreshSheepFilesList() {
-            const select = document.getElementById('sheep-file-select');
-            const currentValue = select.value;
-            
-            utils.request('index.php?ajax=sheep_files_list')
-                .then(data => {
-                    utils.updateElement('sheep-files-heading', `Sheep Files (${data.count} files)`);
-                    select.innerHTML = '<option value="">-- Select a file --</option>';
-                    data.files.forEach(file => {
-                        const option = new Option(
-                            `${file.name} (${utils.formatBytes(file.size)})`,
-                            file.name
-                        );
-                        if (option.value === currentValue) option.selected = true;
-                        select.add(option);
-                    });
-                    alert('Sheep files refreshed');
-                })
-                .catch(error => alert('Error: ' + error.message));
-        }
-        
-        function loadSheepFile() {
-            const fileSelect = document.getElementById('sheep-file-select');
-            const contentDiv = document.getElementById('sheep-file-content');
-            
-            if (!fileSelect.value) {
-                contentDiv.innerHTML = '<p class="info-message">Select a file to view its contents.</p>';
+                contentDiv.innerHTML = '';
                 return;
             }
             
