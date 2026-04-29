@@ -572,6 +572,44 @@ button:hover {
     background-color: #c82333;
 }
 
+.dropped-orders-today-list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+}
+
+.dropped-orders-today-list li {
+    margin: 4px 0;
+    color: #343a40;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.drop-time {
+    display: inline-block;
+    min-width: 74px;
+    color: #6c757d;
+    font-family: monospace;
+}
+
+.drop-ticket {
+    font-weight: 600;
+    min-width: 90px;
+}
+
+.drop-user {
+    min-width: 32px;
+    color: #6c757d;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.drop-result {
+    color: #495057;
+    font-family: monospace;
+}
+
 .modify-order-section {
     background-color: #f8f9fa;
     padding: 20px;

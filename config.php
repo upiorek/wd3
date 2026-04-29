@@ -39,6 +39,7 @@ const ACCOUNT_LOG_FILE = MQL4_FILES_PATH . '/account_log.txt';
 const ORDERS_LOG_FILE = MQL4_FILES_PATH . '/orders_log.txt';
 const ORDER_HISTORY_LOG_FILE = MQL4_FILES_PATH . '/order_history_log.txt';
 const DROPPED_FILE = MQL4_FILES_PATH . '/dropped.txt';
+const DROP_AUDIT_FILE = MQL4_FILES_PATH . '/drop_audit.txt';
 const LOGS_DIR_MQL4 = MQL4_LOGS_PATH;
 const LOGS_DIR_MAIN = MAIN_LOGS_PATH;
 

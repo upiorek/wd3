@@ -67,6 +67,239 @@ function getToBeModifiedOrdersList() {
 }
 
 /**
+ * Get dropped orders for current day from wd-*.log files.
+ * @return array Array of dropped order entries for today (newest first)
+ */
+function getDroppedOrdersToday() {
+    $entries = array();
+
+    $logFiles = glob(MQL4_FILES_PATH . '/wd-*.log');
+    if ($logFiles === false || empty($logFiles)) {
+        return $entries;
+    }
+
+    $todayDot = date('Y.m.d');
+
+    foreach ($logFiles as $logFile) {
+        if (!is_file($logFile) || !is_readable($logFile)) {
+            continue;
+        }
+
+        $content = file_get_contents($logFile);
+        if ($content === false || trim($content) === '') {
+            continue;
+        }
+
+        $lines = explode("\n", trim($content));
+        $inDropAll = false;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || strpos($line, '|') === false) {
+                continue;
+            }
+
+            $lineParts = explode('|', $line, 2);
+            if (count($lineParts) < 2) {
+                continue;
+            }
+
+            $timestampRaw = trim($lineParts[0]); // format: YYYY.MM.DD HH:MM:SS
+            $message = trim($lineParts[1]);
+
+            if (substr($timestampRaw, 0, 10) !== $todayDot) {
+                continue;
+            }
+
+            // Track DROP ALL session boundaries.
+            if (preg_match('/DROP ALL command detected/i', $message)) {
+                $inDropAll = true;
+                continue; // no entry for the marker itself
+            }
+
+            if (preg_match('/DROP ALL completed/i', $message)) {
+                $inDropAll = false;
+                continue;
+            }
+
+            // Match closed order lines.
+            if (preg_match('/Closed order:\s*(\d+)/i', $message, $matches)) {
+                $entries[] = array(
+                    'timestamp' => str_replace('.', '-', $timestampRaw),
+                    'ticket'    => $matches[1],
+                    'action'    => $inDropAll ? 'drop_all_orders' : 'drop_order'
+                );
+                continue;
+            }
+
+            // Match individually cancelled orders (CheckAndCancelDroppedOrders).
+            if (preg_match('/Successfully cancelled order:\s*(\d+)/i', $message, $matches)) {
+                $entries[] = array(
+                    'timestamp' => str_replace('.', '-', $timestampRaw),
+                    'ticket'    => $matches[1],
+                    'action'    => 'drop_order'
+                );
+                continue;
+            }
+        }
+    }
+
+    usort($entries, function($a, $b) {
+        return strcmp($b['timestamp'], $a['timestamp']);
+    });
+
+    return $entries;
+}
+
+/**
+ * Build a lookup map of ticket => user from dropped.txt and drop_all.txt.
+ * dropped.txt lines: "TICKET | user=X" (per-ticket drops)
+ * drop_all.txt lines: "drop all\nuser=X" (used to tag DROP ALL closes)
+ * @return array ['ticket' => 'user', 'ALL' => 'user']
+ */
+/**
+ * Append a drop event to the persistent audit log.
+ * Format: TIMESTAMP|TICKET|USER
+ * This file is never touched by the EA, so entries persist permanently.
+ * @param string $ticket Ticket number or 'ALL'
+ * @param string $user   User identifier
+ */
+function appendDropAudit($ticket, $user) {
+    $ts = date('Y-m-d H:i:s');
+    $line = $ts . '|' . $ticket . '|' . $user;
+    $needsNewline = false;
+    if (file_exists(DROP_AUDIT_FILE)) {
+        $existing = file_get_contents(DROP_AUDIT_FILE);
+        if ($existing !== false && $existing !== '' && substr($existing, -1) !== "\n") {
+            $needsNewline = true;
+        }
+    }
+    file_put_contents(DROP_AUDIT_FILE, ($needsNewline ? "\n" : '') . $line . "\n", FILE_APPEND | LOCK_EX);
+}
+
+function buildDropUserLookup() {
+    $lookup = array();
+
+    if (!file_exists(DROP_AUDIT_FILE) || !is_readable(DROP_AUDIT_FILE)) {
+        return $lookup;
+    }
+
+    foreach (file(DROP_AUDIT_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $parts = explode('|', $line, 3);
+        if (count($parts) < 3) {
+            continue;
+        }
+        $ticket = trim($parts[1]);
+        $user   = trim($parts[2]);
+        $lookup[$ticket] = $user;
+    }
+
+    return $lookup;
+}
+
+/**
+ * Read order result value from per-ticket file in orders directory.
+ * @param string $ticket Ticket number
+ * @return string Result value or N/A when unavailable
+ */
+function getOrderResultByTicket($ticket) {
+    $ticket = trim((string)$ticket);
+    if ($ticket === '' || !ctype_digit($ticket)) {
+        return 'N/A';
+    }
+
+    $filePath = MQL4_FILES_PATH . '/orders/' . $ticket;
+    if (!is_file($filePath) || !is_readable($filePath)) {
+        return 'N/A';
+    }
+
+    $raw = file_get_contents($filePath);
+    if ($raw === false || trim($raw) === '') {
+        return 'N/A';
+    }
+
+    $result = null;
+    $profit = null;
+
+    foreach (explode("\n", $raw) as $line) {
+        $line = trim($line);
+        if ($line === '' || strpos($line, ':') === false) {
+            continue;
+        }
+
+        $parts = explode(':', $line, 2);
+        $key = trim($parts[0]);
+        $value = trim($parts[1]);
+
+        if ($key === 'Result (Net)') {
+            $result = $value;
+        } elseif ($key === 'Profit') {
+            $profit = $value;
+        }
+    }
+
+    if ($result !== null && $result !== '') {
+        return $result;
+    }
+
+    if ($profit !== null && $profit !== '') {
+        return $profit;
+    }
+
+    return 'N/A';
+}
+
+/**
+ * Generate HTML for today's dropped orders list.
+ * @return string HTML content
+ */
+function generateDroppedOrdersTodayHtml() {
+    $entries = getDroppedOrdersToday();
+    $userLookup = buildDropUserLookup();
+    $displayEntries = array();
+
+    foreach ($entries as $entry) {
+        $ticket = isset($entry['ticket']) ? trim((string)$entry['ticket']) : '';
+        if ($ticket !== '' && ctype_digit($ticket)) {
+            $timestamp = isset($entry['timestamp']) ? trim((string)$entry['timestamp']) : '';
+            $time = strlen($timestamp) >= 19 ? substr($timestamp, 11, 8) : 'N/A';
+            // Look up user: exact ticket match for drop_order;
+            // fall back to ALL only for tickets closed by DROP ALL.
+            $action = isset($entry['action']) ? $entry['action'] : '';
+            if (isset($userLookup[$ticket])) {
+                $user = $userLookup[$ticket];
+            } elseif ($action === 'drop_all_orders' && isset($userLookup['ALL'])) {
+                $user = $userLookup['ALL'];
+            } else {
+                $user = '?';
+            }
+            $displayEntries[] = array(
+                'ticket' => $ticket,
+                'time'   => $time,
+                'user'   => $user,
+                'result' => getOrderResultByTicket($ticket)
+            );
+        }
+    }
+
+    if (empty($displayEntries)) {
+        return '<p class="info-message">Brak zdropowanych orderów dzisiaj.</p>';
+    }
+
+    $html = '<ul class="dropped-orders-today-list">';
+    foreach ($displayEntries as $entry) {
+        $html .= '<li>';
+        $html .= '<span class="drop-time">' . htmlspecialchars($entry['time']) . '</span>';
+        $html .= '<span class="drop-ticket">' . htmlspecialchars($entry['ticket']) . '</span>';
+        $html .= '<span class="drop-user">' . htmlspecialchars($entry['user']) . '</span>';
+        $html .= '<span class="drop-result">' . htmlspecialchars($entry['result']) . '</span>';
+        $html .= '</li>';
+    }
+    $html .= '</ul>';
+
+    return $html;
+}
+
+/**
  * Parse orders log file and return structured data
  * @return array Array of order log entries with parsed data
  */
@@ -155,17 +388,18 @@ function getOrdersLogData() {
                 );
             }
 
-            if (!empty($entries)) {
-                usort($entries, function($a, $b) {
-                    return $b['mtime'] - $a['mtime'];
-                });
+            usort($entries, function($a, $b) {
+                return $b['mtime'] - $a['mtime'];
+            });
 
-                foreach ($entries as $entry) {
-                    $ordersLog[] = $entry['row'];
-                }
-
-                return $ordersLog;
+            foreach ($entries as $entry) {
+                $ordersLog[] = $entry['row'];
             }
+
+            // If per-ticket order files are available, treat them as the source of truth.
+            // Return an empty list when there are no active OPEN orders instead of
+            // falling back to legacy orders_log.txt, which may contain stale data.
+            return $ordersLog;
         }
     }
 
@@ -1410,6 +1644,21 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 'count' => count($orders_log)
             ]);
             break;
+
+        case 'dropped_orders_today':
+            $entries = getDroppedOrdersToday();
+            $ticketCount = 0;
+            foreach ($entries as $entry) {
+                $ticket = isset($entry['ticket']) ? trim((string)$entry['ticket']) : '';
+                if ($ticket !== '' && ctype_digit($ticket)) {
+                    $ticketCount++;
+                }
+            }
+            echo json_encode([
+                'html' => generateDroppedOrdersTodayHtml(),
+                'count' => $ticketCount
+            ]);
+            break;
             
         case 'logs_list':
             $logFiles = getLogFilesList();
@@ -1927,6 +2176,19 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 echo json_encode(['success' => false, 'message' => 'Valid ticket ID is required']);
                 break;
             }
+
+            $dropUser = 'unknown';
+            if (function_exists('isLoggedIn') && function_exists('getUserType') && isLoggedIn()) {
+                $userType = getUserType();
+                if ($userType !== null && $userType !== '') {
+                    $dropUser = $userType;
+                }
+            }
+            // Keep dropped.txt backward-compatible: ticket remains first token.
+            $dropUser = preg_replace('/[^A-Za-z0-9_.-]/', '', (string)$dropUser);
+            if ($dropUser === null || $dropUser === '') {
+                $dropUser = 'unknown';
+            }
             
             // Ensure proper newline handling
             $needsNewlineBefore = false;
@@ -1937,10 +2199,12 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 }
             }
             
-            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $ticket . "\n";
+            $dropLine = $ticket . ' | user=' . $dropUser;
+            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $dropLine . "\n";
             $result = file_put_contents(DROPPED_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
-            
+
             if ($result !== false) {
+                appendDropAudit($ticket, $dropUser);
                 echo json_encode(['success' => true, 'message' => 'Ticket ' . $ticket . ' added to dropped orders']);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Failed to add ticket to dropped orders file']);
@@ -1955,11 +2219,42 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 echo json_encode(['success' => false, 'message' => 'Directory not writable: ' . MQL4_FILES_PATH]);
                 break;
             }
-            
-            // Always write "drop all" to the file (overwrite if exists)
-            $result = file_put_contents($dropAllFile, "drop all\n", LOCK_EX);
-            
+
+            $dropAllUser = 'unknown';
+            if (function_exists('isLoggedIn') && function_exists('getUserType') && isLoggedIn()) {
+                $userTypeAll = getUserType();
+                if ($userTypeAll !== null && $userTypeAll !== '') {
+                    $dropAllUser = preg_replace('/[^A-Za-z0-9_.-]/', '', (string)$userTypeAll);
+                }
+            }
+
+            // First line must stay "drop all" - EA reads only that line.
+            // Second line stores user info (EA ignores it).
+            $result = file_put_contents($dropAllFile, "drop all\nuser=" . $dropAllUser . "\n", LOCK_EX);
+
             if ($result !== false) {
+                // Record each currently open ticket individually in the audit
+                // so that user attribution is precise per-ticket, not a generic ALL fallback.
+                $ordersDir = MQL4_FILES_PATH . '/orders';
+                $auditedAny = false;
+                if (is_dir($ordersDir)) {
+                    $orderFiles = scandir($ordersDir);
+                    if ($orderFiles !== false) {
+                        foreach ($orderFiles as $of) {
+                            if (!preg_match('/^\d+$/', $of)) continue;
+                            $ofPath = $ordersDir . '/' . $of;
+                            if (!is_file($ofPath)) continue;
+                            $ofContent = file_get_contents($ofPath);
+                            if ($ofContent !== false && strpos($ofContent, 'Status: OPEN') !== false) {
+                                appendDropAudit($of, $dropAllUser);
+                                $auditedAny = true;
+                            }
+                        }
+                    }
+                }
+                if (!$auditedAny) {
+                    appendDropAudit('ALL', $dropAllUser);
+                }
                 echo json_encode(['success' => true, 'message' => 'Drop all command issued - all orders will be closed']);
             } else {
                 $error = error_get_last();
@@ -2211,6 +2506,23 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                         🚨 Drop All Orders
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <?php
+        $droppedToday = getDroppedOrdersToday();
+        $droppedTodayTicketCount = 0;
+        foreach ($droppedToday as $entry) {
+            $ticket = isset($entry['ticket']) ? trim((string)$entry['ticket']) : '';
+            if ($ticket !== '' && ctype_digit($ticket)) {
+                $droppedTodayTicketCount++;
+            }
+        }
+        ?>
+        <div class="drop-order-section" style="margin-top: 15px; border-left: 4px solid #6c757d;">
+            <h3 id="dropped-today-heading">Dropped Today (<?php echo $droppedTodayTicketCount; ?>)</h3>
+            <div id="dropped-today-list">
+                <?php echo generateDroppedOrdersTodayHtml(); ?>
             </div>
         </div>
 
@@ -2828,6 +3140,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     if (data.success) {
                         // Reset the dropdown to default selection
                         ticketSelect.value = '';
+                        refreshDroppedOrdersToday();
                     }
                 })
                 .catch(error => alert('Error dropping order: ' + error.message));
@@ -2849,8 +3162,21 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             utils.request('index.php', { method: 'POST', body: formData })
                 .then(data => {
                     alert(data.success ? data.message : 'Error: ' + data.message);
+                    if (data.success) {
+                        refreshDroppedOrdersToday();
+                    }
                 })
                 .catch(error => alert('Error dropping all orders: ' + error.message));
+        }
+
+        function refreshDroppedOrdersToday() {
+            utils.request('index.php?ajax=dropped_orders_today')
+                .then(data => {
+                    if (!data) return;
+                    utils.updateElement('dropped-today-list', data.html || '<p class="info-message">Brak danych.</p>');
+                    utils.updateElement('dropped-today-heading', `Dropped Today (${data.count || 0})`);
+                })
+                .catch(error => console.error('Error refreshing dropped today list:', error));
         }
 
         function loadOrderDetails() {
@@ -3401,6 +3727,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 if (!isOrderHistoryLogCollapsed) 
                     refresh.orderHistoryLog();
                 refresh.profits();
+                refreshDroppedOrdersToday();
             }, 1000);
             
             // Additional interval for title updates every second
