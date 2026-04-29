@@ -72,33 +72,126 @@ function getToBeModifiedOrdersList() {
  */
 function getOrdersLogData() {
     $ordersLog = array();
-    
+
+    $ordersDir = MQL4_FILES_PATH . '/orders';
+    if (is_dir($ordersDir)) {
+        $files = scandir($ordersDir);
+        if ($files !== false) {
+            $entries = array();
+
+            foreach ($files as $file) {
+                if ($file === '.' || $file === '..') {
+                    continue;
+                }
+
+                // Order file names are ticket numbers.
+                if (!preg_match('/^\d+$/', $file)) {
+                    continue;
+                }
+
+                $filePath = $ordersDir . '/' . $file;
+                if (!is_file($filePath) || !is_readable($filePath)) {
+                    continue;
+                }
+
+                $raw = file_get_contents($filePath);
+                if ($raw === false || trim($raw) === '') {
+                    continue;
+                }
+
+                $data = array(
+                    'ticket' => $file,
+                    'status' => 'UNKNOWN',
+                    'type' => 'N/A',
+                    'symbol' => 'N/A',
+                    'lots' => 'N/A',
+                    'openPrice' => 'N/A',
+                    'stopLoss' => 'N/A',
+                    'takeProfit' => 'N/A',
+                    'profit' => '0',
+                    'openTime' => 'N/A'
+                );
+
+                foreach (explode("\n", $raw) as $line) {
+                    $line = trim($line);
+                    if ($line === '' || strpos($line, ':') === false) {
+                        continue;
+                    }
+
+                    $parts = explode(':', $line, 2);
+                    $key = trim($parts[0]);
+                    $value = trim($parts[1]);
+
+                    if ($key === 'Ticket') $data['ticket'] = $value;
+                    elseif ($key === 'Status') $data['status'] = $value;
+                    elseif ($key === 'Type') $data['type'] = $value;
+                    elseif ($key === 'Symbol') $data['symbol'] = $value;
+                    elseif ($key === 'Lots') $data['lots'] = $value;
+                    elseif ($key === 'Open Price') $data['openPrice'] = $value;
+                    elseif ($key === 'Stop Loss') $data['stopLoss'] = $value;
+                    elseif ($key === 'Take Profit') $data['takeProfit'] = $value;
+                    elseif ($key === 'Profit') $data['profit'] = $value;
+                    elseif ($key === 'Open Time') $data['openTime'] = $value;
+                }
+
+                // Orders Log panel should show only active orders.
+                if (strtoupper($data['status']) !== 'OPEN') {
+                    continue;
+                }
+
+                $entries[] = array(
+                    'row' => array(
+                        'ticket' => $data['ticket'],
+                        'type' => $data['type'],
+                        'symbol' => $data['symbol'],
+                        'lots' => $data['lots'],
+                        'openPrice' => $data['openPrice'],
+                        'stopLoss' => $data['stopLoss'],
+                        'takeProfit' => $data['takeProfit'],
+                        'profit' => $data['profit'],
+                        'openTime' => $data['openTime']
+                    ),
+                    'mtime' => filemtime($filePath)
+                );
+            }
+
+            if (!empty($entries)) {
+                usort($entries, function($a, $b) {
+                    return $b['mtime'] - $a['mtime'];
+                });
+
+                foreach ($entries as $entry) {
+                    $ordersLog[] = $entry['row'];
+                }
+
+                return $ordersLog;
+            }
+        }
+    }
+
+    // Fallback to legacy orders_log.txt format.
     if (file_exists(ORDERS_LOG_FILE)) {
         $content = file_get_contents(ORDERS_LOG_FILE);
         $lines = explode("\n", trim($content));
-        
+
         foreach ($lines as $line) {
             $line = trim($line);
-            
-            // Skip header lines and empty lines
-            if (empty($line) || 
-                strpos($line, '=== ORDERS LOG') === 0 || 
-                strpos($line, '=== END') === 0 || 
+
+            if (empty($line) ||
+                strpos($line, '=== ORDERS LOG') === 0 ||
+                strpos($line, '=== END') === 0 ||
                 strpos($line, 'Total Orders:') === 0 ||
                 strpos($line, 'Ticket | Type') === 0 ||
                 strpos($line, '-------|------') === 0 ||
                 strpos($line, 'No open orders') === 0) {
                 continue;
             }
-            
-            // Parse data line (pipe-separated values)
+
             if (strpos($line, '|') !== false) {
                 $parts = array_map('trim', explode('|', $line));
-                
-                // Handle different formats - current format has 5 parts, expected format has 8+ parts
+
                 if (count($parts) >= 5) {
                     if (count($parts) >= 9) {
-                        // Full format with time: Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit | OpenTime
                         $ordersLog[] = array(
                             'ticket' => $parts[0],
                             'type' => $parts[1],
@@ -111,7 +204,6 @@ function getOrdersLogData() {
                             'openTime' => $parts[8]
                         );
                     } elseif (count($parts) >= 8) {
-                        // Full format: Ticket | Type | Symbol | Lots | OpenPrice | StopLoss | TakeProfit | Profit
                         $ordersLog[] = array(
                             'ticket' => $parts[0],
                             'type' => $parts[1],
@@ -124,7 +216,6 @@ function getOrdersLogData() {
                             'openTime' => 'N/A'
                         );
                     } else {
-                        // Simplified format: Ticket | Type | Symbol | Lots | Profit
                         $ordersLog[] = array(
                             'ticket' => $parts[0],
                             'type' => $parts[1],
@@ -141,7 +232,7 @@ function getOrdersLogData() {
             }
         }
     }
-    
+
     return $ordersLog;
 }
 
