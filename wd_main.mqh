@@ -140,6 +140,54 @@ bool IsStrictlyBetterSL(int orderType, double currentSL, double newSL)
     return false;
 }
 
+bool IsMoreRiskySL(int orderType, double currentSL, double newSL)
+{
+    if(currentSL <= 0)
+        return false;
+
+    if(newSL <= 0)
+        return true;
+
+    if(orderType == OP_BUY)
+        return (newSL < currentSL - (Point / 2.0));
+
+    if(orderType == OP_SELL)
+        return (newSL > currentSL + (Point / 2.0));
+
+    return true;
+}
+
+bool OrderModifySafeSL(int ticket, double openPrice, double newSL, double newTP, datetime expiration, color arrowColor)
+{
+    int type = OrderType();
+    double currentSL = OrderStopLoss();
+    bool isCurrentOrder = (OrderTicket() == ticket && (type == OP_BUY || type == OP_SELL));
+
+    if(!isCurrentOrder)
+    {
+        if(!OrderSelect(ticket, SELECT_BY_TICKET))
+            return false;
+
+        type = OrderType();
+        currentSL = OrderStopLoss();
+    }
+
+    if(type != OP_BUY && type != OP_SELL)
+        return false;
+
+    if(IsMoreRiskySL(type, currentSL, newSL))
+    {
+        string dir = type == OP_BUY ? "BUY" : "SELL";
+        Log("Blocked risky SL modify: Ticket=" + IntegerToString(ticket) +
+            " Type=" + dir +
+            " CurrentSL=" + DoubleToStr(currentSL, 2) +
+            " NewSL=" + DoubleToStr(newSL, 2));
+        return false;
+    }
+
+    return OrderModify(ticket, openPrice, newSL, newTP, expiration, arrowColor);
+}
+
 void SetAllOrdersSlToMaxSl(int orderType)
 {
     if(orderType != OP_SELL && orderType != OP_BUY)
@@ -210,7 +258,7 @@ void SetAllOrdersSlToMaxSl(int orderType)
             double tpToKeep = OrderTakeProfit();
 
             ResetLastError();
-            if(OrderModify(ticketToModify, openPriceToKeep, targetSL, tpToKeep, 0, clrRed))
+            if(OrderModifySafeSL(ticketToModify, openPriceToKeep, targetSL, tpToKeep, 0, clrRed))
             {
                 syncedCount++;
             }
@@ -385,7 +433,7 @@ void CheckBE()
                     continue;
 
                 ResetLastError();
-                if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
+                if(OrderModifySafeSL(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
                 {
 		            string type = OrderType() == OP_BUY ? "BUY" : "SELL";
                     Log("Break-even set: Ticket=" + IntegerToString(OrderTicket()) + " Type=" + type +
@@ -451,7 +499,7 @@ void CheckTrailingTP()
             continue;
 
         ResetLastError();
-        if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, 0, 0, clrBlue))
+        if(OrderModifySafeSL(OrderTicket(), OrderOpenPrice(), newSL, 0, 0, clrBlue))
         {
             string typeStr = type == OP_BUY ? "BUY" : "SELL";
             Log("TrailingTP updated: Ticket=" + IntegerToString(OrderTicket()) +
