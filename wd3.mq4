@@ -60,6 +60,100 @@ void LogAccountInfo()
    }
 }
 
+void LogOrders()
+{
+   // Ensure subfolder exists under MQL4/Files
+   FolderCreate("orders");
+
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+      {
+         string orderType = "UNKNOWN";
+         switch(OrderType())
+         {
+            case OP_BUY: orderType = "BUY"; break;
+            case OP_SELL: orderType = "SELL"; break;
+            case OP_BUYLIMIT: orderType = "BUY LIMIT"; break;
+            case OP_SELLLIMIT: orderType = "SELL LIMIT"; break;
+            case OP_BUYSTOP: orderType = "BUY STOP"; break;
+            case OP_SELLSTOP: orderType = "SELL STOP"; break;
+         }
+
+         string fileName = "orders/" + IntegerToString(OrderTicket());
+         int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
+
+         if(fileHandle != INVALID_HANDLE)
+         {
+            double netResult = OrderProfit() + OrderSwap() + OrderCommission();
+
+            string logData = "Timestamp: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n" +
+                             "Ticket: " + IntegerToString(OrderTicket()) + "\n" +
+                             "Status: OPEN\n" +
+                             "Type: " + orderType + "\n" +
+                             "Symbol: " + OrderSymbol() + "\n" +
+                             "Lots: " + DoubleToString(OrderLots(), 2) + "\n" +
+                             "Open Time: " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n" +
+                             "Open Price: " + DoubleToString(OrderOpenPrice(), Digits) + "\n" +
+                             "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + "\n" +
+                             "Take Profit: " + DoubleToString(OrderTakeProfit(), Digits) + "\n" +
+                             "Commission: " + DoubleToString(OrderCommission(), 2) + "\n" +
+                             "Swap: " + DoubleToString(OrderSwap(), 2) + "\n" +
+                             "Profit: " + DoubleToString(OrderProfit(), 2) + "\n" +
+                             "Result (Net): " + DoubleToString(netResult, 2) + "\n";
+
+            FileWriteString(fileHandle, logData);
+            FileClose(fileHandle);
+         }
+      }
+   }
+
+   for(int h = 0; h < OrdersHistoryTotal(); h++)
+   {
+      if(OrderSelect(h, SELECT_BY_POS, MODE_HISTORY))
+      {
+         string orderType = "UNKNOWN";
+         switch(OrderType())
+         {
+            case OP_BUY: orderType = "BUY"; break;
+            case OP_SELL: orderType = "SELL"; break;
+            case OP_BUYLIMIT: orderType = "BUY LIMIT"; break;
+            case OP_SELLLIMIT: orderType = "SELL LIMIT"; break;
+            case OP_BUYSTOP: orderType = "BUY STOP"; break;
+            case OP_SELLSTOP: orderType = "SELL STOP"; break;
+         }
+
+         string fileName = "orders/" + IntegerToString(OrderTicket());
+         int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
+
+         if(fileHandle != INVALID_HANDLE)
+         {
+            double netResult = OrderProfit() + OrderSwap() + OrderCommission();
+
+            string logData = "Timestamp: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n" +
+                             "Ticket: " + IntegerToString(OrderTicket()) + "\n" +
+                             "Status: CLOSED\n" +
+                             "Type: " + orderType + "\n" +
+                             "Symbol: " + OrderSymbol() + "\n" +
+                             "Lots: " + DoubleToString(OrderLots(), 2) + "\n" +
+                             "Open Time: " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n" +
+                             "Close Time: " + TimeToString(OrderCloseTime(), TIME_DATE|TIME_SECONDS) + "\n" +
+                             "Open Price: " + DoubleToString(OrderOpenPrice(), Digits) + "\n" +
+                             "Close Price: " + DoubleToString(OrderClosePrice(), Digits) + "\n" +
+                             "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + "\n" +
+                             "Take Profit: " + DoubleToString(OrderTakeProfit(), Digits) + "\n" +
+                             "Commission: " + DoubleToString(OrderCommission(), 2) + "\n" +
+                             "Swap: " + DoubleToString(OrderSwap(), 2) + "\n" +
+                             "Profit: " + DoubleToString(OrderProfit(), 2) + "\n" +
+                             "Result (Net): " + DoubleToString(netResult, 2) + "\n";
+
+            FileWriteString(fileHandle, logData);
+            FileClose(fileHandle);
+         }
+      }
+   }
+}
+
 void LogMarketData()
 {
    int fileHandle = FileOpen("market_log.txt", FILE_WRITE|FILE_TXT);
@@ -776,7 +870,7 @@ void Logs()
    if(currentTime - lastLogTime >= 1)
    {
       LogAccountInfo();
-      LogAllOrders();
+      LogOrders();
       lastLogTime = currentTime;
    }
 
