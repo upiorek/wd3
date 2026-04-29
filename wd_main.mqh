@@ -60,11 +60,16 @@ input bool FullCandleBeforeLine_enabled = true;
 input bool BothTooClose_enabled = false;
 input int BothTooCloseDistance = 50;
 
+input bool DropOnBreakeven_enabled = true;
+input int DropOnBreakevenLoss = 4; // * SL
+input int DropOnBreakevenTrigger = 3; // * SL
+input int DropOnBreakevenSL = 0; // * SL - if == 0 drop immedaitely, if > 0 set SL to current price + DropOnBreakevenSL*SL
+
 //-----------------------------------------------------------------------
 
 string GetVersion()
 {
-    return "wd main version 1.45";
+    return "wd main version 1.46";
 }
 
 void Log(string message)
@@ -683,6 +688,165 @@ bool CheckWeakClosedOnFlip(string decision)
     return false;
 }
 
+bool CheckDropOnBreakeven()
+{
+    if(!DropOnBreakeven_enabled)
+        return false;
+    if(DropOnBreakevenLoss <= 0 || DropOnBreakevenTrigger <= 0)
+        return false;
+    if(stopLoss <= 0 || lotSize <= 0.0)
+        return false;
+
+    double tickValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+    double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+    if(tickValue <= 0.0 || tickSize <= 0.0)
+        return false;
+
+    double oneSlMoney = ((stopLoss * Point) / tickSize) * tickValue * lotSize;
+    if(oneSlMoney <= 0.0)
+        return false;
+
+    datetime currentDay = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
+    datetime nextDay = currentDay + 86400;
+    double dailyNetProfit = 0.0;
+
+    for(int i = OrdersHistoryTotal() - 1; i >= 0; i--)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int historyType = OrderType();
+        if(historyType != OP_BUY && historyType != OP_SELL)
+            continue;
+
+        string historyComment = OrderComment();
+        if(StringLen(historyComment) < 2 || StringFind(historyComment, "WD ", 0) != 0)
+            continue;
+
+        datetime closeTime = OrderCloseTime();
+        if(closeTime < currentDay || closeTime >= nextDay)
+            continue;
+
+        dailyNetProfit += (OrderProfit() + OrderSwap() + OrderCommission());
+    }
+
+    double currentDailyLoss = dailyNetProfit < 0.0 ? -dailyNetProfit : 0.0;
+    double lossTrigger = DropOnBreakevenLoss * oneSlMoney;
+    if(currentDailyLoss < lossTrigger)
+        return false;
+
+    double currentOpenProfit = 0.0;
+    int openOrders = 0;
+
+    for(int j = OrdersTotal() - 1; j >= 0; j--)
+    {
+        if(!OrderSelect(j, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int openType = OrderType();
+        if(openType != OP_BUY && openType != OP_SELL)
+            continue;
+
+        string openComment = OrderComment();
+        if(StringLen(openComment) < 2 || StringFind(openComment, "WD ", 0) != 0)
+            continue;
+
+        currentOpenProfit += (OrderProfit() + OrderSwap() + OrderCommission());
+        openOrders++;
+    }
+
+    double profitTrigger = DropOnBreakevenTrigger * oneSlMoney;
+    if(openOrders <= 0 || currentOpenProfit < profitTrigger)
+        return false;
+
+    Log("DropOnBreakeven triggered: dayLoss=" + DoubleToStr(currentDailyLoss, 2) +
+        " triggerLoss=" + DoubleToStr(lossTrigger, 2) +
+        " openProfit=" + DoubleToStr(currentOpenProfit, 2) +
+        " triggerProfit=" + DoubleToStr(profitTrigger, 2));
+
+    bool shouldCloseImmediately = (DropOnBreakevenSL == 0);
+    double slDistance = DropOnBreakevenSL * stopLoss * Point;
+    int changedCount = 0;
+    int failedCount = 0;
+    for(int k = OrdersTotal() - 1; k >= 0; k--)
+    {
+        if(!OrderSelect(k, SELECT_BY_POS, MODE_TRADES))
+            continue;
+        if(OrderSymbol() != Symbol())
+            continue;
+
+        int type = OrderType();
+        string actionComment = OrderComment();
+        if(StringLen(actionComment) < 2 || StringFind(actionComment, "WD ", 0) != 0)
+            continue;
+
+        int ticket = OrderTicket();
+        bool changed = false;
+
+        ResetLastError();
+        if(shouldCloseImmediately)
+        {
+            if(type == OP_BUY || type == OP_SELL)
+            {
+                RefreshRates();
+                double closePrice = type == OP_BUY ? Bid : Ask;
+                changed = OrderClose(ticket, OrderLots(), closePrice, slippage, clrYellow);
+            }
+            else
+            {
+                changed = OrderDelete(ticket);
+            }
+        }
+        else
+        {
+            if(type == OP_BUY || type == OP_SELL)
+            {
+                RefreshRates();
+                double referencePrice = type == OP_BUY ? Bid : Ask;
+                double targetSL = NormalizeDouble(
+                    type == OP_BUY ? referencePrice - slDistance : referencePrice + slDistance,
+                    Digits
+                );
+
+                if(IsStrictlyBetterSL(type, OrderStopLoss(), targetSL))
+                {
+                    changed = OrderModifySafeSL(ticket, OrderOpenPrice(), targetSL, OrderTakeProfit(), 0, clrYellow);
+                }
+                else
+                {
+                    changed = true;
+                }
+            }
+            else
+            {
+                changed = OrderDelete(ticket);
+            }
+        }
+
+        if(changed)
+        {
+            changedCount++;
+        }
+        else
+        {
+            failedCount++;
+            Log("ERROR: DropOnBreakeven failed Ticket=" + IntegerToString(ticket) +
+                " Error=" + IntegerToString(GetLastError()));
+        }
+    }
+
+    Log("DropOnBreakeven completed: mode=" + (shouldCloseImmediately ? "close" : "set-sl") +
+        " changed=" + IntegerToString(changedCount) +
+        " failed=" + IntegerToString(failedCount) +
+        (shouldCloseImmediately ? "" : " slMultiplier=" + IntegerToString(DropOnBreakevenSL)));
+
+    return (changedCount > 0);
+}
+
 bool CheckBothTooClose(double currentPrice, string decision)
 {
     if(!BothTooClose_enabled)
@@ -939,6 +1103,11 @@ int ExecuteWdDecision(string decision)
     bool isBuy = (orderTypeStr == "BUY");
     int cmd = isBuy ? OP_BUY : OP_SELL;
     double currentPrice = NormalizeDouble(isBuy ? Ask : Bid, Digits);
+
+    if(DropOnBreakeven_enabled && CheckDropOnBreakeven())
+    {
+        return 0;
+    }
 
     if(CheckBothTooClose(currentPrice, decision))
         return 0;
