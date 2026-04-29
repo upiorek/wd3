@@ -124,6 +124,19 @@ void LogOrders()
          }
 
          string fileName = "orders/" + IntegerToString(OrderTicket());
+
+         // Skip files already marked as CLOSED - they never change.
+         int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
+         if(checkHandle != INVALID_HANDLE)
+         {
+            string existingContent = "";
+            while(!FileIsEnding(checkHandle))
+               existingContent += FileReadString(checkHandle);
+            FileClose(checkHandle);
+            if(StringFind(existingContent, "Status: CLOSED") >= 0)
+               continue;
+         }
+
          int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
 
          if(fileHandle != INVALID_HANDLE)
@@ -368,7 +381,13 @@ void CheckAndCancelDroppedOrders()
          line = StringTrimLeft(StringTrimRight(line));
          if(line != "")
          {
-            int ticket = (int)StringToInteger(line);
+            string ticketText = line;
+            int separatorPos = StringFind(ticketText, "|");
+            if(separatorPos >= 0)
+               ticketText = StringSubstr(ticketText, 0, separatorPos);
+            ticketText = StringTrimLeft(StringTrimRight(ticketText));
+
+            int ticket = (int)StringToInteger(ticketText);
             if(ticket > 0)
             {
                // Check if this ticket is an open order
@@ -407,7 +426,13 @@ void CheckAndCancelDroppedOrders()
       // Cancel the found orders
       for(int j = 0; j < cancelCount; j++)
       {
-         int ticketToCancel = (int)StringToInteger(ticketsToCancel[j]);
+         string ticketText = ticketsToCancel[j];
+         int separatorPos = StringFind(ticketText, "|");
+         if(separatorPos >= 0)
+            ticketText = StringSubstr(ticketText, 0, separatorPos);
+         ticketText = StringTrimLeft(StringTrimRight(ticketText));
+
+         int ticketToCancel = (int)StringToInteger(ticketText);
          if(OrderSelect(ticketToCancel, SELECT_BY_TICKET))
          {
             bool closed = false;
