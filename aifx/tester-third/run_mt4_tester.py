@@ -1324,7 +1324,7 @@ def write_wd_summary(config: dict) -> None:
     elif closed_orders is None:
         closed_str = "UNKNOWN"
     else:
-        closed_str = str(closed_orders)
+        closed_str = f"{closed_orders:04d}"
 
     minus_sl_count = 0
     be_bucket_count = 0
@@ -1347,10 +1347,17 @@ def write_wd_summary(config: dict) -> None:
         three_sl_bucket_count = int(sl_tp.get("three_sl_bucket_count", 0))
         four_sl_plus_count = int(sl_tp.get("four_sl_plus_count", 0))
 
+        minus_sl_str = f"{minus_sl_count:03d}"
+        be_bucket_str = f"{be_bucket_count:03d}"
+        sl_bucket_str = f"{sl_bucket_count:03d}"
+        two_sl_bucket_str = f"{two_sl_bucket_count:03d}"
+        three_sl_bucket_str = f"{three_sl_bucket_count:03d}"
+        four_sl_plus_str = f"{four_sl_plus_count:03d}"
+
         sl_chain_str = (
-            f"-SL: {minus_sl_count} < BE: {be_bucket_count} < SL: {sl_bucket_count}"
-            f" < 2SL: {two_sl_bucket_count} < 3SL: {three_sl_bucket_count}"
-            f" < 4SL+: {four_sl_plus_count}"
+            f"-SL: {minus_sl_str} < BE: {be_bucket_str} < SL: {sl_bucket_str}"
+            f" < 2SL: {two_sl_bucket_str} < 3SL: {three_sl_bucket_str}"
+            f" < 4SL+: {four_sl_plus_str}"
         )
 
         # Share of strong winners (2SL and above) versus losing SL count.
