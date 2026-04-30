@@ -242,6 +242,17 @@ button:hover {
     padding: 40px 20px;
     font-style: italic;
 }
+.drop-order-section.drop-order-section-collapsed {
+    padding: 12px 20px;
+}
+.drop-order-section.drop-order-section-collapsed h3 {
+    margin-bottom: 6px;
+}
+.drop-order-section.drop-order-section-collapsed #dropped-today-list .info-message {
+    padding: 4px 0 0;
+    margin: 0;
+    text-align: left;
+}
 
 @media (max-width: 768px) {
     .logs-controls {

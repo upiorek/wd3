@@ -281,10 +281,6 @@ function generateDroppedOrdersTodayHtml() {
         }
     }
 
-    if (empty($displayEntries)) {
-        return '<p class="info-message">Brak zdropowanych orderów dzisiaj.</p>';
-    }
-
     $html = '<ul class="dropped-orders-today-list">';
     foreach ($displayEntries as $entry) {
         $html .= '<li>';
@@ -2519,7 +2515,11 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             }
         }
         ?>
-        <div class="drop-order-section" style="margin-top: 15px; border-left: 4px solid #6c757d;">
+        <div
+            id="dropped-today-section"
+            class="drop-order-section<?php echo $droppedTodayTicketCount === 0 ? ' drop-order-section-collapsed' : ''; ?>"
+            style="margin-top: 15px; border-left: 4px solid #6c757d;"
+        >
             <h3 id="dropped-today-heading">Dropped Today (<?php echo $droppedTodayTicketCount; ?>)</h3>
             <div id="dropped-today-list">
                 <?php echo generateDroppedOrdersTodayHtml(); ?>
@@ -3173,8 +3173,15 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
             utils.request('index.php?ajax=dropped_orders_today')
                 .then(data => {
                     if (!data) return;
+                    const droppedTodaySection = document.getElementById('dropped-today-section');
+                    const count = Number(data.count || 0);
+
                     utils.updateElement('dropped-today-list', data.html || '<p class="info-message">Brak danych.</p>');
-                    utils.updateElement('dropped-today-heading', `Dropped Today (${data.count || 0})`);
+                    utils.updateElement('dropped-today-heading', `Dropped Today (${count})`);
+
+                    if (droppedTodaySection) {
+                        droppedTodaySection.classList.toggle('drop-order-section-collapsed', count === 0);
+                    }
                 })
                 .catch(error => console.error('Error refreshing dropped today list:', error));
         }
