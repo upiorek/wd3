@@ -37,12 +37,13 @@ aifx/data/**/*.csv
 aifx/data/**/*_decision.txt
 aifx/data/**/*_result.txt
 aifx/data/**/*.png
+aifx/data/**/*_stats.txt
+
+# keep the US100 data for testing
+!aifx\data\US100.f15.csv_data
 
 aifx/tester-third/wd_main.mqh
 aifx/tester-third/wd_tester_hash.mqh
 
 .vscode/launch.json
 .vscode/tasks.json
-
-aifx/data/**/*_stats.txt
-aifx/data/2025.01/charts/*_stats.txt
