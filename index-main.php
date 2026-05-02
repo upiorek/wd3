@@ -335,6 +335,7 @@ function getOrdersLogData() {
                     'symbol' => 'N/A',
                     'lots' => 'N/A',
                     'openPrice' => 'N/A',
+                    'openComment' => 'N/A',
                     'stopLoss' => 'N/A',
                     'takeProfit' => 'N/A',
                     'profit' => '0',
@@ -361,6 +362,7 @@ function getOrdersLogData() {
                     elseif ($key === 'Take Profit') $data['takeProfit'] = $value;
                     elseif ($key === 'Profit') $data['profit'] = $value;
                     elseif ($key === 'Open Time') $data['openTime'] = $value;
+                    elseif ($key === 'Open Comment') $data['openComment'] = $value;
                 }
 
                 // Orders Log panel should show only active orders.
@@ -375,6 +377,7 @@ function getOrdersLogData() {
                         'symbol' => $data['symbol'],
                         'lots' => $data['lots'],
                         'openPrice' => $data['openPrice'],
+                        'openComment' => $data['openComment'],
                         'stopLoss' => $data['stopLoss'],
                         'takeProfit' => $data['takeProfit'],
                         'profit' => $data['profit'],
@@ -656,6 +659,9 @@ function generateOrdersLogTable($ordersLog) {
         }
         
         $rowStyle = $isProfitableSL ? ' style="background-color: #d4edda;"' : '';
+        $openCommentHtml = $order['openComment'] === 'N/A'
+            ? '<span class="na-value">N/A</span>'
+            : htmlspecialchars($order['openComment']);
         
         $html .= '<tr' . $rowStyle . '>';
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
@@ -667,6 +673,9 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['stopLoss'], $order['symbol'])) . '</td>';
         $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['takeProfit'], $order['symbol'])) . '</td>';
         $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</td>';
+        $html .= '</tr>';
+        $html .= '<tr class="orders-log-comment-row">';
+        $html .= '<td colspan="9"><strong>Open Comment:</strong> ' . $openCommentHtml . '</td>';
         $html .= '</tr>';
     }
     
@@ -711,7 +720,7 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<div>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</div>';
         $html .= '</div>';
         
-        // Third row: Labels (Open Time, Open Price)
+        // Third row: Labels (Open Time, Open)
         $html .= '<div class="card-row labels">';
         $html .= '<div>Open Time</div>';
         $html .= '<div>Open</div>';
@@ -719,13 +728,14 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<div></div>';
         $html .= '</div>';
         
-        // Fourth row: Values (Open Time, Open Price)
+        // Fourth row: Values (Open Time, Open)
         $html .= '<div class="card-row values">';
         $html .= '<div>' . ($order['openTime'] === 'N/A' ? '<span class="na-value">N/A</span>' : htmlspecialchars($order['openTime'])) . '</div>';
         $html .= '<div>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['openPrice'], $order['symbol'])) . '</div>';
         $html .= '<div></div>';
         $html .= '<div></div>';
         $html .= '</div>';
+        $html .= '<div class="card-row comment-row"><strong>Open Comment:</strong> ' . $openCommentHtml . '</div>';
         
         // Fifth row: Labels (SL, TP, Profit)
         $html .= '<div class="card-row labels">';

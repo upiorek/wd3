@@ -26,7 +26,7 @@ datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
 
 int hearbeat = 0;
-string version = "3.9";
+string version = "3.10";
 
 //-----------------------------------------------------------------------
 
@@ -81,8 +81,24 @@ void LogOrders()
          }
 
          string fileName = "orders/" + IntegerToString(OrderTicket());
-         int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
 
+         // check if file already exists - if it does, read content and get "Open Commnet" value 
+         string openComment = "";
+         int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
+         if(checkHandle != INVALID_HANDLE)
+         {
+            string existingContent = "";
+            while(!FileIsEnding(checkHandle))
+               existingContent += FileReadString(checkHandle);
+            FileClose(checkHandle);
+
+            int commentPos = StringFind(existingContent, "Open Comment: ");
+            int commentLen = StringLen("Open Comment: ");
+            int commentEndPos = StringFind(existingContent, "\n", commentPos);
+            openComment = StringSubstr(existingContent, commentPos + commentLen, commentEndPos - (commentPos + commentLen));
+         }
+
+         int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
          if(fileHandle != INVALID_HANDLE)
          {
             double netResult = OrderProfit() + OrderSwap() + OrderCommission();
@@ -95,6 +111,7 @@ void LogOrders()
                              "Lots: " + DoubleToString(OrderLots(), 2) + "\n" +
                              "Open Time: " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Open Price: " + DoubleToString(OrderOpenPrice(), Digits) + "\n" +
+                             "Open Comment: " + openComment + "\n" +
                              "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + "\n" +
                              "Take Profit: " + DoubleToString(OrderTakeProfit(), Digits) + "\n" +
                              "Commission: " + DoubleToString(OrderCommission(), 2) + "\n" +
@@ -137,8 +154,23 @@ void LogOrders()
                continue;
          }
 
-         int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
+         // check if file already exists - if it does, read content and get "Open Comment" value 
+         string openComment = "";
+         int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
+         if(checkHandle != INVALID_HANDLE)
+         {
+            string existingContent = "";
+            while(!FileIsEnding(checkHandle))
+               existingContent += FileReadString(checkHandle);
+            FileClose(checkHandle);
 
+            int commentPos = StringFind(existingContent, "Open Comment: ");
+            int commentLen = StringLen("Open Comment: ");
+            int commentEndPos = StringFind(existingContent, "\n", commentPos);
+            openComment = StringSubstr(existingContent, commentPos + commentLen, commentEndPos - (commentPos + commentLen));
+         }
+
+         int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
          if(fileHandle != INVALID_HANDLE)
          {
             double netResult = OrderProfit() + OrderSwap() + OrderCommission();
@@ -150,8 +182,9 @@ void LogOrders()
                              "Symbol: " + OrderSymbol() + "\n" +
                              "Lots: " + DoubleToString(OrderLots(), 2) + "\n" +
                              "Open Time: " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n" +
-                             "Close Time: " + TimeToString(OrderCloseTime(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Open Price: " + DoubleToString(OrderOpenPrice(), Digits) + "\n" +
+                             "Open Comment: " + openComment + "\n" +
+                             "Close Time: " + TimeToString(OrderCloseTime(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Close Price: " + DoubleToString(OrderClosePrice(), Digits) + "\n" +
                              "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + "\n" +
                              "Take Profit: " + DoubleToString(OrderTakeProfit(), Digits) + "\n" +
@@ -164,6 +197,32 @@ void LogOrders()
             FileClose(fileHandle);
          }
       }
+   }
+}
+
+void LogOpenComment(int ticket)
+{
+   // add current decision as a comment to the order for better tracking
+   // open order file
+   string fileName = "orders/" + IntegerToString(ticket);
+   int fileHandle = FileOpen(fileName, FILE_READ|FILE_WRITE|FILE_TXT);
+   if(fileHandle != INVALID_HANDLE)
+   {
+      // look for "Open Comment " line and update it with the currentDecision.decision
+      string fileContent = "";
+      while(!FileIsEnding(fileHandle))
+      {
+         string line = FileReadString(fileHandle);
+         if(StringFind(line, "Open Comment:") >= 0)
+         {
+            // replace "" with currentDecision.decision
+            line = StringReplace(line, "\"\"", "\"" + currentDecision.decision + "\"");
+         }
+         fileContent += line;
+      }
+      FileSeek(fileHandle, 0, SEEK_SET);
+      FileWriteString(fileHandle, fileContent);
+      FileClose(fileHandle);
    }
 }
 
@@ -243,11 +302,14 @@ OrderDecision ParseOrder(string orderData)
    // first line is the order, second line is the decision for logging
    if(linesCount > 2)
    {
-      Log("ERROR: ParseOrder expected 2 lines in approved.txt but got: " + IntegerToString(linesCount) + " content: " + orderData);
+      Log("ERROR: ParseOrder expected 2 lines in approved.txt but got: " + IntegerToString(linesCount) + " content: " );
+      for(int i = 0; i < linesCount; i++)
+         Log("line " + IntegerToString(i) + ": " + lines[i]);
    }
 
    // decision is always the second line
    result.decision = StringTrimLeft(StringTrimRight(lines[1]));
+   result.decision += " | next line | " + StringTrimLeft(StringTrimRight(lines[2]));
 
    // order is always the first line
    string line = StringTrimLeft(StringTrimRight(lines[0]));
@@ -957,7 +1019,7 @@ string GetCurrentDecisionString()
    if (currentDecision.condition != "" && currentDecision.price > 0.0)
    {
        decision = decision + " " + currentDecision.condition + " " + DoubleToString(currentDecision.price, 2);
-       decision += " " +currentDecision.decision;
+       decision += " " + currentDecision.decision;
    }
 
    return decision;
@@ -980,10 +1042,10 @@ void OnTick()
    // Format is like "BUY ABOVE 21917.27"
    int ticket = ExecuteWdDecision(decision);
    if (ticket > 0)
+   {
       Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
-   //else
-   //    Log("no order for time: " + TimeToString(TimeCurrent()));
-
+      LogOpenComment(ticket);
+   }
 
    // the same as OnTickMustBeTheSameForProduction() for tester
    CheckBE();
