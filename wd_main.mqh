@@ -847,6 +847,7 @@ bool CheckDropOnBreakeven()
     return (changedCount > 0);
 }
 
+/*
 bool CheckBothTooClose(double currentPrice, string decision)
 {
     if(!BothTooClose_enabled)
@@ -946,6 +947,7 @@ bool CheckBothTooClose(double currentPrice, string decision)
 
     return false;
 }
+*/
 
 bool CheckPriceCondition(string &parts[], int partsCount, double currentPrice, string decision)
 {
@@ -1109,8 +1111,9 @@ int ExecuteWdDecision(string decision)
         return 0;
     }
 
-    if(CheckBothTooClose(currentPrice, decision))
-        return 0;
+    // TODO fix
+    //if(CheckBothTooClose(currentPrice, decision))
+    //    return 0;
 
     if (OrderAboveOrBelow_enabled)
     {

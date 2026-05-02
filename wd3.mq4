@@ -156,7 +156,7 @@ void LogOrders()
 
          // check if file already exists - if it does, read content and get "Open Comment" value 
          string openComment = "";
-         int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
+         checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
          if(checkHandle != INVALID_HANDLE)
          {
             string existingContent = "";
@@ -216,7 +216,7 @@ void LogOpenComment(int ticket)
          if(StringFind(line, "Open Comment:") >= 0)
          {
             // replace "" with currentDecision.decision
-            line = StringReplace(line, "\"\"", "\"" + currentDecision.decision + "\"");
+            StringReplace(line, "\"\"", "\"" + currentDecision.decision + "\"");
          }
          fileContent += line;
       }
