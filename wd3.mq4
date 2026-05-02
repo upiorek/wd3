@@ -993,7 +993,7 @@ void OnTick()
 //-----------------------------------------------------------------------
 
    hearbeat++;
-   if (hearbeat % 60 == 0)
+   if (hearbeat % (60 * 100) == 0)
    {
       // print only
       Print("WD: " + version + " heartbeat: " + IntegerToString(hearbeat));
