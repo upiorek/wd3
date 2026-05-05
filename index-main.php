@@ -296,6 +296,33 @@ function generateDroppedOrdersTodayHtml() {
 }
 
 /**
+ * Calculate total net result for dropped tickets.
+ * @param array $entries Dropped order entries
+ * @return float Sum of numeric results
+ */
+function getDroppedOrdersTodaySummary($entries) {
+    $sum = 0.0;
+
+    foreach ($entries as $entry) {
+        $ticket = isset($entry['ticket']) ? trim((string)$entry['ticket']) : '';
+        if ($ticket === '' || !ctype_digit($ticket)) {
+            continue;
+        }
+
+        $result = getOrderResultByTicket($ticket);
+        if ($result === 'N/A') {
+            continue;
+        }
+
+        if (is_numeric($result)) {
+            $sum += (float)$result;
+        }
+    }
+
+    return $sum;
+}
+
+/**
  * Parse orders log file and return structured data
  * @return array Array of order log entries with parsed data
  */
@@ -503,6 +530,16 @@ function formatPrice($value, $symbol = '') {
     
     $precision = empty($symbol) ? 2 : getPricePrecision($symbol);
     return number_format(floatval($value), $precision);
+}
+
+/**
+ * Resolve numeric point size for a symbol based on configured precision.
+ * @param string $symbol Trading symbol
+ * @return float Point value (smallest unit)
+ */
+function getSymbolPointSize($symbol) {
+    $precision = getPricePrecision($symbol);
+    return pow(10, -$precision);
 }
 
 /**
@@ -1660,9 +1697,12 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     $ticketCount++;
                 }
             }
+            $summary = getDroppedOrdersTodaySummary($entries);
             echo json_encode([
                 'html' => generateDroppedOrdersTodayHtml(),
-                'count' => $ticketCount
+                'count' => $ticketCount,
+                'summary' => $summary,
+                'summaryFormatted' => number_format($summary, 2, '.', '')
             ]);
             break;
             
@@ -2320,6 +2360,78 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 echo json_encode(['success' => false, 'message' => 'Failed to add modification request to file']);
             }
             break;
+
+        case 'bump_sl_auto_approve':
+            if (!isset($_POST['ticket'])) {
+                echo json_encode(['success' => false, 'message' => 'Ticket parameter required']);
+                break;
+            }
+
+            $ticket = trim($_POST['ticket']);
+            if ($ticket === '' || !ctype_digit($ticket)) {
+                echo json_encode(['success' => false, 'message' => 'Valid ticket ID is required']);
+                break;
+            }
+
+            $ordersLog = getOrdersLogData();
+            $targetOrder = null;
+            foreach ($ordersLog as $order) {
+                if (isset($order['ticket']) && (string)$order['ticket'] === $ticket) {
+                    $targetOrder = $order;
+                    break;
+                }
+            }
+
+            if ($targetOrder === null) {
+                echo json_encode(['success' => false, 'message' => 'Ticket not found in open orders']);
+                break;
+            }
+
+            $currentSLRaw = isset($targetOrder['stopLoss']) ? trim((string)$targetOrder['stopLoss']) : '';
+            if ($currentSLRaw === '' || $currentSLRaw === 'N/A' || !is_numeric($currentSLRaw)) {
+                echo json_encode(['success' => false, 'message' => 'Current Stop Loss is not available for this ticket']);
+                break;
+            }
+
+            $symbol = isset($targetOrder['symbol']) ? trim((string)$targetOrder['symbol']) : '';
+            $precision = getPricePrecision($symbol);
+            $bumpValue = 10.0;
+
+            $orderType = isset($targetOrder['type']) ? strtoupper(trim((string)$targetOrder['type'])) : '';
+            if ($orderType === 'SELL') {
+                $newSL = floatval($currentSLRaw) - $bumpValue;
+            } else {
+                // Default behavior follows BUY direction.
+                $newSL = floatval($currentSLRaw) + $bumpValue;
+            }
+            $newSLFormatted = number_format($newSL, $precision, '.', '');
+
+            $tpRaw = isset($targetOrder['takeProfit']) ? trim((string)$targetOrder['takeProfit']) : '0';
+            $tpValue = (is_numeric($tpRaw) && $tpRaw !== 'N/A') ? $tpRaw : '0';
+
+            $modificationLine = $ticket . ' ' . $newSLFormatted . ' ' . $tpValue;
+
+            $needsNewlineBefore = false;
+            if (file_exists(MODIFIED_FILE)) {
+                $existingContent = file_get_contents(MODIFIED_FILE);
+                if (!empty($existingContent) && substr($existingContent, -1) !== "\n") {
+                    $needsNewlineBefore = true;
+                }
+            }
+
+            $contentToAppend = ($needsNewlineBefore ? "\n" : '') . $modificationLine . "\n";
+            $result = file_put_contents(MODIFIED_FILE, $contentToAppend, FILE_APPEND | LOCK_EX);
+
+            if ($result !== false) {
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Bump SL applied and auto-approved for ticket ' . $ticket . ' (SL: ' . $newSLFormatted . ')',
+                    'newStopLoss' => $newSLFormatted
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to auto-approve bumped SL']);
+            }
+            break;
             
         default:
             echo json_encode(['success' => false, 'message' => 'Invalid action']);
@@ -2456,6 +2568,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 </div>
                 <div class="form-group">
                     <button type="button" onclick="modifyOrder()" class="modify-order-btn">Modify</button>
+                    <button type="button" onclick="bumpSL()" class="modify-order-btn" style="margin-left: 10px; background-color: #17a2b8; border-color: #17a2b8;">Bump SL by 10.0 (Auto-Approve)</button>
                 </div>
             </div>
         </div>
@@ -2490,7 +2603,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <hr style="margin: 30px 0;">
         
         <div class="drop-order-section">
-            <h3>Drop Order</h3>
+            <h3>Drop Orders</h3>
             <div class="drop-order-form">
                 <div class="form-group">
                     <label for="ticket-select">Select Ticket</label>
@@ -2511,18 +2624,15 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     <button type="button" onclick="dropOrder()" class="drop-order-btn">Drop</button>
                 </div>
             </div>
-        </div>
-        
-        <div class="drop-order-section" style="margin-top: 20px; border-left: 4px solid #dc3545; background-color: #fff5f5;">
-            <h3 style="color: #dc3545;">⚠️ Drop All Orders</h3>
-            <div class="drop-order-form">
+	    or
+	    <div class="drop-order-form">
                 <div class="form-group">
                     <button type="button" onclick="dropAllOrders()" class="drop-order-btn" style="background-color: #dc3545; border-color: #dc3545;">
                         🚨 Drop All Orders
                     </button>
                 </div>
             </div>
-        </div>
+        </div>        
 
         <?php
         $droppedToday = getDroppedOrdersToday();
@@ -2533,13 +2643,14 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 $droppedTodayTicketCount++;
             }
         }
+        $droppedTodaySummary = getDroppedOrdersTodaySummary($droppedToday);
         ?>
         <div
             id="dropped-today-section"
             class="drop-order-section<?php echo $droppedTodayTicketCount === 0 ? ' drop-order-section-collapsed' : ''; ?>"
             style="margin-top: 15px; border-left: 4px solid #6c757d;"
         >
-            <h3 id="dropped-today-heading">Dropped Today (<?php echo $droppedTodayTicketCount; ?>)</h3>
+            <h3 id="dropped-today-heading">Dropped Today (<?php echo $droppedTodayTicketCount; ?>) : <?php echo number_format($droppedTodaySummary, 2, '.', ''); ?></h3>
             <div id="dropped-today-list">
                 <?php echo generateDroppedOrdersTodayHtml(); ?>
             </div>
@@ -3194,9 +3305,12 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     if (!data) return;
                     const droppedTodaySection = document.getElementById('dropped-today-section');
                     const count = Number(data.count || 0);
+                    const summary = typeof data.summaryFormatted === 'string'
+                        ? data.summaryFormatted
+                        : Number(data.summary || 0).toFixed(2);
 
                     utils.updateElement('dropped-today-list', data.html || '<p class="info-message">Brak danych.</p>');
-                    utils.updateElement('dropped-today-heading', `Dropped Today (${count})`);
+                    utils.updateElement('dropped-today-heading', `Dropped Today (${count}) : ${summary}`);
 
                     if (droppedTodaySection) {
                         droppedTodaySection.classList.toggle('drop-order-section-collapsed', count === 0);
@@ -3269,6 +3383,38 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                     }
                 })
                 .catch(error => alert('Error modifying order: ' + error.message));
+        }
+
+        function bumpSL() {
+            const ticketSelect = document.getElementById('modify-ticket-select');
+            const selectedTicket = ticketSelect.value;
+
+            if (!selectedTicket) {
+                alert('Please select a ticket first.');
+                return;
+            }
+
+            if (!confirm(`Smart bump Stop Loss by 10.0 for ticket ${selectedTicket} (BUY: +10.0, SELL: -10.0) and auto-approve?`)) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('ajax', 'bump_sl_auto_approve');
+            formData.append('ticket', selectedTicket);
+
+            utils.request('index.php', { method: 'POST', body: formData })
+                .then(data => {
+                    alert(data.success ? data.message : 'Error: ' + data.message);
+                    if (data.success) {
+                        const slField = document.getElementById('modify-stop-loss');
+                        if (slField && typeof data.newStopLoss !== 'undefined') {
+                            slField.value = data.newStopLoss;
+                        }
+                        refresh.modifiedOrders();
+                        refresh.toBeModifiedOrders();
+                    }
+                })
+                .catch(error => alert('Error bumping Stop Loss: ' + error.message));
         }
 
         function refreshDropOrderList() {
