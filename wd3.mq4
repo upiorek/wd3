@@ -60,6 +60,37 @@ void LogAccountInfo()
    }
 }
 
+double GetOrderMaxLoss()
+{
+   double stopLossPrice = OrderStopLoss();
+   if(stopLossPrice <= 0.0)
+      return 0.0;
+
+   double tickValue = MarketInfo(OrderSymbol(), MODE_TICKVALUE);
+   double tickSize = MarketInfo(OrderSymbol(), MODE_TICKSIZE);
+   if(tickValue <= 0.0 || tickSize <= 0.0)
+      return 0.0;
+
+   double distance = 0.0;   
+   switch(OrderType())
+   {
+      case OP_BUY:
+      case OP_BUYLIMIT:
+      case OP_BUYSTOP:
+         distance = stopLossPrice - OrderOpenPrice();
+         break;
+      case OP_SELL:
+      case OP_SELLLIMIT:
+      case OP_SELLSTOP:
+         distance = OrderOpenPrice() - stopLossPrice;
+         break;
+      default:
+         return 0.0; // Only calculate for BUY and SELL orders
+   }
+
+   return (distance / tickSize) * tickValue * OrderLots();
+}
+
 void LogOrders()
 {
    // Ensure subfolder exists under MQL4/Files
@@ -102,6 +133,7 @@ void LogOrders()
          if(fileHandle != INVALID_HANDLE)
          {
             double netResult = OrderProfit() + OrderSwap() + OrderCommission();
+            double maxLoss = GetOrderMaxLoss();
 
             string logData = "Timestamp: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Ticket: " + IntegerToString(OrderTicket()) + "\n" +
@@ -112,7 +144,7 @@ void LogOrders()
                              "Open Time: " + TimeToString(OrderOpenTime(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Open Price: " + DoubleToString(OrderOpenPrice(), Digits) + "\n" +
                              "Open Comment: " + openComment + "\n" +
-                             "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + "\n" +
+                             "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + " " + DoubleToString(maxLoss, 2) + "\n" +
                              "Take Profit: " + DoubleToString(OrderTakeProfit(), Digits) + "\n" +
                              "Commission: " + DoubleToString(OrderCommission(), 2) + "\n" +
                              "Swap: " + DoubleToString(OrderSwap(), 2) + "\n" +
@@ -174,6 +206,7 @@ void LogOrders()
          if(fileHandle != INVALID_HANDLE)
          {
             double netResult = OrderProfit() + OrderSwap() + OrderCommission();
+            double maxLoss = GetOrderMaxLoss();
 
             string logData = "Timestamp: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Ticket: " + IntegerToString(OrderTicket()) + "\n" +
@@ -186,7 +219,7 @@ void LogOrders()
                              "Open Comment: " + openComment + "\n" +
                              "Close Time: " + TimeToString(OrderCloseTime(), TIME_DATE|TIME_SECONDS) + "\n" +
                              "Close Price: " + DoubleToString(OrderClosePrice(), Digits) + "\n" +
-                             "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + "\n" +
+                             "Stop Loss: " + DoubleToString(OrderStopLoss(), Digits) + " Max Loss: " + DoubleToString(maxLoss, 2) + "\n" +
                              "Take Profit: " + DoubleToString(OrderTakeProfit(), Digits) + "\n" +
                              "Commission: " + DoubleToString(OrderCommission(), 2) + "\n" +
                              "Swap: " + DoubleToString(OrderSwap(), 2) + "\n" +

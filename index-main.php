@@ -699,6 +699,14 @@ function generateOrdersLogTable($ordersLog) {
         $openCommentHtml = $order['openComment'] === 'N/A'
             ? '<span class="na-value">N/A</span>'
             : htmlspecialchars($order['openComment']);
+
+        // split stop loss into price and value parts with separate formatting
+        $stop_loss_price = explode(' ', $order['stopLoss'])[0];
+        $stop_loss_val = explode(' ', $order['stopLoss'])[1] ?? '';
+        $stop_loss_val = number_format(floatval($stop_loss_val), 2);
+
+        $stop_loss = formatPrice($stop_loss_price, $order['symbol']) . '<br>' .
+            '<span class="' .($stop_loss_val >= 0 ? 'profit-positive' : 'profit-negative') . '">' . $stop_loss_val . '</span>';
         
         $html .= '<tr' . $rowStyle . '>';
         $html .= '<td>' . htmlspecialchars($order['ticket']) . '</td>';
@@ -707,7 +715,7 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<td>' . htmlspecialchars($order['symbol']) . '</td>';
         $html .= '<td>' . ($order['lots'] === 'N/A' ? '<span class="na-value">N/A</span>' : number_format(floatval($order['lots']), 2)) . '</td>';
         $html .= '<td>' . ($order['openPrice'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['openPrice'], $order['symbol'])) . '</td>';
-        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['stopLoss'], $order['symbol'])) . '</td>';
+        $html .= '<td>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : $stop_loss) . '</td>';
         $html .= '<td>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['takeProfit'], $order['symbol'])) . '</td>';
         $html .= '<td class="' . (floatval($order['profit']) >= 0 ? 'profit-positive' : 'profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</td>';
         $html .= '</tr>';
@@ -781,10 +789,18 @@ function generateOrdersLogTable($ordersLog) {
         $html .= '<div>Profit</div>';
         $html .= '<div></div>';
         $html .= '</div>';
+
+        // split stop loss into price and value parts with separate formatting
+        $stop_loss_price = explode(' ', $order['stopLoss'])[0];
+        $stop_loss_val = explode(' ', $order['stopLoss'])[1] ?? '';
+        $stop_loss_val = number_format(floatval($stop_loss_val), 2);
+
+        $stop_loss = formatPrice($stop_loss_price, $order['symbol']) . '<br>' .
+            '<span class="' .($stop_loss_val >= 0 ? 'profit-positive' : 'profit-negative') . '">' . $stop_loss_val . '</span>';
         
         // Sixth row: Values (SL, TP, Profit)
         $html .= '<div class="card-row values">';
-        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['stopLoss'], $order['symbol'])) . '</div>';
+        $html .= '<div>' . ($order['stopLoss'] === 'N/A' ? '<span class="na-value">N/A</span>' : $stop_loss) . '</div>';
         $html .= '<div>' . ($order['takeProfit'] === 'N/A' ? '<span class="na-value">N/A</span>' : formatPrice($order['takeProfit'], $order['symbol'])) . '</div>';
         $html .= '<div class="' . (floatval($order['profit']) >= 0 ? 'card-profit-positive' : 'card-profit-negative') . '">' . number_format(floatval($order['profit']), 2) . '</div>';
         $html .= '<div></div>';
@@ -2387,7 +2403,8 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 break;
             }
 
-            $currentSLRaw = isset($targetOrder['stopLoss']) ? trim((string)$targetOrder['stopLoss']) : '';
+            $currentSLRaw = explode(' ', $targetOrder['stopLoss'])[0];
+            $currentSLRaw = isset($currentSLRaw) ? trim((string)$currentSLRaw) : '';
             if ($currentSLRaw === '' || $currentSLRaw === 'N/A' || !is_numeric($currentSLRaw)) {
                 echo json_encode(['success' => false, 'message' => 'Current Stop Loss is not available for this ticket']);
                 break;
