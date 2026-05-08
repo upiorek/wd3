@@ -2676,51 +2676,56 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         <hr style="margin: 30px 0;">
 
         <div class="new-order-section">
-            <h3>Add New Order</h3>
-            <form id="new-order-form" class="new-order-form">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="symbol">Symbol *</label>
-                        <select id="symbol" name="symbol" required onchange="updateFormPrecision()">
-                            <option value="">Select Symbol</option>
-                            <option value="EURUSD">EURUSD</option>
-                            <option value="US100.f">US100.f</option>
-                        </select>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <h3 style="margin: 0;">Add New Order</h3>
+                <button type="button" id="toggle-new-order-btn" onclick="toggleNewOrderSection()" class="refresh-logs-btn" style="background-color: #6c757d;">Show</button>
+            </div>
+            <div id="new-order-section-content" style="display: none;">
+                <form id="new-order-form" class="new-order-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="symbol">Symbol *</label>
+                            <select id="symbol" name="symbol" required onchange="updateFormPrecision()">
+                                <option value="">Select Symbol</option>
+                                <option value="EURUSD">EURUSD</option>
+                                <option value="US100.f">US100.f</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="orderType">Type *</label>
+                            <select id="orderType" name="type" required>
+                                <option value="BUY">Buy</option>
+                                <option value="SELL">Sell</option>
+                                <option value="BUYLIMIT">Buy Limit</option>
+                                <option value="SELLLIMIT">Sell Limit</option>
+                                <option value="BUYSTOP">Buy Stop</option>
+                                <option value="SELLSTOP">Sell Stop</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="lots">Lots *</label>
+                            <input type="number" id="lots" name="lots" step="0.01" min="0.01" placeholder="0.01" required>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="orderType">Type *</label>
-                        <select id="orderType" name="type" required>
-                            <option value="BUY">Buy</option>
-                            <option value="SELL">Sell</option>
-                            <option value="BUYLIMIT">Buy Limit</option>
-                            <option value="SELLLIMIT">Sell Limit</option>
-                            <option value="BUYSTOP">Buy Stop</option>
-                            <option value="SELLSTOP">Sell Stop</option>
-                        </select>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="price">Price/Level *</label>
+                            <input type="number" id="price" name="price" step="0.00001" min="0.00001" placeholder="0 (optional)">
+                        </div>
+                        <div class="form-group">
+                            <label for="stopLoss">Stop Loss</label>
+                            <input type="number" id="stopLoss" name="stop_loss" step="0.00001" min="0" placeholder="0 (optional)">
+                        </div>
+                        <div class="form-group">
+                            <label for="takeProfit">Take Profit</label>
+                            <input type="number" id="takeProfit" name="take_profit" step="0.00001" min="0" placeholder="0 (optional)">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="lots">Lots *</label>
-                        <input type="number" id="lots" name="lots" step="0.01" min="0.01" placeholder="0.01" required>
+                    <div class="form-row">
+                        <button type="submit" class="add-order-btn">Add Order</button>
                     </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="price">Price/Level *</label>
-                        <input type="number" id="price" name="price" step="0.00001" min="0.00001" placeholder="0 (optional)">
-                    </div>
-                    <div class="form-group">
-                        <label for="stopLoss">Stop Loss</label>
-                        <input type="number" id="stopLoss" name="stop_loss" step="0.00001" min="0" placeholder="0 (optional)">
-                    </div>
-                    <div class="form-group">
-                        <label for="takeProfit">Take Profit</label>
-                        <input type="number" id="takeProfit" name="take_profit" step="0.00001" min="0" placeholder="0 (optional)">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <button type="submit" class="add-order-btn">Add Order</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
         
         <?php $orders = getOrdersList(); ?>
@@ -3562,6 +3567,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
         // Chart navigation
         let currentChartIndex = 0;
 
+        // Add New Order section collapse state (collapsed by default)
+        let isNewOrderSectionCollapsed = true;
+
         // Daily Order History Log collapse state (collapsed by default)
         let isOrderHistoryLogCollapsed = true;
 
@@ -3573,6 +3581,22 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 
         // Candle Data section collapse state (collapsed by default)
         let isCandlesCollapsed = true;
+
+        function toggleNewOrderSection() {
+            const section = document.getElementById('new-order-section-content');
+            const btn = document.getElementById('toggle-new-order-btn');
+            if (!section || !btn) return;
+
+            isNewOrderSectionCollapsed = !isNewOrderSectionCollapsed;
+
+            if (isNewOrderSectionCollapsed) {
+                section.style.display = 'none';
+                btn.textContent = 'Show';
+            } else {
+                section.style.display = 'block';
+                btn.textContent = 'Hide';
+            }
+        }
 
         function toggleOrderHistoryLog() {
             const section = document.getElementById('order-history-log');
