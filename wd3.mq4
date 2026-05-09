@@ -13,7 +13,13 @@ struct OrderDecision
    string decision;      // Original decision string for logging (e.g., "BUY ABOVE 21917.27")
 };
 
+struct Settings
+{
+   double lotSizeSet;
+};
+
 OrderDecision currentDecision;
+Settings currentSettings;
 
 // Global variables
 datetime lastLogTime = 0;
@@ -24,6 +30,7 @@ datetime lastModifiedCheck = 0;
 datetime lastMarketLogTime = 0;
 datetime lastM1CandleTime = 0;
 datetime lastM15CandleTime = 0;
+datetime lastSettingsCheck = 0;
 
 int hearbeat = 0;
 string version = "3.10";
@@ -1040,6 +1047,62 @@ void OrderFiles()
    }
 }
 
+void Settings()
+{
+   datetime currentTime = TimeCurrent();
+   if(currentTime - lastSettingsCheck < 15)
+      return;
+
+   lastSettingsCheck = currentTime;
+
+   int fileHandle = FileOpen("settings.txt", FILE_READ|FILE_TXT);
+   if(fileHandle == INVALID_HANDLE)
+      return;
+
+   double parsedLotSizeSet = currentSettings.lotSizeSet;
+   bool hasParsedLotSizeSet = false;
+
+   while(!FileIsEnding(fileHandle))
+   {
+      string line = StringTrimLeft(StringTrimRight(FileReadString(fileHandle)));
+      if(line == "" || StringFind(line, "#") == 0 || StringFind(line, "//") == 0)
+         continue;
+
+      string parts[];
+      int partsCount = StringSplit(line, ':', parts);
+      if(partsCount < 2)
+         partsCount = StringSplit(line, '=', parts);
+
+      if(partsCount >= 2)
+      {
+         string key = StringTrimLeft(StringTrimRight(parts[0]));
+         string value = StringTrimLeft(StringTrimRight(parts[1]));
+         StringToLower(key);
+
+         if(key == "lotsizeset" || key == "lot_size_set" || key == "lot_size")
+         {
+            parsedLotSizeSet = StringToDouble(value);
+            hasParsedLotSizeSet = true;
+         }
+      }
+      else if(!hasParsedLotSizeSet)
+      {
+         // Fallback format: a single numeric line means lotSizeSet.
+         double numericValue = StringToDouble(line);
+         if(numericValue > 0.0)
+         {
+            parsedLotSizeSet = numericValue;
+            hasParsedLotSizeSet = true;
+         }
+      }
+   }
+
+   FileClose(fileHandle);
+
+   if(hasParsedLotSizeSet)
+      currentSettings.lotSizeSet = parsedLotSizeSet;
+}
+
 string GetCurrentDecisionString()
 {
    string decision = "NONE";
@@ -1069,11 +1132,12 @@ void OnTick()
 //-----------------------------------------------------------------------
    Logs();
    OrderFiles();
+   Settings();
 
 // Main logic for every tick
 //----------------------------------------------------------------------- 
    // Format is like "BUY ABOVE 21917.27"
-   int ticket = ExecuteWdDecision(decision);
+   int ticket = ExecuteWdDecision(decision, currentSettings.lotSizeSet);
    if (ticket > 0)
    {
       Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));

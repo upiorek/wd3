@@ -1077,7 +1077,7 @@ bool TryExtractLineAge(string token, int &age)
 }
 
 // Decision format can be like "BUY SA2(3) ABOVE 21917.27", "BUY ABOVE 21917.27", or "SELL"
-int ExecuteWdDecision(string decision)
+int ExecuteWdDecision(string decision, double lotSizeSet)
 {
     // Parse decision string
     string parts[];
@@ -1148,7 +1148,10 @@ int ExecuteWdDecision(string decision)
     double orderTP = TrailingTP_enabled ? 0 : tp;
     
     ResetLastError();
-    int ticket = OrderSend(Symbol(), cmd, lotSize, currentPrice, slippage, sl, orderTP, 
+    double lots = lotSize;
+    if (lotSizeSet != 0)
+        lots = lotSizeSet;
+    int ticket = OrderSend(Symbol(), cmd, lots, currentPrice, slippage, sl, orderTP, 
                            "WD " + orderTypeStr, 0, 0, isBuy ? clrGreen : clrRed);
     
     if(ticket > 0)

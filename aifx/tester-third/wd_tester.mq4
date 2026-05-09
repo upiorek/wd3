@@ -274,7 +274,7 @@ void OnTick()
     if(!no_orders)
     {
         // Format is like "BUY ABOVE 21917.27"
-        int ticket = ExecuteWdDecision(g_decision);
+        int ticket = ExecuteWdDecision(g_decision, 0.01);
         if (ticket > 0)
             Log("new order ticket: " + IntegerToString(ticket) + " for time: " + TimeToString(TimeCurrent()));
         //else
