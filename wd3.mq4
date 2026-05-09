@@ -52,7 +52,8 @@ void LogAccountInfo()
                       "Active Orders: " + IntegerToString(OrdersTotal()) +
                       "\n" + 
                       "sl: " + IntegerToString(stopLoss/100) + " / be: " + IntegerToString(takeProfit/2/100) +
-		      " / tp: " + IntegerToString(takeProfit/100) + " / bonus: " + IntegerToString(BEBonus/100) + "\n";
+		      " / tp: " + IntegerToString(takeProfit/100) + " / bonus: " + IntegerToString(BEBonus/100) + "\n" +
+                      " lot size: " + DoubleToString(currentSettings.lotSizeSet, 2)"\n";
 
       logData += "\nCurrent decision: " + GetCurrentDecisionString() + "\n";
 
@@ -1079,7 +1080,7 @@ void Settings()
          string value = StringTrimLeft(StringTrimRight(parts[1]));
          StringToLower(key);
 
-         if(key == "lotsizeset" || key == "lot_size_set" || key == "lot_size")
+         if(key == "lotSizeSet")
          {
             parsedLotSizeSet = StringToDouble(value);
             hasParsedLotSizeSet = true;
@@ -1093,6 +1094,7 @@ void Settings()
          {
             parsedLotSizeSet = numericValue;
             hasParsedLotSizeSet = true;
+	    Log("Lot size set: " + line);
          }
       }
    }

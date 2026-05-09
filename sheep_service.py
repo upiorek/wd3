@@ -473,7 +473,27 @@ def main():
             settings_file = os.path.join(REPO_DIR, "settings")
             if os.path.exists(settings_file):
                 with open(settings_file, 'r') as f:
-                    settings_content = f.read().strip().lower()
+                    settings_raw = f.read()
+
+                    # Sync MT4 settings.txt when source settings contains expected lot size block.
+                    expected_settings_block = "# EA runtime settings\nlotSizeSet: 0.01"
+                    normalized_settings = settings_raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+                    if normalized_settings == expected_settings_block:
+                        target_settings_file = os.path.join(MQL4_FILES_DIR, "settings.txt")
+                        target_needs_update = True
+
+                        if os.path.exists(target_settings_file):
+                            with open(target_settings_file, 'r') as target_f:
+                                target_raw = target_f.read()
+                                normalized_target = target_raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+                                target_needs_update = (normalized_target != expected_settings_block)
+
+                        if target_needs_update:
+                            with open(target_settings_file, 'w', newline='\n') as target_f:
+                                target_f.write(expected_settings_block + "\n")
+                            print(f"Updated MT4 settings file: {target_settings_file}")
+
+                    settings_content = settings_raw.strip().lower()
                     if 'service: disabled' in settings_content:
                         print("Service disabled, waiting 15 seconds...")
                         content = f"Sheep service is currently DISABLED.\nHeartbeat: {heartbeat}\n"

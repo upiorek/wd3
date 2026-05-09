@@ -2,3 +2,5 @@
 # ---
 # service: enabled or disabled
 service: enabled
+# EA runtime settings
+lotSizeSet: 0.01
