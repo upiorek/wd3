@@ -53,7 +53,7 @@ void LogAccountInfo()
                       "\n" + 
                       "sl: " + IntegerToString(stopLoss/100) + " / be: " + IntegerToString(takeProfit/2/100) +
 		      " / tp: " + IntegerToString(takeProfit/100) + " / bonus: " + IntegerToString(BEBonus/100) + "\n" +
-                      " lot size: " + DoubleToString(currentSettings.lotSizeSet, 2)"\n";
+                      "lot size: " + DoubleToString(currentSettings.lotSizeSet, 2) + "\n";
 
       logData += "\nCurrent decision: " + GetCurrentDecisionString() + "\n";
 
@@ -1048,7 +1048,7 @@ void OrderFiles()
    }
 }
 
-void Settings()
+void SettingsCheck()
 {
    datetime currentTime = TimeCurrent();
    if(currentTime - lastSettingsCheck < 15)
@@ -1080,7 +1080,9 @@ void Settings()
          string value = StringTrimLeft(StringTrimRight(parts[1]));
          StringToLower(key);
 
-         if(key == "lotSizeSet")
+   	 //Log("key: " + key + " value: " + value);
+
+         if(key == "lotSizeSet" || key == "lotsizeset")
          {
             parsedLotSizeSet = StringToDouble(value);
             hasParsedLotSizeSet = true;
@@ -1134,7 +1136,7 @@ void OnTick()
 //-----------------------------------------------------------------------
    Logs();
    OrderFiles();
-   Settings();
+   SettingsCheck();
 
 // Main logic for every tick
 //----------------------------------------------------------------------- 

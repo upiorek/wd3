@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import re
 
 from aifx.strategy import decissioner
 
@@ -475,10 +476,11 @@ def main():
                 with open(settings_file, 'r') as f:
                     settings_raw = f.read()
 
-                    # Sync MT4 settings.txt when source settings contains expected lot size block.
-                    expected_settings_block = "# EA runtime settings\nlotSizeSet: 0.01"
-                    normalized_settings = settings_raw.replace("\r\n", "\n").replace("\r", "\n").strip()
-                    if normalized_settings == expected_settings_block:
+                    # Sync MT4 settings.txt using lotSizeSet from source settings file.
+                    lot_size_match = re.search(r'^\s*lotSizeSet\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*$', settings_raw, re.MULTILINE)
+                    if lot_size_match:
+                        lot_size_value = lot_size_match.group(1)
+                        expected_settings_block = f"# EA runtime settings\nlotSizeSet: {lot_size_value}"
                         target_settings_file = os.path.join(MQL4_FILES_DIR, "settings.txt")
                         target_needs_update = True
 
