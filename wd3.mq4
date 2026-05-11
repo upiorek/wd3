@@ -35,6 +35,16 @@ datetime lastSettingsCheck = 0;
 int hearbeat = 0;
 string version = "3.10";
 
+int OnInit()
+{
+   currentDecision.orderType = -1;
+   currentDecision.condition = "";
+   currentDecision.price = 0.0;
+   currentDecision.decision = "";
+   currentSettings.lotSizeSet = 0.0;
+   return(INIT_SUCCEEDED);
+}
+
 //-----------------------------------------------------------------------
 
 void LogAccountInfo()
@@ -1163,13 +1173,13 @@ void OnTick()
 // Log to file test
    if(hearbeat < 3)
       Log("hello");
-   
-   string decision = GetCurrentDecisionString();
 
 //-----------------------------------------------------------------------
    Logs();
    OrderFiles();
    SettingsCheck();
+
+   string decision = GetCurrentDecisionString();
 
 // Main logic for every tick
 //----------------------------------------------------------------------- 
