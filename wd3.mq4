@@ -121,8 +121,8 @@ void LogOrders()
 
          string fileName = "orders/" + IntegerToString(OrderTicket());
 
-         // check if file already exists - if it does, read content and get "Open Commnet" value 
-         string openComment = "";
+         // check if file already exists - if it does, read content and get "Open Comment" value 
+         string openComment = "\"\"";
          int checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
          if(checkHandle != INVALID_HANDLE)
          {
@@ -131,10 +131,20 @@ void LogOrders()
                existingContent += FileReadString(checkHandle);
             FileClose(checkHandle);
 
-            int commentPos = StringFind(existingContent, "Open Comment: ");
-            int commentLen = StringLen("Open Comment: ");
-            int commentEndPos = StringFind(existingContent, "\n", commentPos);
-            openComment = StringSubstr(existingContent, commentPos + commentLen, commentEndPos - (commentPos + commentLen));
+            int commentPos = StringFind(existingContent, "Open Comment: \"");
+            int commentLen = StringLen("Open Comment: \"");
+            int commentDataStart = commentPos + commentLen;
+            int commentDataEndPos = StringFind(existingContent, "\"", commentDataStart);
+            int commentDataLen = commentDataEndPos - commentDataStart;
+            if (commentDataLen < 1) 
+            {
+               openComment = "\"none\"";
+            }
+            else 
+            {
+               string commentData = StringSubstr(existingContent, commentDataStart, commentDataLen);
+               openComment = "\"" + commentData + "\"";
+            }
          }
 
          int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
@@ -195,7 +205,7 @@ void LogOrders()
          }
 
          // check if file already exists - if it does, read content and get "Open Comment" value 
-         string openComment = "";
+         string openComment = "\"\"";
          checkHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
          if(checkHandle != INVALID_HANDLE)
          {
@@ -204,10 +214,20 @@ void LogOrders()
                existingContent += FileReadString(checkHandle);
             FileClose(checkHandle);
 
-            int commentPos = StringFind(existingContent, "Open Comment: ");
-            int commentLen = StringLen("Open Comment: ");
-            int commentEndPos = StringFind(existingContent, "\n", commentPos);
-            openComment = StringSubstr(existingContent, commentPos + commentLen, commentEndPos - (commentPos + commentLen));
+            int commentPos = StringFind(existingContent, "Open Comment: \"");
+            int commentLen = StringLen("Open Comment: \"");
+            int commentDataStart = commentPos + commentLen;
+            int commentDataEndPos = StringFind(existingContent, "\"", commentDataStart);
+            int commentDataLen = commentDataEndPos - commentDataStart;
+            if (commentDataLen < 1) 
+            {
+               openComment = "\"none\"";
+            }
+            else 
+            {
+               string commentData = StringSubstr(existingContent, commentDataStart, commentDataLen);
+               openComment = "\"" + commentData + "\"";
+            }
          }
 
          int fileHandle = FileOpen(fileName, FILE_WRITE|FILE_TXT);
@@ -246,7 +266,10 @@ void LogOpenComment(int ticket)
    // add current decision as a comment to the order for better tracking
    // open order file
    string fileName = "orders/" + IntegerToString(ticket);
-   int fileHandle = FileOpen(fileName, FILE_READ|FILE_WRITE|FILE_TXT);
+   int fileHandle = FileOpen(fileName, FILE_READ|FILE_TXT);
+
+   // DEBUG
+   Log("DEBUG: LogOpenComment file handle: " + IntegerToString(fileHandle));
    if(fileHandle != INVALID_HANDLE)
    {
       // look for "Open Comment " line and update it with the currentDecision.decision
@@ -254,10 +277,14 @@ void LogOpenComment(int ticket)
       while(!FileIsEnding(fileHandle))
       {
          string line = FileReadString(fileHandle);
+         Log("DEBUG: LogOpenComment read line: " + line);
          if(StringFind(line, "Open Comment:") >= 0)
          {
+            Log("DEBUG: found Open Comment, line: " + line);
             // replace "" with currentDecision.decision
-            StringReplace(line, "\"\"", "\"" + currentDecision.decision + "\"");
+            StringReplace(line, "\"\"", "\"cd: " + currentDecision.decision + "\"");
+            // StringReplace(line, "\"\"", "\"" + "x" + "\"");            
+            Log("DEBUG: new line: " + line);
          }
          fileContent += line;
       }
@@ -337,20 +364,20 @@ OrderDecision ParseOrder(string orderData)
    result.price = 0.0;
    
    string lines[];
+   orderData = StringTrimRight(orderData);
    int linesCount = StringSplit(orderData, '\n', lines);
 
-   // order data must have 2 lines:
-   // first line is the order, second line is the decision for logging
-   if(linesCount > 2)
-   {
-      Log("ERROR: ParseOrder expected 2 lines in approved.txt but got: " + IntegerToString(linesCount) + " content: " );
-      for(int i = 0; i < linesCount; i++)
-         Log("line " + IntegerToString(i) + ": " + lines[i]);
-   }
+   // first line is the order, other lines are decision / logging
+   Log("TODO remove");
+   Log("DEBUG: ParseOrder");
+   for(int i = 0; i < linesCount; i++)
+      Log("line " + IntegerToString(i) + ": " + lines[i]);
 
-   // decision is always the second line
    result.decision = StringTrimLeft(StringTrimRight(lines[1]));
-   result.decision += " | next line | " + StringTrimLeft(StringTrimRight(lines[2]));
+   if (linesCount > 2) 
+   {
+      result.decision += " | next line | " + StringTrimLeft(StringTrimRight(lines[2]));
+   }
 
    // order is always the first line
    string line = StringTrimLeft(StringTrimRight(lines[0]));
@@ -387,6 +414,12 @@ OrderDecision ParseOrder(string orderData)
       }
    }
 
+   Log("DEBUG: ParseOrder end");
+   Log("result.orderType: " + IntegerToString(result.orderType));
+   Log("result.condition: " + result.condition);
+   Log("result.price: " + DoubleToString(result.price, 2));
+   Log("result.decision: " + result.decision);
+   
    return result;
 }
 
