@@ -449,12 +449,12 @@ $currentWeekKey = $currentWeekMon->format('Y-m-d');
                 <thead>
                     <tr>
                         <th>Tydzień</th>
-                        <th>Ordery</th>
-                        <th>Wygrane</th>
-                        <th>Przegrane</th>
+                        <th>#</th>
+                        <th>win</th>
+                        <th>loss</th>
                         <th>Win %</th>
-                        <th>Net profit</th>
-                        <th>Avg / order</th>
+                        <th>Net</th>
+                        <th>Avg</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -523,8 +523,8 @@ $currentWeekKey = $currentWeekMon->format('Y-m-d');
                 <thead>
                     <tr>
                         <th>Tydzień</th>
-                        <th>Logowania P</th>
-                        <th>Logowania R</th>
+                        <th>P</th>
+                        <th>R</th>
                         <th>Logowania razem</th>
                     </tr>
                 </thead>
@@ -587,7 +587,7 @@ $currentWeekKey = $currentWeekMon->format('Y-m-d');
                 <?php endif; ?>
             </table>
 
-            <!-- Per-week detail sections -->
+            <h3 style="margin-top: 0;">Dane tygodniowe</h3>
             <?php foreach ($weeklyStats as $weekKey => $week):
                 $count = count($week['orders']);
                 $net = $week['net'];
