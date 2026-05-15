@@ -33,6 +33,8 @@ sheep.log
 sheep/*.log
 sheep_old/*.log
 
+login_history.log
+
 aifx/data/**/*.csv
 aifx/data/**/*_decision.txt
 aifx/data/**/*_result.txt

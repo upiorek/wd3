@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once __DIR__ . '/config.php';
 
 /**
  * Simple Login System
@@ -9,9 +10,31 @@ session_start();
 // Password file paths
 define('PASS_P_FILE', '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/pass_p.txt');
 define('PASS_R_FILE', '/home/ubuntu/.wine/drive_c/Program Files (x86)/mForex Trader/MQL4/Files/pass_r.txt');
+define('LOGIN_AUDIT_FILE', __DIR__ . '/login_history.log');
 
 // Session timeout (24 hours)
 define('SESSION_TIMEOUT', 24 * 60 * 60);
+
+if (defined('APP_TIMEZONE')) {
+    date_default_timezone_set(APP_TIMEZONE);
+}
+
+/**
+ * Append login event to persistent audit file.
+ * Format: YYYY-mm-dd HH:ii:ss|USER_TYPE
+ * @param string $userType User type (P or R)
+ * @return void
+ */
+function appendLoginAudit($userType) {
+    $ts = date('Y-m-d H:i:s');
+    $safeUserType = preg_replace('/[^A-Za-z0-9_.-]/', '', (string)$userType);
+    if ($safeUserType === null || $safeUserType === '') {
+        $safeUserType = 'unknown';
+    }
+
+    $line = $ts . '|' . $safeUserType . "\n";
+    file_put_contents(LOGIN_AUDIT_FILE, $line, FILE_APPEND | LOCK_EX);
+}
 
 /**
  * Read password from file
@@ -99,6 +122,7 @@ function processLogin() {
             $_SESSION['logged_in'] = true;
             $_SESSION['login_time'] = time();
             $_SESSION['user_type'] = $userType; // Store which password was used
+            appendLoginAudit($userType);
             // Redirect to prevent form resubmission
             header('Location: ' . $_SERVER['PHP_SELF']);
             exit;

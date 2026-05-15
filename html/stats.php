@@ -222,6 +222,67 @@ function getCurrentWeekStats() {
     ];
 }
 
+/**
+ * Aggregate login audit entries by week (Monday-based).
+ * Returns array keyed by week start 'Y-m-d':
+ *   ['total' => int, 'users' => ['P' => int, 'R' => int, ...]]
+ */
+function getLoginCountsByWeek() {
+    $loginFile = defined('LOGIN_AUDIT_FILE') ? LOGIN_AUDIT_FILE : '/home/ubuntu/repo/login_history.log';
+    if (!is_file($loginFile) || !is_readable($loginFile)) {
+        return [];
+    }
+
+    $result = [];
+    $lines = file($loginFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        return [];
+    }
+
+    foreach ($lines as $line) {
+        $line = trim((string)$line);
+        if ($line === '' || strpos($line, '#') === 0) {
+            continue;
+        }
+
+        $parts = explode('|', $line, 2);
+        if (count($parts) < 2) {
+            continue;
+        }
+
+        $ts = trim($parts[0]);
+        $user = strtoupper(trim($parts[1]));
+        if ($user === '') {
+            $user = 'UNKNOWN';
+        }
+
+        $dt = DateTime::createFromFormat('Y-m-d H:i:s', $ts);
+        if (!$dt) {
+            continue;
+        }
+
+        $weekMon = clone $dt;
+        $weekMon->modify('monday this week');
+        $weekMon->setTime(0, 0, 0);
+        $weekKey = $weekMon->format('Y-m-d');
+
+        if (!isset($result[$weekKey])) {
+            $result[$weekKey] = [
+                'total' => 0,
+                'users' => [],
+            ];
+        }
+
+        $result[$weekKey]['total']++;
+        if (!isset($result[$weekKey]['users'][$user])) {
+            $result[$weekKey]['users'][$user] = 0;
+        }
+        $result[$weekKey]['users'][$user]++;
+    }
+
+    return $result;
+}
+
 // AJAX handler
 if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
     $action = isset($_GET['ajax']) ? $_GET['ajax'] : $_POST['ajax'];
@@ -262,6 +323,11 @@ $ordersCount = getTotalOrdersCount();
 $accountOrders = getAccountOrders();
 $weeklyStats = getOrdersByFullWeek();
 $currentWeekStats = getCurrentWeekStats();
+$loginCountsByWeek = getLoginCountsByWeek();
+$currentWeekMon = new DateTime();
+$currentWeekMon->modify('monday this week');
+$currentWeekMon->setTime(0, 0, 0);
+$currentWeekKey = $currentWeekMon->format('Y-m-d');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -450,6 +516,75 @@ $currentWeekStats = getCurrentWeekStats();
                         <td class="<?php echo $totalAllOrders > 0 && $totalAllNet / $totalAllOrders >= 0 ? 'week-net-positive' : 'week-net-negative'; ?>"><?php echo $totalAllOrders > 0 ? number_format($totalAllNet / $totalAllOrders, 2) : '0.00'; ?></td>
                     </tr>
                 </tfoot>
+            </table>
+
+            <h3 style="margin-top: 0;">Logowania tygodniowe</h3>
+            <table class="stats-table" style="margin-bottom: 24px;">
+                <thead>
+                    <tr>
+                        <th>Tydzień</th>
+                        <th>Logowania P</th>
+                        <th>Logowania R</th>
+                        <th>Logowania razem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php
+                $loginWeekKeys = array_unique(array_merge([$currentWeekKey], array_keys($weeklyStats), array_keys($loginCountsByWeek)));
+                rsort($loginWeekKeys);
+                $loginTotalP = 0;
+                $loginTotalR = 0;
+                $loginTotalAll = 0;
+                $renderedLoginRows = 0;
+
+                foreach ($loginWeekKeys as $weekKey):
+                    $weekMon = DateTime::createFromFormat('Y-m-d H:i:s', $weekKey . ' 00:00:00');
+                    if (!$weekMon) {
+                        continue;
+                    }
+                    $weekSun = clone $weekMon;
+                    $weekSun->modify('+6 days');
+                    $weekLabel = $weekMon->format('d.m') . ' – ' . $weekSun->format('d.m.Y');
+
+                    $weekLoginP = intval($loginCountsByWeek[$weekKey]['users']['P'] ?? 0);
+                    $weekLoginR = intval($loginCountsByWeek[$weekKey]['users']['R'] ?? 0);
+                    $weekLoginTotal = intval($loginCountsByWeek[$weekKey]['total'] ?? 0);
+
+                    if ($weekLoginTotal === 0) {
+                        continue;
+                    }
+
+                    $loginTotalP += $weekLoginP;
+                    $loginTotalR += $weekLoginR;
+                    $loginTotalAll += $weekLoginTotal;
+                    $renderedLoginRows++;
+
+                    $rowStyle = ($weekKey === $currentWeekKey) ? ' style="background: #fffbe6; font-style: italic;"' : '';
+                    $labelStyle = ($weekKey === $currentWeekKey) ? ' style="color: #856404;"' : '';
+                ?>
+                    <tr<?php echo $rowStyle; ?>>
+                        <td<?php echo $labelStyle; ?>><?php echo htmlspecialchars($weekLabel); ?></td>
+                        <td><?php echo $weekLoginP; ?></td>
+                        <td><?php echo $weekLoginR; ?></td>
+                        <td><?php echo $weekLoginTotal; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($renderedLoginRows === 0): ?>
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #6c757d;">Brak logowań do wyświetlenia.</td>
+                    </tr>
+                <?php endif; ?>
+                </tbody>
+                <?php if ($renderedLoginRows > 0): ?>
+                <tfoot>
+                    <tr style="font-weight: bold; background: #f1f3f5;">
+                        <td>SUMA</td>
+                        <td><?php echo $loginTotalP; ?></td>
+                        <td><?php echo $loginTotalR; ?></td>
+                        <td><?php echo $loginTotalAll; ?></td>
+                    </tr>
+                </tfoot>
+                <?php endif; ?>
             </table>
 
             <!-- Per-week detail sections -->
