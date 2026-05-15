@@ -2412,7 +2412,9 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
 
             $symbol = isset($targetOrder['symbol']) ? trim((string)$targetOrder['symbol']) : '';
             $precision = getPricePrecision($symbol);
-            $bumpValue = 10.0;
+            $lotsRaw = isset($targetOrder['lots']) ? trim((string)$targetOrder['lots']) : '0';
+            $lots = floatval($lotsRaw);
+            $bumpValue = $lots * 1000;
 
             $orderType = isset($targetOrder['type']) ? strtoupper(trim((string)$targetOrder['type'])) : '';
             if ($orderType === 'SELL') {
@@ -2585,7 +2587,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 </div>
                 <div class="form-group">
                     <button type="button" onclick="modifyOrder()" class="modify-order-btn">Modify</button>
-                    <button type="button" onclick="bumpSL()" class="modify-order-btn" style="margin-left: 10px; background-color: #17a2b8; border-color: #17a2b8;">Bump SL by 10.0 (Auto-Approve)</button>
+                    <button type="button" onclick="bumpSL()" class="modify-order-btn" style="margin-left: 10px; background-color: #17a2b8; border-color: #17a2b8;">Bump SL</button>
                 </div>
             </div>
         </div>
@@ -3416,7 +3418,7 @@ if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
                 return;
             }
 
-            if (!confirm(`Smart bump Stop Loss by 10.0 for ticket ${selectedTicket} (BUY: +10.0, SELL: -10.0) and auto-approve?`)) {
+            if (!confirm(`Smart bump Stop Loss for ticket ${selectedTicket} and auto-approve?`)) {
                 return;
             }
 
