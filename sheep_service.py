@@ -495,7 +495,9 @@ def main():
                                 target_f.write(expected_settings_block + "\n")
                             print(f"Updated MT4 settings file: {target_settings_file}")
 
-                    settings_content = settings_raw.strip().lower()
+                    # Filter out commented lines
+                    settings_lines = [line.strip().lower() for line in settings_raw.split('\n') if line.strip() and not line.strip().startswith('#')]
+                    settings_content = '\n'.join(settings_lines)
                     if 'service: disabled' in settings_content:
                         print("Service disabled, waiting 15 seconds...")
                         content = f"Sheep service is currently DISABLED.\nHeartbeat: {heartbeat}\n"
