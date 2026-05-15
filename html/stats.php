@@ -397,6 +397,24 @@ $currentWeekStats = getCurrentWeekStats();
                 $totalAllOrders = 0;
                 $totalAllWins = 0;
                 $totalAllLosses = 0;
+                $cwCount = count($currentWeekStats['orders']);
+                $cwNet   = $currentWeekStats['net'];
+                $cwWins  = $currentWeekStats['wins'];
+                $cwLoss  = $currentWeekStats['losses'];
+                $cwWinPct = $cwCount > 0 ? round($cwWins / $cwCount * 100, 1) : 0;
+                $cwAvg   = $cwCount > 0 ? $cwNet / $cwCount : 0;
+                $cwNetClass = $cwNet >= 0 ? 'week-net-positive' : 'week-net-negative';
+                ?>
+                    <tr style="background: #fffbe6; font-style: italic;">
+                        <td style="color: #856404;"><?php echo htmlspecialchars($currentWeekStats['label']); ?></td>
+                        <td><?php echo $cwCount; ?></td>
+                        <td style="color: #28a745;"><?php echo $cwWins; ?></td>
+                        <td style="color: #dc3545;"><?php echo $cwLoss; ?></td>
+                        <td><?php echo $cwWinPct; ?>%</td>
+                        <td class="<?php echo $cwNetClass; ?>"><?php echo number_format($cwNet, 2); ?></td>
+                        <td class="<?php echo $cwAvg >= 0 ? 'week-net-positive' : 'week-net-negative'; ?>"><?php echo number_format($cwAvg, 2); ?></td>
+                    </tr>
+                <?php
                 foreach ($weeklyStats as $weekKey => $week):
                     $count = count($week['orders']);
                     $net = $week['net'];
@@ -430,24 +448,6 @@ $currentWeekStats = getCurrentWeekStats();
                         <td><?php echo $totalAllOrders > 0 ? round($totalAllWins / $totalAllOrders * 100, 1) : 0; ?>%</td>
                         <td class="<?php echo $totalAllNet >= 0 ? 'week-net-positive' : 'week-net-negative'; ?>"><?php echo number_format($totalAllNet, 2); ?></td>
                         <td class="<?php echo $totalAllOrders > 0 && $totalAllNet / $totalAllOrders >= 0 ? 'week-net-positive' : 'week-net-negative'; ?>"><?php echo $totalAllOrders > 0 ? number_format($totalAllNet / $totalAllOrders, 2) : '0.00'; ?></td>
-                    </tr>
-                    <?php
-                    $cwCount = count($currentWeekStats['orders']);
-                    $cwNet   = $currentWeekStats['net'];
-                    $cwWins  = $currentWeekStats['wins'];
-                    $cwLoss  = $currentWeekStats['losses'];
-                    $cwWinPct = $cwCount > 0 ? round($cwWins / $cwCount * 100, 1) : 0;
-                    $cwAvg   = $cwCount > 0 ? $cwNet / $cwCount : 0;
-                    $cwNetClass = $cwNet >= 0 ? 'week-net-positive' : 'week-net-negative';
-                    ?>
-                    <tr style="background: #fffbe6; font-style: italic;">
-                        <td style="color: #856404;">ten tydzień<br><small><?php echo htmlspecialchars($currentWeekStats['label']); ?></small></td>
-                        <td><?php echo $cwCount; ?></td>
-                        <td style="color: #28a745;"><?php echo $cwWins; ?></td>
-                        <td style="color: #dc3545;"><?php echo $cwLoss; ?></td>
-                        <td><?php echo $cwWinPct; ?>%</td>
-                        <td class="<?php echo $cwNetClass; ?>"><?php echo number_format($cwNet, 2); ?></td>
-                        <td class="<?php echo $cwAvg >= 0 ? 'week-net-positive' : 'week-net-negative'; ?>"><?php echo number_format($cwAvg, 2); ?></td>
                     </tr>
                 </tfoot>
             </table>
