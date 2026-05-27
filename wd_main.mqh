@@ -55,6 +55,12 @@ input bool TrailingTP_enabled = true;
 //--- FullCandleBeforeLine
 input bool FullCandleBeforeLine_enabled = true;
 
+//--- CheckConsolidation
+input bool CheckConsolidation_enabled = true;
+input int CheckConsolidationCandles = 10;
+input int CheckConsolidationDiv = 2;
+input int CheckConsolidationDistance = 35;
+
 //--- BothTooClose (both buy and sell within distance)
 // NOTE: WD MAIN on PRODUCTION must support decition line to enable this on production!!
 input bool BothTooClose_enabled = false;
@@ -1059,6 +1065,32 @@ bool FullCandleBeforeLine(string &parts[], int partsCount, double currentPrice, 
     return true;
 }
 
+bool CheckConsolidation(double currentPrice, string decision)
+{
+    if(!CheckConsolidation_enabled)
+        return false;
+    if(CheckConsolidationCandles <= 0 || CheckConsolidationDistance < 0)
+        return false;
+    if(Bars <= CheckConsolidationCandles)
+        return false;
+
+    int div = 0;
+    for(int i = 1; i <= CheckConsolidationCandles; i++)
+    {
+        double openDistance = MathAbs(Open[i] - currentPrice);
+        double closeDistance = MathAbs(Close[i] - currentPrice);
+        if(openDistance > CheckConsolidationDistance || closeDistance > CheckConsolidationDistance)
+            div++;
+	if(div > CheckConsolidationDiv)
+	    return false;
+    }
+
+    Log("Skipping " + decision + " - Consolidation: last " + IntegerToString(CheckConsolidationCandles) +
+        " candles stayed within " + IntegerToString(CheckConsolidationDistance) +
+        " of current price " + DoubleToString(currentPrice, 2));
+    return true;
+}
+
 bool TryExtractLineAge(string token, int &age)
 {
     age = -1;
@@ -1135,6 +1167,9 @@ int ExecuteWdDecision(string decision, double lotSizeSet)
         return 0;
 
     if (weak_closed_on_flip_enabled && CheckWeakClosedOnFlip(orderTypeStr))
+        return 0;
+
+    if(CheckConsolidation(currentPrice, decision))
         return 0;
     
     int stopLevelPoints = (int)MarketInfo(Symbol(), MODE_STOPLEVEL);
