@@ -68,6 +68,9 @@ input int CheckConsolidationDistance = 35;
 input bool BothTooClose_enabled = false;
 input int BothTooCloseDistance = 50;
 
+// --- TryFlipDecisionOnHammer
+input bool TryFlipDecisionOnHammer_enabled = false;
+
 input bool DropOnBreakeven_enabled = true;
 input int DropOnBreakevenLoss = 4; // * SL
 input int DropOnBreakevenTrigger = 3; // * SL
@@ -1110,6 +1113,89 @@ bool TryExtractLineAge(string token, int &age)
     return true;
 }
 
+int hammerSize = 2;
+int shadowSize = 25;
+
+bool TryFlipDecisionOnHammer(
+    string &parts[],
+    int partsCount,
+    string &orderTypeStr,
+    bool &isBuy,
+    int &cmd,
+    double &currentPrice,
+    string &decision)
+{
+    int conditionIndex = 1;
+    int priceIndex = 2;
+    int ignoredAge = -1;
+    if(partsCount >= 4 && TryExtractLineAge(parts[1], ignoredAge))
+    {
+        conditionIndex = 2;
+        priceIndex = 3;
+    }
+
+    if(priceIndex >= partsCount)
+        return false;
+
+    string condition = parts[conditionIndex];
+    if(condition != "ABOVE" && condition != "BELOW")
+        return false;
+
+    double conditionPrice = StringToDouble(parts[priceIndex]);
+    double open1 = Open[1];
+    double close1 = Close[1];
+    double high1 = High[1];
+    double low1 = Low[1];
+
+    double bodyTop = MathMax(open1, close1);
+    double bodyBottom = MathMin(open1, close1);
+    double bodySize = bodyTop - bodyBottom;
+    double upperShadow = high1 - bodyTop;
+    double lowerShadow = bodyBottom - low1;
+    bool flippedOnHammer = false;
+
+    if(bodySize <= 0)
+        bodySize = Point;
+
+    // Hammer-like rejection: wick crosses decision line, body stays on one side.
+    if(condition == "ABOVE")
+    {
+        bool crossedByWick = (high1 > conditionPrice);
+        bool bodyDidNotCross = (bodyTop < conditionPrice);
+        bool longUpperShadow = (upperShadow >= (hammerSize * bodySize));// && upperShadow > lowerShadow);
+        if(crossedByWick && bodyDidNotCross && longUpperShadow)// && upperShadow > shadowSize)
+        {
+            orderTypeStr = "SELL";
+            isBuy = false;
+            cmd = OP_SELL;
+            currentPrice = NormalizeDouble(Bid, Digits);
+            flippedOnHammer = true;
+        }
+    }
+    else
+    {
+        bool crossedByWick = (low1 < conditionPrice);
+        bool bodyDidNotCross = (bodyBottom > conditionPrice);
+        bool longLowerShadow = (lowerShadow >= (hammerSize * bodySize));// && lowerShadow > upperShadow);
+        if(crossedByWick && bodyDidNotCross && longLowerShadow)// && lowerShadow > shadowSize)
+        {
+            orderTypeStr = "BUY";
+            isBuy = true;
+            cmd = OP_BUY;
+            currentPrice = NormalizeDouble(Ask, Digits);
+            flippedOnHammer = true;
+        }
+    }
+
+    if(flippedOnHammer)
+    {
+        decision = orderTypeStr + " HAMMER_FLIP " + condition + " " + DoubleToString(conditionPrice, 2);
+        Log("Hammer flip applied: " + decision);
+    }
+
+    return flippedOnHammer;
+}
+
 // Decision format can be like "BUY SA2(3) ABOVE 21917.27", "BUY ABOVE 21917.27", or "SELL"
 int ExecuteWdDecision(string decision, double lotSizeSet)
 {
@@ -1153,7 +1239,15 @@ int ExecuteWdDecision(string decision, double lotSizeSet)
     {
         // Check price condition (ABOVE/BELOW)
         if(!CheckPriceCondition(parts, partsCount, currentPrice, decision))
-            return 0;
+        {
+	    if (TryFlipDecisionOnHammer_enabled)
+	    {
+                if(!TryFlipDecisionOnHammer(parts, partsCount, orderTypeStr, isBuy, cmd, currentPrice, decision))
+                    return 0;
+	    }
+	    else
+	        return 0;
+        }
     }
 
     if (FullCandleBeforeLine_enabled)
