@@ -54,6 +54,8 @@ input bool TrailingTP_enabled = true;
 
 //--- FullCandleBeforeLine
 input bool FullCandleBeforeLine_enabled = true;
+input int FullCandleBeforeLineMaxGap = 50;
+input int FullCandleBeforeLineCandles = 3;
 
 //--- CheckConsolidation
 input bool CheckConsolidation_enabled = true;
@@ -1032,8 +1034,8 @@ bool FullCandleBeforeLine(string &parts[], int partsCount, double currentPrice, 
     double conditionPrice = StringToDouble(parts[priceIndex]);
     bool isAbove = (condition == "ABOVE");
 
-    int candles = 3;
-    int maxGap = 50;
+    int candles = FullCandleBeforeLineCandles;
+    int maxGap = FullCandleBeforeLineMaxGap;
     
     for(int i = 2; i <= candles + 1; i++)
     {
